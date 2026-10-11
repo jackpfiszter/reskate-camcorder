@@ -5,10 +5,12 @@ and your friends the way 90s skate videos were shot, without the replay editor. 
 VX1000 with a Century fisheye and chase the skater, or set up tripods at the spot, press REC,
 and skate the line.
 
-> **Status: early.** The camcorder's model (camera, lens, zoom, tape, rigs, viewfinder,
-> commands) is built and unit-tested. The code that wires it into ReSkate is written but **not
-> yet compiled or tried in the game**. See [docs/DESIGN.md](docs/DESIGN.md) for the full
-> design and [integration/reskate/README.md](integration/reskate/README.md) for how it plugs in.
+> **Status: early, untested in game.** The camcorder's model (camera, lens, zoom, tape, rigs,
+> viewfinder, commands) is unit-tested, and CI builds ReSkate with the camcorder on Windows
+> (MSVC, warnings as errors) and uploads the DLL. Nobody has played with it yet:
+> [docs/TESTING.md](docs/TESTING.md) has how to try it and a checklist. See
+> [docs/DESIGN.md](docs/DESIGN.md) for the design and
+> [integration/reskate/README.md](integration/reskate/README.md) for how it plugs in.
 
 ## What it does
 
@@ -42,7 +44,7 @@ the overlay.
 |---|---|
 | `src/camcorder/` | the model: no game types, builds anywhere |
 | `tests/` | its unit tests |
-| `integration/reskate/` | the ReSkate side (reference, untested) and where it plugs in |
+| `integration/reskate/` | the ReSkate side: its files, the patch to ReSkate and `install.ps1` |
 | `docs/DESIGN.md` | the design: shooting modes, recording, the look, controls, milestones |
 | `docs/TESTING.md` | how to test: unit tests, getting a build, an in-game checklist |
 

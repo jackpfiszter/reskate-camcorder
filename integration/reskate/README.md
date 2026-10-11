@@ -1,9 +1,10 @@
 # Wiring the camcorder into ReSkate
 
-> **Status: reference code, not yet built or run in the game.** The files in
-> `Extension/Camcorder/` are written against ReSkate's source (Steam build `25414733`, the
-> `20260929` address table) but have not been compiled on Windows or tried in play. The model
-> they drive (`src/camcorder`) is built and unit-tested on its own.
+> **Status: compiles, not yet run in the game.** `install.ps1` puts the files in
+> `Extension/Camcorder/` into a ReSkate checkout and applies `reskate.patch` (the patch points
+> below) against the ReSkate commit in `reskate.commit` (Steam build `25414733`, the `20260929`
+> address table). CI builds the result with MSVC on every push (`.github/workflows/build.yml`).
+> Nobody has played with it yet; see `docs/TESTING.md`.
 
 ## Why this lives inside ReSkate.dll
 
