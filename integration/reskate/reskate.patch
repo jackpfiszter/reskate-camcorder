@@ -1,0 +1,274 @@
+diff --git a/Engine/Game/Input/controller_bindings.h b/Engine/Game/Input/controller_bindings.h
+index 639ed1e..9831235 100644
+--- a/Engine/Game/Input/controller_bindings.h
++++ b/Engine/Game/Input/controller_bindings.h
+@@ -89,7 +89,7 @@ struct ControllerInput {
+ struct ActionBind {
+     std::string_view key, name, label, command;
+ };
+-inline constexpr std::array<ActionBind, 8> action_binds{{
++inline constexpr std::array<ActionBind, 13> action_binds{{
+     {"first_person", "firstperson", "First person", "firstperson toggle"},
+     {"hide_hud", "hidehud", "Hide HUD", "hideui toggle"},
+     {"voice_chat", "voicechat", "Voice chat on / off", "mp voice-chat toggle"},
+@@ -98,6 +98,11 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
+     {"challenges", "challenges", "Show / hide challenges", "challenges toggle"},
+     {"nametags", "nametags", "Player nametags", "mp nametags toggle"},
+     {"nametag_dots", "nametagdots", "Player dots", "mp nametag-dots toggle"},
++    {"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"},
++    {"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"},
++    {"camcorder_operate", "camoperate", "Camcorder: pad to camera", "camcorder operate toggle"},
++    {"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"},
++    {"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"},
+ }};
+ struct ControllerBindingsModel {
+     bool available{};
+diff --git a/Extension/Console/commands.cpp b/Extension/Console/commands.cpp
+index a8245e6..2056b39 100644
+--- a/Extension/Console/commands.cpp
++++ b/Extension/Console/commands.cpp
+@@ -226,6 +226,7 @@ const Commands &game_commands() {
+         register_item_commands(*result);
+         register_trainer_commands(*result);
+         register_hall_of_meat_commands(*result);
++        register_camcorder_commands(*result);
+         register_road_rash_commands(*result);
+         register_board_break_commands(*result);
+         return result;
+diff --git a/Extension/Console/commands.h b/Extension/Console/commands.h
+index 71ae717..3fbbb63 100644
+--- a/Extension/Console/commands.h
++++ b/Extension/Console/commands.h
+@@ -27,6 +27,7 @@ void start_memory_trace_from_environment() noexcept;
+ void register_item_commands(Commands &);
+ void register_trainer_commands(Commands &);
+ void register_hall_of_meat_commands(Commands &);
++void register_camcorder_commands(Commands &);
+ void register_road_rash_commands(Commands &);
+ void register_board_break_commands(Commands &);
+ // Runtime adapters. Invoked only by the verified game-thread dispatcher.
+diff --git a/Extension/Multiplayer/Hud/native_party.h b/Extension/Multiplayer/Hud/native_party.h
+index 856e908..51abeb6 100644
+--- a/Extension/Multiplayer/Hud/native_party.h
++++ b/Extension/Multiplayer/Hud/native_party.h
+@@ -34,6 +34,8 @@ void update_party_position(const Pose *pose) noexcept;
+ // Points the party Spectate camera at a session player's skater from code (the
+ // throwdown turn camera). 0 stops a spectate this function started. Game thread.
+ void spectate_party_member(std::uint64_t id) noexcept;
++// Whether Spectate holds (or is giving back) the native camera. Game thread.
++bool spectating_party_member() noexcept;
+ // Returns only a record owned by this adapter, validated against this manager.
+ std::uint64_t native_party_player_info(std::uintptr_t manager, std::size_t slot) noexcept;
+ std::string native_party_status();
+diff --git a/Extension/Multiplayer/Hud/native_party_hooks.cpp b/Extension/Multiplayer/Hud/native_party_hooks.cpp
+index f74c419..cfbf26b 100644
+--- a/Extension/Multiplayer/Hud/native_party_hooks.cpp
++++ b/Extension/Multiplayer/Hud/native_party_hooks.cpp
+@@ -792,6 +792,10 @@ void execute_native_party_expression(std::uintptr_t vm, std::uint32_t pc, std::u
+                                     void (*runner)(std::uintptr_t, std::uint32_t, std::uintptr_t)) {
+     run_expression(vm, pc, profiler, runner);
+ }
++bool spectating_party_member() noexcept {
++    auto &s = state();
++    return s.spectating.load(std::memory_order_acquire) != 0 || s.camera_owned;
++}
+ void spectate_party_member(std::uint64_t id) noexcept {
+     try {
+         auto &s = state();
+diff --git a/Extension/Multiplayer/Session/session.cpp b/Extension/Multiplayer/Session/session.cpp
+index 4130fa7..f8b9c0f 100644
+--- a/Extension/Multiplayer/Session/session.cpp
++++ b/Extension/Multiplayer/Session/session.cpp
+@@ -7,6 +7,7 @@
+ #include "Extension/Multiplayer/Remote/native_skater.h"
+ #include "Extension/Multiplayer/Hud/custom_nametags.h"
+ #include "Extension/Multiplayer/Hud/follow_camera.h"
++#include "Extension/Camcorder/camcorder_runtime.h"
+ #include "Extension/Throwdowns/native_throwdowns.h"
+ #include "Extension/Throwdowns/throwdown_relay.h"
+ #include "Extension/Progression/script_natives.h"
+@@ -443,7 +444,13 @@ std::uint64_t far_sample_interval(const Peer &p, float distance) {
+     return 0;
+ }
+ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::uint64_t now) {
+-    if (!world_playing(s, local)) return;
++    if (!world_playing(s, local)) {
++        camcorder_runtime::note_players({});
++        return;
++    }
++    // Everyone placed this frame, for the camcorder to film (where Spectate finds them too).
++    std::vector<camcorder_runtime::Player> filmable;
++    const auto film = [&](const Peer &p) { filmable.push_back({p.member.id, p.member.name, p.render_pose.root}); };
+     const auto view = latest_game_view();
+     // ReSkate's nametags and chat bubbles: every shown player, placed above their head
+     // each frame.
+@@ -577,6 +584,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+                                    mark_styles(p));
+             present_audio(p);
+             update_party_position(&p.render_pose);
++            film(p);
+             if (labels) label(p);
+             return;
+         }
+@@ -638,6 +646,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+                     // The spectate camera follows this every frame; the map and
+                     // indicators below only need network-rate updates.
+                     update_party_position(&p.render_pose);
++                    film(p);
+                     if (labels) label(p);
+                     if (!p.ui_visible || now >= p.next_ui_update) {
+                         update_player_ui(s.base, &p.render_pose, p.member.name);
+@@ -658,7 +667,10 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+                                                   : "Waiting for player poses.";
+                 // No skater for them, but still their name or dot where they are, and where the
+                 // Social menu's teleport and spectate find them.
+-                if (!p.shown_wanted && sampled) update_party_position(&p.render_pose);
++                if (!p.shown_wanted && sampled) {
++                    update_party_position(&p.render_pose);
++                    film(p);
++                }
+                 if (!p.shown_wanted && sampled && labels) label(p);
+             }
+         }
+@@ -689,6 +701,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+             nametags.push_back(std::move(tag));
+         }
+     }
++    camcorder_runtime::note_players(std::move(filmable));
+     if (labels)
+         publish_custom_nametags(s.base, std::move(nametags),
+                                 local.ready ? std::optional(local.pose.root.position) : std::nullopt,
+@@ -954,9 +967,13 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+             if (ready && !map_name.empty()) {
+                 try {
+                     const auto solo = capture_local(base, client, false);
+-                    if (solo.ready) note_local_skater(solo.pose.root);
++                    if (solo.ready) {
++                        note_local_skater(solo.pose.root);
++                        camcorder_runtime::note_local_skater(solo.pose.root);
++                    }
+                 } catch (...) {}
+             }
++            camcorder_runtime::note_players({});
+             publish(s);
+             return;
+         }
+@@ -966,7 +983,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+         else
+             local.detail = s.awaiting_map ? "Waiting for the host's map and local skater." : "Load a map to skate.";
+         const auto captured_at = capture_pose ? now_us() : 0;
+-        if (local.ready) note_local_skater(local.pose.root);
++        if (local.ready) {
++            note_local_skater(local.pose.root);
++            camcorder_runtime::note_local_skater(local.pose.root);
++        }
+         if (capture_pose && local.ready) {
+             s.last_skater_bones = local.pose.skater.size();
+             s.last_board_bones = local.pose.board.empty() ? 0 : local.pose.board.size() - 1;
+diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
+index 7169615..83c8921 100644
+--- a/Extension/UI/Overlay/overlay_render.cpp
++++ b/Extension/UI/Overlay/overlay_render.cpp
+@@ -4,6 +4,7 @@
+ #include "overlay_internal.h"
+ #include "Extension/Trainer/trainer_page.h"
+ #include "Extension/HallOfMeat/hall_of_meat_overlay.h"
++#include "Extension/Camcorder/camcorder_overlay.h"
+ #include "park_previews.h"
+ #include "chat_emotes.h"
+ #include "input_capture.h"
+@@ -634,7 +635,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
+     const bool game_text_frame = game_text_pending();
+     const bool skate_hud_frame = skate_hud_pending();
+     const bool nametag_frame = nametags_pending();
+-    const bool meat_frame = hall_of_meat_pending();
++    const bool meat_frame = hall_of_meat_pending() || camcorder_pending();
+     const bool item_browser_frame = item_browser_pending();
+     const bool perf_frame = perf_hud_pending() || trainer_hud_pending();
+     const bool hub_frame = hub_page_pending();
+@@ -705,6 +706,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
+         draw_perf_window();
+     }
+     draw_hub_page();
++    draw_camcorder(); // under everything else: the picture first, readouts over it
+     draw_hall_of_meat();
+     draw_nametags();
+     draw_game_text();
+diff --git a/Runtime/client_tick.cpp b/Runtime/client_tick.cpp
+index b5e52e4..104c6a8 100644
+--- a/Runtime/client_tick.cpp
++++ b/Runtime/client_tick.cpp
+@@ -34,6 +34,7 @@
+ #include "Extension/Skater/skater_slot_override.h"
+ #include "Extension/Throwdowns/native_throwdowns.h"
+ #include "Extension/Trainer/trainer.h"
++#include "Extension/Camcorder/camcorder_runtime.h"
+ #include "Extension/World/level_loading.h"
+ #include "Extension/World/loading_screen.h"
+ #include <dxgi.h>
+@@ -1270,6 +1271,12 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
+             dingosdk::multiplayer::tick_native_party_actions(r.base, client,
+                 r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
+         }
++        {
++            DINGO_PROFILE_ZONE("tick/camcorder");
++            // After Spectate, which it yields to: both drive the one native camera lease.
++            dingosdk::camcorder_runtime::tick(r.base, client,
++                r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
++        }
+         if (state == 13 || state == 21) {
+             DINGO_PROFILE_ZONE("tick/camera view");
+             // The camera ReSkate's nametags start from, and the spectate camera's lesson in how
+diff --git a/cmake/Runtime.cmake b/cmake/Runtime.cmake
+index eb18b43..4e700cc 100644
+--- a/cmake/Runtime.cmake
++++ b/cmake/Runtime.cmake
+@@ -142,6 +142,8 @@ add_library(dingosdk_runtime SHARED
+     Extension/Trainer/trainer_commands.cpp
+     Extension/Trainer/trainer_session.cpp
+     Extension/Trainer/trainer_waypoint.cpp
++    Extension/Camcorder/camcorder_runtime.cpp
++    Extension/Camcorder/camcorder_commands.cpp
+     Extension/Skater/offboard_flight.cpp
+     Extension/Skater/camera_observer.cpp
+     Extension/Boot/offline_boot.cpp
+@@ -213,6 +215,7 @@ add_library(dingosdk_custom_level_manifest STATIC
+     Engine/Game/World/custom_level_manifest.cpp)
+ target_link_libraries(dingosdk_custom_level_manifest PUBLIC dingosdk_json)
+ target_link_libraries(dingosdk_runtime PRIVATE dingosdk_custom_level_manifest)
++target_link_libraries(dingosdk_runtime PRIVATE dingosdk_camcorder_model)
+ 
+ set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
+ dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
+diff --git a/cmake/UI.cmake b/cmake/UI.cmake
+index 34634f2..b9a100e 100644
+--- a/cmake/UI.cmake
++++ b/cmake/UI.cmake
+@@ -2,6 +2,16 @@
+ add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
+ target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
+ 
++# The camcorder's model (Extension/Camcorder/Model): no game types, shared by the overlay and the runtime.
++add_library(dingosdk_camcorder_model STATIC
++    Extension/Camcorder/Model/camcorder/camcorder.cpp
++    Extension/Camcorder/Model/camcorder/commands.cpp
++    Extension/Camcorder/Model/camcorder/rigs.cpp
++    Extension/Camcorder/Model/camcorder/tape.cpp
++    Extension/Camcorder/Model/camcorder/viewfinder.cpp
++    Extension/Camcorder/Model/camcorder/vx1000.cpp)
++target_include_directories(dingosdk_camcorder_model PUBLIC "${PROJECT_SOURCE_DIR}/Extension/Camcorder/Model")
++
+ add_library(dingosdk_overlay STATIC
+ 
+     Extension/UI/Overlay/overlay.cpp
+@@ -41,8 +51,9 @@ add_library(dingosdk_overlay STATIC
+     Extension/Trainer/trainer_page.cpp
+     Extension/Trainer/trainer_view.cpp
+     Extension/HallOfMeat/hall_of_meat_overlay.cpp
++    Extension/Camcorder/camcorder_overlay.cpp
+ )
+-target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
++target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
+ 
+ # The window shown from the moment ReSkate loads until the game's own window appears.
+ add_library(dingosdk_startup_window STATIC Extension/UI/Startup/startup_window.cpp)

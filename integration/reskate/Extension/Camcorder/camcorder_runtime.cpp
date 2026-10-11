@@ -20,10 +20,12 @@ struct State {
     // Client thread only.
     Camcorder camcorder;
     Clock::time_point last_tick{};
-    std::optional<multiplayer::Transform> local, previous_local;
-    std::vector<Player> players, previous_players;
-    float since_local{}; // seconds between the last two local notes
-    std::uint64_t subject{}; // 0: nobody
+    std::optional<multiplayer::Transform> local;
+    Clock::time_point local_at{};
+    VelocityEstimate local_velocity;
+    std::vector<Player> players;
+    std::uint64_t subject{}; // 0: nobody (a tripod then films the local player)
+    VelocityEstimate subject_velocity;
     bool operating{};        // the pad drives the camera (`camcorder operate`)
     bool captured{};         // we asked the overlay to hold the pad
     bool owned{};            // update_party_camera holds the screen for us
@@ -41,32 +43,33 @@ State &state() {
 
 Vec3 to_vec(const std::array<float, 3> &v) { return {v[0], v[1], v[2]}; }
 
-Filmer filmer_from(const State &s) {
+// The local skater, if the session placed them in the last half second.
+Filmer filmer_from(State &s, Clock::time_point now, float dt) {
     Filmer f;
-    if (!s.local) return f;
+    if (!s.local || now - s.local_at > std::chrono::milliseconds(500)) {
+        s.local_velocity.reset();
+        return f;
+    }
     f.valid = true;
     f.position = to_vec(s.local->position);
     // The skater's body faces along its third row (follow_camera.cpp reads it the same way).
     const auto body = multiplayer::to_matrix(*s.local);
     f.forward = {body[8], 0, body[10]};
-    if (s.previous_local && s.since_local > 0)
-        f.velocity = mul(sub(f.position, to_vec(s.previous_local->position)), 1.0f / s.since_local);
+    f.velocity = s.local_velocity.update(f.position, dt);
     // TODO(in play): use the physics state for on/off board. client_source::detail::first_person_on_foot
     // reads it; it is internal to Extension/Skater today.
     f.on_board = true;
     return f;
 }
 
-std::optional<Subject> subject_from(const State &s) {
-    if (!s.subject) return std::nullopt;
-    for (const auto &p : s.players) {
-        if (p.id != s.subject) continue;
-        Subject subject{true, to_vec(p.root.position), {}};
-        for (const auto &q : s.previous_players)
-            if (q.id == p.id && s.since_local > 0)
-                subject.velocity = mul(sub(subject.position, to_vec(q.root.position)), 1.0f / s.since_local);
-        return subject;
-    }
+std::optional<Subject> subject_from(State &s, float dt) {
+    if (s.subject)
+        for (const auto &p : s.players)
+            if (p.id == s.subject) {
+                const auto at = to_vec(p.root.position);
+                return Subject{true, at, s.subject_velocity.update(at, dt)};
+            }
+    s.subject_velocity.reset();
     return std::nullopt;
 }
 
@@ -119,15 +122,11 @@ void publish(State &s, const Frame &frame) {
 
 void note_local_skater(const multiplayer::Transform &root) noexcept {
     auto &s = state();
-    s.previous_local = s.local;
     s.local = root;
+    s.local_at = Clock::now();
 }
 
-void note_players(std::vector<Player> players) noexcept {
-    auto &s = state();
-    s.previous_players = std::move(s.players);
-    s.players = std::move(players);
-}
+void note_players(std::vector<Player> players) noexcept { state().players = std::move(players); }
 
 bool owns_camera() noexcept { return state().owned; }
 
@@ -142,7 +141,11 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         const float dt = s.last_tick == Clock::time_point{} ? 0.0f
                          : std::clamp(std::chrono::duration<float>(now - s.last_tick).count(), 0.0f, 0.1f);
         s.last_tick = now;
-        s.since_local = dt;
+        // The party's Spectate holds the same native camera lease: never both at once.
+        if (s.camcorder.powered() && multiplayer::spectating_party_member()) {
+            s.camcorder.power(false);
+            logging::write(logging::Level::info, logging::Channel::ui, "Camcorder off: stop spectating to film.");
+        }
         if (!s.camcorder.powered() || !ready) {
             if (!ready && s.camcorder.deck().recording()) s.camcorder.deck().stop();
             release(s, base, client, ready, camera_phase);
@@ -151,8 +154,8 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         }
         TickInput in;
         in.dt = dt;
-        in.filmer = filmer_from(s);
-        in.subject = subject_from(s);
+        in.filmer = filmer_from(s, now, dt);
+        in.subject = subject_from(s, dt);
         in.controls = read_controls(s, dt);
         // TODO: the ground under the tripod. Factor the trainer's downward ray (trainer.cpp
         // land_at, trainer_landing.h) into a shared helper and query it at the tripod's x, z.
@@ -209,7 +212,7 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         return s.clean_feed ? "Clean feed: the frame and lens only." : "Viewfinder readouts on.";
     }
     CommandContext context;
-    context.filmer = filmer_from(s);
+    context.filmer = filmer_from(s, Clock::now(), 0);
     return run_command(s.camcorder, verb, words, context);
 }
 

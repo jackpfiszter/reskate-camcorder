@@ -5,9 +5,11 @@
 // and the VX1000-style readouts. Call draw_camcorder() from overlay_render.cpp beside
 // draw_hall_of_meat(), and count camcorder_pending() among the reasons to render with the
 // menu closed.
+#include "camcorder_overlay.h"
 #include "camcorder_runtime.h"
 #include "camcorder/viewfinder.h"
 #include <imgui.h>
+#include <cfloat>
 #include <cmath>
 
 namespace dingosdk::overlay {

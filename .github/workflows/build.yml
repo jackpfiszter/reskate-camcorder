@@ -1,0 +1,50 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  model:
+    name: Model tests (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure
+
+  reskate:
+    name: ReSkate with the camcorder (Windows)
+    runs-on: windows-2022
+    steps:
+      # The patch is LF; keep both checkouts byte for byte.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          path: camcorder
+      - name: Check out ReSkate at the pinned commit
+        shell: pwsh
+        run: |
+          $commit = (Get-Content camcorder/integration/reskate/reskate.commit -Raw).Trim()
+          git init -q ReSkate
+          git -C ReSkate remote add origin https://github.com/Dingo-Shenanigans/ReSkate.git
+          git -C ReSkate fetch -q --depth 1 origin $commit
+          git -C ReSkate checkout -q FETCH_HEAD
+      - name: Install the camcorder
+        shell: pwsh
+        run: ./camcorder/integration/reskate/install.ps1 -ReSkate ReSkate
+      - name: Configure
+        working-directory: ReSkate
+        run: cmake --preset vs2022-x64
+      - name: Build ReSkate.dll and the launcher
+        working-directory: ReSkate
+        run: cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReSkate-camcorder
+          path: |
+            ReSkate/build/vs2022-x64/Release/ReSkate.dll
+            ReSkate/build/vs2022-x64/Release/ReSkateLauncher.exe
+          if-no-files-found: error
