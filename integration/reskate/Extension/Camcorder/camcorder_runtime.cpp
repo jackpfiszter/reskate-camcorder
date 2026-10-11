@@ -1,6 +1,7 @@
 // REFERENCE ONLY: not yet compiled or run in the game (integration/reskate/README.md).
 #include "camcorder_runtime.h"
 #include "Engine/Core/Log/logging.h"
+#include "Engine/Game/UI/game_view.h"
 #include "Extension/Multiplayer/Hud/native_party.h"
 #include "Extension/Skater/client_source_spawn.h"
 #include "Extension/UI/Overlay/overlay.h"
@@ -30,6 +31,7 @@ struct State {
     bool captured{};         // we asked the overlay to hold the pad
     bool owned{};            // update_party_camera holds the screen for us
     bool clean_feed{};
+    bool was_powered{};
     std::string last_detail;
     std::string refused; // why the game has not handed over its camera, while it has not
     std::atomic<float> render_aspect{16.0f / 9.0f}; // the overlay's display, width over height
@@ -160,6 +162,17 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
             s.camcorder.power(false);
             logging::write(logging::Level::info, logging::Channel::ui, "Camcorder off: stop spectating to film.");
         }
+        if (s.camcorder.powered() != s.was_powered) {
+            s.was_powered = s.camcorder.powered();
+            if (s.was_powered) {
+                // Start looking where the game's camera was looking, level, so the first frame faces
+                // the way the player was already looking.
+                if (const auto view = latest_game_view(); view && valid_camera_matrix(view->world))
+                    s.camcorder.aim_handheld({matrix_yaw_pitch(view->world).yaw, 3 * degrees});
+            } else {
+                s.operating = false; // a fresh start next time: the pad is the skater's
+            }
+        }
         if (!s.camcorder.powered() || !ready) {
             if (!ready && s.camcorder.deck().recording()) s.camcorder.deck().stop();
             release(s, base, client, ready, camera_phase);
@@ -236,6 +249,8 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
     auto answer = run_command(s.camcorder, verb, words, context);
+    if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.operating)
+        answer += " Operate is on: the pad works the camera.";
     if ((verb.empty() || verb == "status") && s.camcorder.powered() && !s.owned) {
         if (!s.refused.empty()) answer += " The game kept its camera: " + s.refused;
         else if (!context.filmer.valid && s.camcorder.status().mode == Mode::handheld)

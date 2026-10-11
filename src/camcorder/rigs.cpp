@@ -83,8 +83,8 @@ Vec3 HandheldRig::grip_position(const Filmer &filmer) const {
 void HandheldRig::face(YawPitch aim) {
     yaw_.reset(wrap_angle(aim.yaw));
     pitch_.reset(std::clamp(aim.pitch, -highest_pitch, highest_pitch));
-    free_yaw_ = yaw_.value;
     free_pitch_ = pitch_.value;
+    offset_pending_ = true;
     nudge_yaw_ = nudge_pitch_ = 0;
     last_yaw_ = yaw_.value;
     started_ = true;
@@ -95,10 +95,13 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     dt = clamp_dt(dt);
     if (!filmer.valid || !finite(filmer.position)) return {};
     const auto eye = grip_position(filmer);
-    if (!started_) {
-        // Start looking the way the filmer faces, level.
-        const auto f = flat_forward(filmer.forward);
-        face({std::atan2(f[0], f[2]), settings_.grip == Grip::long_grip ? 5 * degrees : -3 * degrees});
+    const auto facing = flat_forward(filmer.forward);
+    const float heading = std::atan2(facing[0], facing[2]);
+    // Start looking the way the filmer faces, level.
+    if (!started_) face({heading, settings_.grip == Grip::long_grip ? 5 * degrees : -3 * degrees});
+    if (offset_pending_) {
+        offset_yaw_ = wrap_angle(yaw_.value - heading);
+        offset_pending_ = false;
     }
     const float zoom = std::isfinite(zoom_ratio) ? std::max(zoom_ratio, 1.0f) : 1.0f;
     const float rate = settings_.look_speed / std::sqrt(zoom);
@@ -115,18 +118,19 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
         const auto aim = aim_at(eye, add(ahead, {0, settings_.aim_height, 0}));
         target_yaw = aim.yaw + nudge_yaw_;
         target_pitch = aim.pitch + nudge_pitch_;
-        free_yaw_ = yaw_.value;
+        // Losing the subject leaves the camera where it points, held at that angle to the body.
+        offset_yaw_ = wrap_angle(yaw_.value - heading);
         free_pitch_ = pitch_.value;
     } else {
-        free_yaw_ = wrap_angle(free_yaw_ - look_x * rate * dt);
+        offset_yaw_ = wrap_angle(offset_yaw_ - look_x * rate * dt);
         free_pitch_ = std::clamp(free_pitch_ + look_y * rate * dt, -highest_pitch, highest_pitch);
-        target_yaw = free_yaw_;
+        target_yaw = wrap_angle(heading + offset_yaw_);
         target_pitch = free_pitch_;
         nudge_yaw_ = nudge_pitch_ = 0;
     }
-    // A free camera answers the stick at once (the aim already moves at the stick's rate); a
-    // tracking one swings after the subject like a person.
-    const float reaction = tracking ? settings_.operator_reaction : 8.0f;
+    // A tracking camera swings after the subject like a person; a free one follows the stick and
+    // the filmer's turns, the arm a moment behind the body.
+    const float reaction = tracking ? settings_.operator_reaction : 5.0f;
     yaw_.step(wrap_angle(target_yaw), reaction, dt, true);
     pitch_.step(std::clamp(target_pitch, -highest_pitch, highest_pitch), reaction, dt);
     // Swinging the camera round tips it a little, the way an arm does.

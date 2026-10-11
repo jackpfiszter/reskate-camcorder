@@ -88,6 +88,8 @@ public:
     // Where the camera is held, for a filmer standing at `filmer`.
     Vec3 grip_position(const Filmer &) const;
     YawPitch aim() const { return {yaw_.value, pitch_.value}; }
+    // Points the camera this way in the world now; from then on, without a subject, it keeps that
+    // angle to the filmer's heading and turns with them.
     void face(YawPitch aim);
     Settings &settings() { return settings_; }
     const Settings &settings() const { return settings_; }
@@ -95,7 +97,10 @@ public:
 private:
     Settings settings_;
     Spring yaw_, pitch_;
-    float free_yaw_{}, free_pitch_{};
+    // Free aim (no subject): yaw relative to the filmer's heading, so the camera turns with them as
+    // a held camera does; pitch absolute.
+    float offset_yaw_{}, free_pitch_{};
+    bool offset_pending_{}; // face() was given a world yaw: turn it into an offset on the next step
     float nudge_yaw_{}, nudge_pitch_{};
     float roll_{}, last_yaw_{};
     bool started_{};

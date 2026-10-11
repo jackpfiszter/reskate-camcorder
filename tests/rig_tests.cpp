@@ -246,3 +246,33 @@ TEST(velocity_estimate_smooths_and_survives_teleports) {
     v.update({NAN, 0, 0}, 1.0f / 60);
     CHECK(finite(v.velocity));
 }
+
+TEST(handheld_free_aim_turns_with_the_filmer) {
+    HandheldRig rig;
+    rig.settings().lock_on = false;
+    Shot shot;
+    for (int i = 0; i < 60; ++i) shot = rig.step(standing({}, {0, 0, 1}), nullptr, {}, 1.0f / 60, 1);
+    CHECK(matrix_forward(shot.camera)[2] > 0.95f);
+    // The filmer turns to face +X: a held camera turns with them.
+    for (int i = 0; i < 60; ++i) shot = rig.step(standing({}, {1, 0, 0}), nullptr, {}, 1.0f / 60, 1);
+    CHECK(matrix_forward(shot.camera)[0] > 0.95f);
+    // Aimed off to one side with the stick, it keeps that angle to the body through a turn.
+    OperatorInput right;
+    right.look_x = 1;
+    for (int i = 0; i < 20; ++i) shot = rig.step(standing({}, {1, 0, 0}), nullptr, right, 1.0f / 60, 1);
+    for (int i = 0; i < 60; ++i) shot = rig.step(standing({}, {1, 0, 0}), nullptr, {}, 1.0f / 60, 1); // settle
+    const auto before = matrix_yaw_pitch(shot.camera).yaw - std::atan2(1.0f, 0.0f);
+    for (int i = 0; i < 90; ++i) shot = rig.step(standing({}, {0, 0, -1}), nullptr, {}, 1.0f / 60, 1);
+    const auto after = matrix_yaw_pitch(shot.camera).yaw - std::atan2(0.0f, -1.0f);
+    CHECK(std::abs(wrap_angle(before - after)) < 2 * degrees);
+}
+
+TEST(handheld_face_sets_the_world_aim_then_follows_the_body) {
+    HandheldRig rig;
+    rig.settings().lock_on = false;
+    rig.step(standing({}, {0, 0, 1}), nullptr, {}, 1.0f / 60, 1);
+    rig.face({std::atan2(-1.0f, 0.0f), 0}); // look along -X (the game camera's way), body faces +Z
+    Shot shot;
+    for (int i = 0; i < 30; ++i) shot = rig.step(standing({}, {0, 0, 1}), nullptr, {}, 1.0f / 60, 1);
+    CHECK(matrix_forward(shot.camera)[0] < -0.95f);
+}

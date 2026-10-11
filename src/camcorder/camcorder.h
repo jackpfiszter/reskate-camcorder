@@ -82,6 +82,8 @@ public:
     void set_mode(Mode);
     void set_adapter(Adapter adapter) { settings_.adapter = adapter; }
     void set_grip(Grip grip) { handheld_.settings().grip = grip; }
+    // Points the handheld camera this way in the world (it then turns with the filmer).
+    void aim_handheld(YawPitch aim) { handheld_.face(aim); }
     void set_lock_on(bool on) { handheld_.settings().lock_on = on; }
     void set_head(TripodRig::Head);
 
