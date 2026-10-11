@@ -113,3 +113,15 @@ TEST(camcorder_reuses_the_active_slot_when_all_are_used) {
     CHECK_NEAR(cam.tripod(2)->feet()[0], 9, 1e-5);
     CHECK(cam.place_tripod(Filmer{}) == -1);
 }
+
+TEST(camcorder_tripod_follows_the_player_with_nobody_picked) {
+    Camcorder cam;
+    cam.place_tripod(tick_at().filmer);
+    cam.set_tripod_setup(false);
+    // Skate off to the side; the tripod (follow head by default) pans after you.
+    Frame frame;
+    for (int i = 0; i < 300; ++i) frame = cam.tick(tick_at({6, 0, 6}));
+    const auto lens = cam.tripod(0)->lens();
+    const auto want = normalize(sub(Vec3{6, 0.8f, 6}, lens), {0, 0, 1});
+    CHECK(dot(matrix_forward(frame.shot.camera), want) > 0.999f);
+}

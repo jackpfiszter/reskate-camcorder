@@ -157,6 +157,12 @@ Frame Camcorder::tick(const TickInput &in) {
                 frame.shot.camera = camera_matrix(t.lens(), t.aim().yaw, t.aim().pitch);
                 frame.shot.valid = valid_camera_matrix(frame.shot.camera);
             } else {
+                // Nobody picked: a tripod films the player who set it up (solo, the only skater).
+                Subject self;
+                if (!subject && in.filmer.valid) {
+                    self = {true, in.filmer.position, in.filmer.velocity};
+                    subject = &self;
+                }
                 frame.shot = t.step(subject, in.controls, dt, frame.optics.zoom_ratio);
             }
         } else {

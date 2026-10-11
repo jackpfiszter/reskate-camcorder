@@ -104,6 +104,32 @@ inline float damp_angle(float current, float target, float time_constant, float 
     return wrap_angle(target + wrap_angle(current - target) * (time_constant > 0 ? std::exp(-std::max(dt, 0.0f) / time_constant) : 0.0f));
 }
 
+// A velocity from positions sampled each tick, smoothed: frame-to-frame differences of a
+// skater's position are noisy (and a remote skater's arrive at network rate), and the rigs lead
+// their aim by the velocity, which would turn that noise into a twitching camera.
+struct VelocityEstimate {
+    Vec3 velocity{};
+    float time_constant = 0.15f; // seconds
+    void reset() { velocity = {}; started_ = false; }
+    // `jump` metres in one step is a teleport or a respawn, not motion: start again from there.
+    Vec3 update(Vec3 position, float dt, float jump = 10) {
+        if (!finite(position)) return velocity;
+        if (started_ && dt > 1e-4f && length(sub(position, last_)) < jump) {
+            const auto raw = mul(sub(position, last_), 1.0f / dt);
+            for (std::size_t i = 0; i < 3; ++i) velocity[i] = damp(velocity[i], raw[i], time_constant, dt);
+        } else if (started_) {
+            velocity = {};
+        }
+        if (dt > 1e-4f || !started_) last_ = position;
+        started_ = true;
+        return velocity;
+    }
+
+private:
+    Vec3 last_{};
+    bool started_{};
+};
+
 // A critically damped spring: follows its target with no overshoot, settling in about
 // 1 / frequency seconds, the way a person swings a camera after something. Exact for any
 // time step, so frame rate never changes how it feels.

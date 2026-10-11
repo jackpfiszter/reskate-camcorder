@@ -227,3 +227,20 @@ TEST(tripod_setup_carries_it_over_the_ground) {
     CHECK(tripod.feet()[0] < before[0]); // facing +Z, right is -X
     CHECK(!TripodRig().step(nullptr, {}, 1.0f / 60, 1).valid); // not placed: no shot
 }
+
+TEST(velocity_estimate_smooths_and_survives_teleports) {
+    VelocityEstimate v;
+    Vec3 at{};
+    for (int i = 0; i < 120; ++i) {
+        // 5 m/s along x, with a jittery sample every other tick.
+        at[0] += 5.0f / 60;
+        v.update({at[0] + (i % 2 ? 0.03f : -0.03f), 0, 0}, 1.0f / 60);
+    }
+    CHECK_NEAR(v.velocity[0], 5.0, 0.6); // raw differences swing by +-3.6 m/s here
+    v.update({500, 0, 0}, 1.0f / 60);    // a teleport
+    CHECK(length(v.velocity) == 0);
+    v.update({500.1f, 0, 0}, 1.0f / 60);
+    CHECK(v.velocity[0] > 0 && v.velocity[0] < 6);
+    v.update({NAN, 0, 0}, 1.0f / 60);
+    CHECK(finite(v.velocity));
+}
