@@ -35,7 +35,13 @@ cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_l
 2. Close the game. Beside `Skate.exe`, back up `ReSkate.dll` and `ReSkateLauncher.exe`, then put
    the camcorder build's two files there.
 3. Run `ReSkateLauncher.exe`. A local build never replaces itself; it may say an update exists.
-   Ignore that (or start it with `--no-update`).
+   Ignore that (or start it with `--no-update`). Use the camcorder build's launcher, not the
+   official one: the official launcher puts the released `ReSkate.dll` back on every launch
+   (unless its Settings > **Install ReSkate updates** is off).
+
+The camcorder can't come from the launcher's MODS page: mods there are game data only, and
+ReSkate never runs code from a mod. Until the camcorder is part of ReSkate itself, these two
+files are how to get it.
 4. Load a map, open the console with **~**, and work through the checklist below.
 5. To go back, restore the two backed-up files.
 
