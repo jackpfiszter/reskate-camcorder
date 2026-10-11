@@ -74,7 +74,8 @@ std::optional<Subject> subject_from(State &s, float dt) {
     return std::nullopt;
 }
 
-bool wants_pad(State &s) { return s.camcorder.powered() && (s.operating || s.camcorder.tripod_setup()); }
+// Only while the camcorder's picture is on screen: without it the pad stays the skater's.
+bool wants_pad(State &s) { return s.camcorder.powered() && s.owned && (s.operating || s.camcorder.tripod_setup()); }
 
 // The pad, keyboard and mouse, while the camera has them, read through the freecam's flight input
 // (Extension/UI/Overlay/overlay_input.cpp). Read twice: once for the keyboard and the mouse (look
@@ -140,6 +141,8 @@ void note_players(std::vector<Player> players) noexcept { state().players = std:
 bool owns_camera() noexcept { return state().owned; }
 
 bool wants_controller() noexcept { return wants_pad(state()); }
+
+bool powered() noexcept { return state().camcorder.powered(); }
 
 void note_render_aspect(float aspect) noexcept {
     if (std::isfinite(aspect) && aspect > 0.2f && aspect < 10) state().render_aspect.store(aspect, std::memory_order_relaxed);
@@ -233,8 +236,12 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
     auto answer = run_command(s.camcorder, verb, words, context);
-    if ((verb.empty() || verb == "status") && s.camcorder.powered() && !s.owned)
-        answer += s.refused.empty() ? " Waiting for the game's camera." : " The game kept its camera: " + s.refused;
+    if ((verb.empty() || verb == "status") && s.camcorder.powered() && !s.owned) {
+        if (!s.refused.empty()) answer += " The game kept its camera: " + s.refused;
+        else if (!context.filmer.valid && s.camcorder.status().mode == Mode::handheld)
+            answer += " No position for your skater yet (load into a map and skate).";
+        else answer += " Waiting for the game's camera.";
+    }
     return answer;
 }
 

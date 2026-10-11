@@ -1,6 +1,7 @@
 #include "commands.h"
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 
 namespace dingosdk::camcorder {
@@ -53,7 +54,8 @@ std::string describe(const Status &s) {
     char zoom[32];
     std::snprintf(zoom, sizeof(zoom), ", zoom %.1fx", static_cast<double>(focal_length(s.zoom) / vx1000_lens.wide_mm));
     line += zoom;
-    line += ", " + std::to_string(static_cast<int>(s.tape_remaining / 60)) + " min of tape left";
+    // Rounded up, as the viewfinder shows it: a fresh 60-minute tape reads 60.
+    line += ", " + std::to_string(static_cast<int>(std::ceil(s.tape_remaining / 60))) + " min of tape left";
     return line + ".";
 }
 

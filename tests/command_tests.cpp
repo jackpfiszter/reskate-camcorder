@@ -17,6 +17,7 @@ TEST(commands_power_and_record) {
     Camcorder cam;
     CHECK(run_command(cam, "status", {}) == "Camcorder off.");
     CHECK(starts(run_command(cam, "power", {"on"}), "STBY 0:00:00, handheld (Long grip, lock on)"));
+    CHECK(run_command(cam, "status", {}).find("60 min of tape left") != std::string::npos);
     CHECK(run_command(cam, "rec", {}) == "REC");
     CHECK(cam.deck().recording());
     CHECK(run_command(cam, "rec", {}) == "STBY");

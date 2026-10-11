@@ -76,7 +76,7 @@ index f74c419..cfbf26b 100644
      try {
          auto &s = state();
 diff --git a/Extension/Multiplayer/Session/session.cpp b/Extension/Multiplayer/Session/session.cpp
-index 4130fa7..f8b9c0f 100644
+index 4130fa7..5d39fb2 100644
 --- a/Extension/Multiplayer/Session/session.cpp
 +++ b/Extension/Multiplayer/Session/session.cpp
 @@ -7,6 +7,7 @@
@@ -138,22 +138,22 @@ index 4130fa7..f8b9c0f 100644
      if (labels)
          publish_custom_nametags(s.base, std::move(nametags),
                                  local.ready ? std::optional(local.pose.root.position) : std::nullopt,
-@@ -954,9 +967,13 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
-             if (ready && !map_name.empty()) {
-                 try {
-                     const auto solo = capture_local(base, client, false);
--                    if (solo.ready) note_local_skater(solo.pose.root);
-+                    if (solo.ready) {
-+                        note_local_skater(solo.pose.root);
-+                        camcorder_runtime::note_local_skater(solo.pose.root);
-+                    }
-                 } catch (...) {}
-             }
+@@ -893,6 +906,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+             physics_tuning::release(base); // the player's own tuning again after a session
+             set_session_tuning_enforced(false);
+             relay_throwdowns(s, ready);
++            // The camcorder films the local skater solo too: their root each tick, only while it is on.
 +            camcorder_runtime::note_players({});
-             publish(s);
-             return;
-         }
-@@ -966,7 +983,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
++            if (ready && !map_name.empty() && camcorder_runtime::powered()) {
++                try {
++                    const auto solo = capture_local(base, client, false);
++                    if (solo.ready) camcorder_runtime::note_local_skater(solo.pose.root);
++                } catch (...) {}
++            }
+             // Without a session the UI model follows at the same 10 Hz as in one;
+             // commands still publish at once.
+             if (const auto now = now_us(); now >= s.next_publish) {
+@@ -966,7 +987,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
          else
              local.detail = s.awaiting_map ? "Waiting for the host's map and local skater." : "Load a map to skate.";
          const auto captured_at = capture_pose ? now_us() : 0;

@@ -17,6 +17,8 @@
 #include <vector>
 
 namespace dingosdk::camcorder_runtime {
+// Whether the camcorder is on. The session only reads the local skater for it while it is.
+bool powered() noexcept;
 // Session, client thread, every tick: the local skater as the game placed them.
 void note_local_skater(const multiplayer::Transform &root) noexcept;
 // Session, client thread, every tick: the other skaters a camera could film.
