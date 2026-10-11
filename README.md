@@ -44,6 +44,7 @@ the overlay.
 | `tests/` | its unit tests |
 | `integration/reskate/` | the ReSkate side (reference, untested) and where it plugs in |
 | `docs/DESIGN.md` | the design: shooting modes, recording, the look, controls, milestones |
+| `docs/TESTING.md` | how to test: unit tests, getting a build, an in-game checklist |
 
 ## Build and test the model
 

@@ -35,9 +35,10 @@ jobs:
       - name: Install the camcorder
         shell: pwsh
         run: ./camcorder/integration/reskate/install.ps1 -ReSkate ReSkate
-      - name: Configure
+      # A modified ReSkate must not send its crashes to the ReSkate developers' crash reports.
+      - name: Configure (crash uploads off)
         working-directory: ReSkate
-        run: cmake --preset vs2022-x64
+        run: cmake --preset vs2022-x64 "-DDINGOSDK_BACKTRACE_URL="
       - name: Build ReSkate.dll and the launcher
         working-directory: ReSkate
         run: cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher
