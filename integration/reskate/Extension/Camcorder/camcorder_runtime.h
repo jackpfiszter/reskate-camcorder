@@ -1,0 +1,49 @@
+#pragma once
+// ReSkate's side of the camcorder (src/camcorder is the model): reads the world each client
+// tick, runs the model, and puts its shot on screen through the same native camera lease the
+// party's Spectate uses (update_party_camera, Extension/Skater/client_source_spawn.h).
+//
+// REFERENCE ONLY: written against ReSkate's source at the time of writing, not yet compiled or
+// run in the game. See integration/reskate/README.md for where it plugs in and what is
+// still to be confirmed in play.
+//
+// Threads, as in the trainer: the client (game) thread owns the camcorder. The console runs
+// `camcorder ...` commands on that thread; the overlay only reads the published frame.
+#include "Extension/Multiplayer/Net/protocol.h"
+#include "camcorder/camcorder.h"
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace dingosdk::camcorder_runtime {
+// Session, client thread, every tick: the local skater as the game placed them.
+void note_local_skater(const multiplayer::Transform &root) noexcept;
+// Session, client thread, every tick: the other skaters a camera could film.
+struct Player {
+    std::uint64_t id{};
+    std::string name;
+    multiplayer::Transform root;
+};
+void note_players(std::vector<Player> players) noexcept;
+
+// Client thread, every tick, after the session placed the remote skaters (beside
+// multiplayer::tick_native_party_actions). `ready`: a local skater is in control; `camera_phase`:
+// the native camera may be changed now (camera_observer.h).
+void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_phase) noexcept;
+// Whether the camcorder holds the screen (Spectate refuses while it does, and the other way round).
+bool owns_camera() noexcept;
+
+// Console, client thread: one `camcorder` command; the line to print.
+std::string command(std::string_view verb, const std::vector<std::string> &words);
+
+// Overlay, render thread: what to draw over the game this frame.
+struct Published {
+    camcorder::Frame frame;
+    bool clean_feed{};
+    float blink{}; // seconds, for blinking readouts
+};
+Published published() noexcept;
+// Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).
+void note_render_aspect(float aspect) noexcept;
+} // namespace dingosdk::camcorder_runtime
