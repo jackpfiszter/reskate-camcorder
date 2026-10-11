@@ -72,7 +72,9 @@ Vec3 HandheldRig::grip_position(const Filmer &filmer) const {
     switch (settings_.grip) {
     case Grip::long_grip: height = 0.45f; side = 0.35f; ahead = 0.55f; break;
     case Grip::hip: height = 1.0f; side = 0.3f; ahead = 0.3f; break;
-    case Grip::eye_level: height = 1.62f; side = 0.05f; ahead = 0.12f; break;
+    // Eye level sits clear in front of the face: the filmer is the player's own skater, whose head is
+    // drawn (from inside it the view would be the inside of the head).
+    case Grip::eye_level: height = 1.6f; side = 0.08f; ahead = 0.3f; break;
     }
     if (filmer.on_board) height *= 0.92f;
     return add(add(add(filmer.position, {0, height, 0}), mul(right, side)), mul(forward, ahead));

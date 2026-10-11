@@ -51,6 +51,21 @@ camcorder says goes there too.
 Multiplayer: everyone in a session should run the same build. Other players don't need the
 camcorder to be filmed, but a different ReSkate build may not be allowed to join.
 
+### Controls while the camera has the pad
+
+`camcorder operate on`, or setting up a tripod, gives the pad to the camera (the skater stops
+getting it, as with Freecam):
+
+| | Pad | Keyboard and mouse |
+|---|---|---|
+| Aim | right stick | hold the right mouse button and move |
+| Zoom (wide / tele) | left / right trigger | Q / E |
+| Tripod setup: carry it | left stick | W A S D |
+| Tripod setup: lower / raise it | left / right trigger | Q / E |
+| Tripod setup: zoom instead | hold L3 (click the left stick) + triggers | hold Shift + Q / E |
+
+The keyboard is not kept from the skater: W A S D also moves them. Use the pad for a clean test.
+
 ### Checklist
 
 Solo:
@@ -58,9 +73,10 @@ Solo:
 - [ ] `camcorder power on`: the view jumps to a low, fisheye-ish handheld shot with black bars
       either side, STBY, `0:00:00` and `60min` in the corners, round black corners at full wide.
 - [ ] Skate around: the camera rides with you, shakes a little, never jumps or spins.
-- [ ] `camcorder operate on`: the pad drives the camera. Right stick aims (pushing right turns
-      right), triggers zoom (left wide, right tele), the W-T bar shows while zooming, and the round
-      corners vanish after a little zoom. `camcorder operate off` gives the pad back.
+- [ ] `camcorder operate on`: the pad drives the camera and the skater stops moving. Right stick
+      aims (right turns right, up looks up), triggers zoom (left wide, right tele), the W-T bar shows
+      while zooming, and the round corners vanish after a little zoom. `camcorder operate off`
+      gives the pad back.
 - [ ] `camcorder lens stock`: much narrower (about 44 degrees), no round corners.
 - [ ] `camcorder grip eye`, `camcorder grip hip`, `camcorder grip long`: the camera height changes.
 - [ ] `camcorder rec`: red dot and REC, counter running. `camcorder rec` again: STBY.
@@ -72,6 +88,8 @@ Solo:
       `camcorder head locked`: it stops panning. `camcorder head manual` + `camcorder operate on`:
       pan by hand, with drag.
 - [ ] Place a second tripod somewhere else; `camcorder tripod next` cuts between them.
+- [ ] Turn on Freecam, then `camcorder power on`: no viewfinder, and `camcorder status` says the
+      game kept its camera. Freecam off: the camcorder takes over.
 - [ ] `camcorder power off`: your normal camera comes back. Open and close the menu, load another
       map, bail: nothing sticks or crashes.
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",

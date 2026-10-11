@@ -74,7 +74,9 @@ TEST(handheld_grips_hold_the_camera_at_their_heights) {
     rig.settings().grip = Grip::long_grip;
     CHECK_NEAR(rig.grip_position(f)[1], 10.45, 1e-4);
     rig.settings().grip = Grip::eye_level;
-    CHECK_NEAR(rig.grip_position(f)[1], 11.62, 1e-4);
+    CHECK_NEAR(rig.grip_position(f)[1], 11.6, 1e-4);
+    // Clear of the filmer's own head (about 0.15 m from its centre to the face).
+    CHECK(rig.grip_position(f)[2] >= 0.25f);
     // Held in the right hand: facing +Z, right is -X.
     rig.settings().grip = Grip::hip;
     CHECK(rig.grip_position(f)[0] < 0);

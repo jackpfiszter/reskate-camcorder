@@ -31,8 +31,11 @@ void note_players(std::vector<Player> players) noexcept;
 // multiplayer::tick_native_party_actions). `ready`: a local skater is in control; `camera_phase`:
 // the native camera may be changed now (camera_observer.h).
 void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_phase) noexcept;
-// Whether the camcorder holds the screen (Spectate refuses while it does, and the other way round).
+// Whether the camcorder holds the screen (it yields to Spectate).
 bool owns_camera() noexcept;
+// Whether the camcorder wants the pad kept from the skater (operating, or setting up a tripod).
+// The client tick ORs it into the freecam's input capture, which it sets every tick.
+bool wants_controller() noexcept;
 
 // Console, client thread: one `camcorder` command; the line to print.
 std::string command(std::string_view verb, const std::vector<std::string> &words);

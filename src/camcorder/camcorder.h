@@ -76,6 +76,7 @@ public:
     // Power on: the shot takes over the screen. Power off stops any recording.
     void power(bool on);
     bool powered() const { return powered_; }
+    bool tripod_setup() const { return tripod_setup_; }
     // REC / STBY, as the button under the thumb.
     void toggle_record();
     void set_mode(Mode);

@@ -195,7 +195,7 @@ index 7169615..83c8921 100644
      draw_nametags();
      draw_game_text();
 diff --git a/Runtime/client_tick.cpp b/Runtime/client_tick.cpp
-index b5e52e4..104c6a8 100644
+index b5e52e4..db4c3c5 100644
 --- a/Runtime/client_tick.cpp
 +++ b/Runtime/client_tick.cpp
 @@ -34,6 +34,7 @@
@@ -206,7 +206,37 @@ index b5e52e4..104c6a8 100644
  #include "Extension/World/level_loading.h"
  #include "Extension/World/loading_screen.h"
  #include <dxgi.h>
-@@ -1270,6 +1271,12 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
+@@ -441,7 +442,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+     }
+     // Capture belongs to the freecam state itself. Keep it active across brief
+     // request/loading phases instead of opening a path back to player input.
+-    DingoSDKOverlaySetFreecamInputCapture(dingosdk::client_free_camera_active() && freecam_controller);
++    DingoSDKOverlaySetFreecamInputCapture((dingosdk::client_free_camera_active() && freecam_controller) ||
++        dingosdk::camcorder_runtime::wants_controller());
+     dingosdk::ControllerInput controller;
+     if (freecam_controller_combo || freecam_combo || tp_to_freecam_combo || noclip_combo || forward_velocity_combo || up_velocity_combo || offboard_up_velocity_combo ||
+         vote_yes_combo || vote_no_combo || poll_answers || map_prompt ||
+@@ -511,7 +513,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+     if (r.freecam_controller_bind_latch.update(freecam_controller_combo, controller, r.observer_failed || controller_busy || !r.debug_model.free_camera)) {
+         if (dingosdk::set_local_freecam_controller(!freecam_controller))
+             freecam_controller = !freecam_controller;
+-        DingoSDKOverlaySetFreecamInputCapture(dingosdk::client_free_camera_active() && freecam_controller);
++        DingoSDKOverlaySetFreecamInputCapture((dingosdk::client_free_camera_active() && freecam_controller) ||
++            dingosdk::camcorder_runtime::wants_controller());
+         record("{\"event\":\"controller_binding_triggered\",\"action\":\"freecam_controller\"}");
+     }
+     
+@@ -604,7 +607,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+             phase_issue == nullptr,
+             debug_request ? &*debug_request : nullptr, &flight_input);
+         // Input ownership must follow the live camera even with every overlay closed.
+-        DingoSDKOverlaySetFreecamInputCapture(dingosdk::client_free_camera_active() && freecam_controller);
++        DingoSDKOverlaySetFreecamInputCapture((dingosdk::client_free_camera_active() && freecam_controller) ||
++            dingosdk::camcorder_runtime::wants_controller());
+         // A debug action, or a mode the tick ended by itself (host policy, lost
+         // camera), can have replaced the native camera: validate it again.
+         if (debug_request || debug.free_camera != r.debug_model.free_camera ||
+@@ -1270,6 +1274,12 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
              dingosdk::multiplayer::tick_native_party_actions(r.base, client,
                  r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
          }

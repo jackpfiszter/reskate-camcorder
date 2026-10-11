@@ -31,6 +31,7 @@ struct State {
     bool owned{};            // update_party_camera holds the screen for us
     bool clean_feed{};
     std::string last_detail;
+    std::string refused; // why the game has not handed over its camera, while it has not
     std::atomic<float> render_aspect{16.0f / 9.0f}; // the overlay's display, width over height
     // Read by the overlay.
     std::mutex published_mutex;
@@ -73,31 +74,39 @@ std::optional<Subject> subject_from(State &s, float dt) {
     return std::nullopt;
 }
 
-// The pad, while the camera has it. The overlay's flight input is the freecam's: sticks,
-// triggers (up = right trigger - left trigger) and a boost button; look_* are freecam deltas
-// of .0025 radians each (free_flight.h), turned here into the stick deflection that turns the
-// camcorder by the same angle this tick.
+bool wants_pad(State &s) { return s.camcorder.powered() && (s.operating || s.camcorder.tripod_setup()); }
+
+// The pad, keyboard and mouse, while the camera has them, read through the freecam's flight input
+// (Extension/UI/Overlay/overlay_input.cpp). Read twice: once for the keyboard and the mouse (look
+// while the right button is held, in pixels of .0025 radians each, as free_flight.h turns them),
+// once for the pad (sticks; triggers as up = right - left; L3 or Shift as boost; look as stick
+// deflection times 25). Its look_y grows downward; the camcorder's grows upward.
 OperatorInput read_controls(State &s, float dt) {
     OperatorInput in;
-    const bool want = s.operating || s.camcorder.status().tripod_setup;
-    if (want != s.captured) {
-        DingoSDKOverlaySetFreecamInputCapture(want);
-        s.captured = want;
+    if (!wants_pad(s)) {
+        if (s.captured) {
+            DingoSDKOverlaySetFreecamInputCapture(false);
+            s.captured = false;
+        }
+        return in;
     }
-    if (!want) return in;
-    overlay::FlightInput flight;
-    DingoSDKOverlayReadFlightInput(&flight, true, false);
-    if (!flight.active) return in;
+    // Every tick: the client tick sets the capture too (client_tick.cpp asks wants_controller()).
+    DingoSDKOverlaySetFreecamInputCapture(true);
+    s.captured = true;
+    overlay::FlightInput mouse, pad;
+    DingoSDKOverlayReadFlightInput(&mouse, true, false);
+    DingoSDKOverlayReadFlightInput(&pad, true, true);
+    if (!mouse.active && !pad.active) return in; // a menu or the console is open
     const float turn = std::max(s.camcorder.handheld().settings().look_speed * std::max(dt, 1e-3f), 1e-4f);
-    in.look_x = std::clamp(flight.look_x * .0025f / turn, -1.0f, 1.0f);
-    in.look_y = std::clamp(flight.look_y * .0025f / turn, -1.0f, 1.0f);
-    in.move_x = flight.right;
-    in.move_y = flight.forward;
-    if (s.camcorder.status().tripod_setup && !flight.boost) {
-        in.raise = flight.up; // setting up: triggers raise and lower the head
+    in.look_x = std::clamp(pad.look_x / 25.0f + mouse.look_x * .0025f / turn, -1.0f, 1.0f);
+    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse.look_y * .0025f / turn), -1.0f, 1.0f);
+    in.move_x = pad.right;   // the pad's reading includes the keyboard's WASD, Q and E
+    in.move_y = pad.forward;
+    if (s.camcorder.tripod_setup() && !pad.boost) {
+        in.raise = pad.up; // setting up: triggers raise and lower the head
     } else {
-        in.zoom = flight.up;  // otherwise (or holding boost) they work the zoom rocker
-        in.fast = flight.boost;
+        in.zoom = pad.up;  // otherwise (or holding boost) they work the zoom rocker
+        in.fast = pad.boost;
     }
     return in;
 }
@@ -130,6 +139,8 @@ void note_players(std::vector<Player> players) noexcept { state().players = std:
 
 bool owns_camera() noexcept { return state().owned; }
 
+bool wants_controller() noexcept { return wants_pad(state()); }
+
 void note_render_aspect(float aspect) noexcept {
     if (std::isfinite(aspect) && aspect > 0.2f && aspect < 10) state().render_aspect.store(aspect, std::memory_order_relaxed);
 }
@@ -149,7 +160,9 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         if (!s.camcorder.powered() || !ready) {
             if (!ready && s.camcorder.deck().recording()) s.camcorder.deck().stop();
             release(s, base, client, ready, camera_phase);
-            publish(s, s.camcorder.tick({}));
+            auto idle = s.camcorder.tick({});
+            idle.shot.valid = false; // no viewfinder over menus or loading (a tripod still has its view)
+            publish(s, idle);
             return;
         }
         TickInput in;
@@ -161,19 +174,25 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         // land_at, trainer_landing.h) into a shared helper and query it at the tripod's x, z.
         in.ground_under_tripod = std::nullopt;
         in.render_aspect = s.render_aspect.load(std::memory_order_relaxed);
-        const auto frame = s.camcorder.tick(in);
+        auto frame = s.camcorder.tick(in);
         std::string detail;
         if (frame.shot.valid) {
-            const bool applied = update_party_camera(base, client, ready, camera_phase, &frame.shot.camera, detail,
-                                                     frame.optics.render_vertical_fov);
-            if (applied) s.owned = true;
+            if (update_party_camera(base, client, ready, camera_phase, &frame.shot.camera, detail,
+                                    frame.optics.render_vertical_fov)) {
+                s.owned = true;
+                s.refused.clear();
+            } else if (!s.owned) {
+                s.refused = detail; // the game kept its camera (Freecam, noclip, a cutscene...)
+            }
         } else {
             release(s, base, client, ready, camera_phase);
         }
         if (!detail.empty() && detail != s.last_detail) {
             s.last_detail = detail;
-            logging::write(logging::Level::info, logging::Channel::ui, detail);
+            logging::write(logging::Level::info, logging::Channel::ui, "Camcorder: " + detail);
         }
+        // The viewfinder only over the camcorder's own picture.
+        frame.shot.valid = frame.shot.valid && s.owned;
         publish(s, frame);
     } catch (...) {
         release(s, base, client, ready, camera_phase);
@@ -213,7 +232,10 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     }
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
-    return run_command(s.camcorder, verb, words, context);
+    auto answer = run_command(s.camcorder, verb, words, context);
+    if ((verb.empty() || verb == "status") && s.camcorder.powered() && !s.owned)
+        answer += s.refused.empty() ? " Waiting for the game's camera." : " The game kept its camera: " + s.refused;
+    return answer;
 }
 
 Published published() noexcept {
