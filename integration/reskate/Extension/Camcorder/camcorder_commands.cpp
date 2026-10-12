@@ -27,7 +27,7 @@ void register_camcorder_commands(Commands &registry) {
         {"head", "The tripod's fluid head", "locked|manual|follow|next"},
         {"height", "Hold the camera higher or lower (or the active tripod's height)", "up|down|low|hip|eye|next|reset|<metres>"},
         {"tape", "List the clips, join them into one file, or put in a new tape", "clips|capture|new"},
-        {"still", "Save a still of the camcorder's picture (Pictures\\ReSkate Camcorder)", nullptr},
+        {"still", "Save a still of the camcorder's picture (Videos\\ReSkate Camcorder\\Stills)", nullptr},
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},
         {"quality", "Record in HD (1440 x 1080) or at the VX1000's own 640 x 480", "hd|dv"},
         {"sound", "Clips without sound, with the game's, or through the camera's own mic", "off|game|mic"},
@@ -44,7 +44,7 @@ void register_camcorder_commands(Commands &registry) {
         {"light", "A light on the camera for filming at night", "[on|off|toggle]"},
         {"look", "The DV look on clips and stills, or a clean picture", "dv|clean|toggle"},
         {"dv", "One part of the DV look", "fields|highlights|balance|sharpen|chroma|grain [on|off|toggle]"},
-        {"date", "The camcorder's date stamp on clips and stills, and the year it says", "[on|off|toggle] | year <yyyy>|now"},
+        {"date", "The camcorder's date stamp, the year it says, or its clock set to a date and time", "[on|off|toggle] | year <yyyy>|now | set <YYYY-MM-DD> [HH:MM]|now"},
     };
     for (const auto &verb : verbs) {
         std::vector<Argument> arguments;

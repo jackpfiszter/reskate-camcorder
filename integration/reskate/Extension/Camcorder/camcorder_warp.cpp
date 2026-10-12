@@ -6,6 +6,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <climits>
+#include <string>
 #include <utility>
 
 namespace dingosdk::overlay {
@@ -31,6 +32,7 @@ struct Warp {
     ComPtr<ID3D12Fence> fence;
     UINT64 last_use{}; // the newest frame that drew from (or copied into) the texture
     bool working{}, failure_said{};
+    std::string why_not; // why the screen has no picture pass this frame, for the notice
 };
 Warp &warp() {
     static auto *value = new Warp;
@@ -351,24 +353,45 @@ int camcorder_warp_transfer() { return warp().transfer; }
 
 void camcorder_picture_pass(ImDrawList *list, const PicturePass &pass) {
     auto &w = warp();
-    if (!w.pass_ready) return;
+    if (!w.pass_ready || !w.texture || pass.screen[0] <= 0 || pass.screen[1] <= 0) return;
+    // The overlay lays out in its own units (the window's); the pass draws in the back buffer's
+    // pixels, which can be more or fewer (display scaling, an upscaler, a render size of its own).
+    const float sx = static_cast<float>(w.width) / pass.screen[0], sy = static_cast<float>(w.height) / pass.screen[1];
     w.pass = pass;
+    w.pass.rect[0] *= sx;
+    w.pass.rect[1] *= sy;
+    w.pass.rect[2] *= sx;
+    w.pass.rect[3] *= sy;
+    w.pass.screen[0] = static_cast<float>(w.width);
+    w.pass.screen[1] = static_cast<float>(w.height);
+    w.pass.screen[2] = 1 / w.pass.screen[0];
+    w.pass.screen[3] = 1 / w.pass.screen[1];
+    w.pass.tape[2] *= sx;
     w.drawn = true;
     list->AddCallback(draw_pass, nullptr);
     list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 }
 
-std::optional<ImTextureID> camcorder_warp_request(int width, int height, bool copy) {
+std::optional<ImTextureID> camcorder_warp_request(bool copy) {
     auto &w = warp();
-    if (!w.device || !w.gpu.ptr) return std::nullopt;
+    if (!w.device || !w.gpu.ptr) {
+        w.why_not = "the overlay gave the camcorder no place for its picture";
+        return std::nullopt;
+    }
     w.requested = true;
-    // A held picture (a film camera's cadence) is only held while there is one of this size.
-    const bool have = w.texture && w.width == static_cast<UINT64>(width) && w.height == static_cast<UINT>(height);
-    w.copy_wanted = copy || !have;
-    if (!w.texture || w.width != static_cast<UINT64>(width) || w.height != static_cast<UINT>(height)) return std::nullopt;
+    // A held picture (a film camera's cadence) is held only once there is one; the copy is the back
+    // buffer's own size, whatever size the overlay lays out in.
+    w.copy_wanted = copy || !w.texture;
+    if (!w.texture) {
+        if (w.why_not.empty()) w.why_not = "no copy of the game's picture yet";
+        return std::nullopt;
+    }
+    w.why_not.clear();
     w.drawn = true;
     return static_cast<ImTextureID>(w.gpu.ptr);
 }
+
+std::string camcorder_warp_why_not() { return warp().why_not; }
 
 void camcorder_warp_copy(ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer) {
     auto &w = warp();
@@ -376,6 +399,7 @@ void camcorder_warp_copy(ID3D12GraphicsCommandList *commands, ID3D12Resource *ba
         return;
     const auto back = back_buffer->GetDesc();
     if (back.SampleDesc.Count != 1) {
+        w.why_not = "the game's picture is multisampled";
         camcorder_runtime::note_warp_failed();
         return;
     }
@@ -385,6 +409,7 @@ void camcorder_warp_copy(ID3D12GraphicsCommandList *commands, ID3D12Resource *ba
         if (!idle(w)) return;
         w.texture.Reset();
         if (!make_texture(w, back)) {
+            w.why_not = "no texture could be made for the copy";
             if (!std::exchange(w.failure_said, true))
                 logging::write(logging::Level::warning, logging::Channel::graphics,
                                "Camcorder: no texture for the fisheye warp; the picture stays flat.");

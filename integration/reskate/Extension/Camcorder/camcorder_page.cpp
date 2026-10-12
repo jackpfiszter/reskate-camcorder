@@ -78,10 +78,9 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (s.powered) {
         if (small_button("TAKE A STILL")) run(menu, callbacks, "still");
         ImGui::SameLine();
-        if (small_button("PLAY THE LAST CLIP")) run(menu, callbacks, "review");
-        ImGui::SameLine();
     }
     if (small_button("OPEN MY CLIPS")) run(menu, callbacks, "open clips");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Videos\\ReSkate Camcorder: the clips, and the stills in Stills.");
     if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last", last);
 
     field(menu, "Camera", "Its zoom, tape, frame rate, look, date stamp and mic. Mods add cameras (hover for which).");
@@ -187,11 +186,8 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (small_button("CAPTURE THE TAPE")) run(menu, callbacks, "tape capture");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("This tape's clips, back to back in one MP4, as a MiniDV tape went into the computer.");
     ImGui::SameLine();
-    if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
-    ImGui::SameLine();
     if (small_button("NEW TAPE")) run(menu, callbacks, "tape new");
-    ImGui::SameLine();
-    if (small_button("OPEN STILLS")) run(menu, callbacks, "open stills");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The next clips start a new tape (CAPTURE THE TAPE then joins only those).");
     end_card();
 
     begin_card(menu, "camcorder-look", "LOOK DETAILS");
@@ -199,13 +195,21 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (toggle_row(menu, "Date stamp", "The camera's date and time in the corner.", stamp))
         run(menu, callbacks, stamp ? "date on" : "date off");
     if (finish.date_stamp) {
-        static constexpr int years[] = {0, 1995, 1996, 1997, 1998, 1999};
-        int year = 0;
-        for (int i = 0; i < 6; ++i)
-            if (years[i] == finish.stamp_year) year = i;
-        field(menu, "Year", "The year the stamp says (any year: camcorder date year 1993).");
-        if (choice(menu, "camcorder-year", year, {"THIS YEAR", "1995", "1996", "1997", "1998", "1999"}))
-            run(menu, callbacks, year ? "date year " + std::to_string(years[year]) : std::string("date year now"));
+        // The camera's clock, set as on a real camcorder: it runs on from what you set.
+        field(menu, "Date and time", "What the stamp says, running on from when you set it: 1996-10-12 and 16:03 (the time can be left empty).");
+        static char date[16] = "1996-10-12", hhmm[8] = "";
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000-00-00  ").x + ImGui::GetStyle().FramePadding.x * 2);
+        ImGui::InputText("##camcorder-date", date, sizeof(date));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize("00:00  ").x + ImGui::GetStyle().FramePadding.x * 2);
+        ImGui::InputTextWithHint("##camcorder-time", "HH:MM", hhmm, sizeof(hhmm));
+        ImGui::SameLine();
+        if (small_button("SET")) run(menu, callbacks, std::string("date set ") + date + (hhmm[0] ? std::string(" ") + hhmm : std::string()));
+        ImGui::SameLine();
+        if (small_button("REAL TIME", finish.stamp_offset == 0 && finish.stamp_year == 0)) {
+            run(menu, callbacks, "date set now");
+            run(menu, callbacks, "date year now");
+        }
     }
     bool clean = published.clean_feed;
     if (toggle_row(menu, "Clean viewfinder", "Hide REC, the counter and the hints; keep the frame and the lens.", clean))
@@ -267,21 +271,6 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (toggle_row(menu, "Invert up and down", "Push up (or move the mouse up) to look down.", invert))
         run(menu, callbacks, invert ? "invert on" : "invert off");
     if (small_button("SHOW THE GUIDE")) run(menu, callbacks, "guide");
-    end_card();
-
-    begin_card(menu, "camcorder-mods", "MAKE YOUR OWN CAMERA",
-               "Cameras, lenses and rigs are small files in an ordinary mod: anyone can make one (MODDING.md).");
-    info(menu, "From mods", std::to_string(published.cameras.size()) + " cameras, " + std::to_string(published.lenses.size() + 1) +
-                                " lenses, " + std::to_string(published.grips.size()) + " rigs");
-    if (published.mod_notes) warn((std::to_string(published.mod_notes) + " problem(s) in the mods' files: LIST shows them.").c_str());
-    if (small_button("START FROM THIS CAMERA")) run(menu, callbacks, "export");
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Copies the camera, lens, rig and feel you're using into a new mod, Mods/My Camcorder, with every\n"
-                          "setting written out. Change the numbers in its files, then RELOAD to try them.");
-    ImGui::SameLine();
-    if (small_button("RELOAD")) run(menu, callbacks, "mods reload");
-    ImGui::SameLine();
-    if (small_button("LIST")) run(menu, callbacks, "mods");
     end_card();
 
     ImGui::EndChild();

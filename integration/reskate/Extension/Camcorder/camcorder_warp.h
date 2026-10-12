@@ -14,6 +14,7 @@
 #include <dxgi.h>
 #include <imgui.h>
 #include <optional>
+#include <string>
 
 namespace dingosdk::overlay {
 // Graphics setup: the device, the SRV heap slot the copy is drawn from, and the back buffer's
@@ -22,9 +23,11 @@ void camcorder_warp_heap(ID3D12Device *device, D3D12_CPU_DESCRIPTOR_HANDLE cpu, 
                          DXGI_FORMAT format, int transfer);
 // Frame building (draw_camcorder): asks for this frame's picture to be copied (or, with `copy`
 // false, for the last one to be shown again: a film camera's slower cadence). The texture to draw
-// it from, when there is one of `width` x `height` (none on the first frame at a new size: then
+// it from, at the back buffer's own size, once there is one (none on the very first frame: then
 // draw nothing over the game this frame).
-std::optional<ImTextureID> camcorder_warp_request(int width, int height, bool copy = true);
+std::optional<ImTextureID> camcorder_warp_request(bool copy = true);
+// Why the last request had no picture (empty when it had one), for the player.
+std::string camcorder_warp_why_not();
 
 // The picture pass's numbers (the shader's constant buffer, camcorder_warp.cpp).
 struct PicturePass {

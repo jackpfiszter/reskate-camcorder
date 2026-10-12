@@ -2,6 +2,7 @@
 #include "rows.h"
 #include "tape.h"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -404,5 +405,44 @@ void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::i
     dv_camera(image, finish.dv, finish.look, finish.fields(), clip, index, frame_rate);
     if (finish.date_stamp) burn_date(image, local_time, finish.stamp_year, finish.stamp);
     dv_tape(image, finish.dv, finish.look);
+}
+std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view time, std::time_t now) {
+    // Numbers split by `separator`, exactly `count` of them and nothing else.
+    const auto numbers = [](std::string_view text, char separator, int *out, int count) {
+        for (int i = 0; i < count; ++i) {
+            const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), out[i]);
+            if (error != std::errc{} || end == text.data()) return false;
+            text.remove_prefix(static_cast<std::size_t>(end - text.data()));
+            if (i + 1 < count) {
+                if (text.empty() || text.front() != separator) return false;
+                text.remove_prefix(1);
+            }
+        }
+        return text.empty();
+    };
+    int ymd[3]{}, hm[2]{};
+    if (!numbers(date, '-', ymd, 3)) return std::nullopt;
+    const int year = ymd[0], month = ymd[1], day = ymd[2];
+    if (year < 1970 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return std::nullopt;
+    if (!time.empty() && (!numbers(time, ':', hm, 2) || hm[0] < 0 || hm[0] > 23 || hm[1] < 0 || hm[1] > 59)) return std::nullopt;
+    const int hour = hm[0], minute = hm[1];
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    if (!time.empty()) {
+        local.tm_hour = hour;
+        local.tm_min = minute;
+        local.tm_sec = 0;
+    }
+    local.tm_year = year - 1900;
+    local.tm_mon = month - 1;
+    local.tm_mday = day;
+    local.tm_isdst = -1;
+    const std::time_t set = std::mktime(&local);
+    if (set == static_cast<std::time_t>(-1) || local.tm_mday != day) return std::nullopt; // 31 February
+    return static_cast<std::int64_t>(set) - static_cast<std::int64_t>(now);
 }
 } // namespace dingosdk::camcorder

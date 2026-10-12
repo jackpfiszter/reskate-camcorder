@@ -136,13 +136,21 @@ void save_still(StillJob &job, camcorder_video::RawFrame frame, Finish finish) {
     job.busy = true;
     job.thread = std::thread([&job, frame = std::move(frame), finish] {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        std::pair<bool, std::string> result{false, "Windows did not say where the Pictures folder is."};
-        const auto folder = camcorder_media::folder(FOLDERID_Pictures);
+        std::pair<bool, std::string> result{false, "Windows did not say where the Videos folder is."};
+        // Beside the clips: Videos\ReSkate Camcorder\Stills.
+        auto folder = camcorder_media::folder(FOLDERID_Videos);
+        if (!folder.empty()) {
+            folder += L"\\Stills";
+            CreateDirectoryW(folder.c_str(), nullptr); // already there is fine
+        }
         if (!folder.empty()) {
             Image image;
             convert_to_bgra(frame.bytes.data(), frame.pitch, frame.width, frame.height, frame.format, image, frame.white_nits);
             apply_vignette(image, frame.vignette);
-            const auto when = local_now();
+            // The stamp says the camera's clock (as set), the file name the real time.
+            const auto camera_clock = stamp_clock(std::time(nullptr), finish);
+            std::tm when{};
+            localtime_s(&when, &camera_clock);
             finish_frame(image, finish, DvClip{0.5f}, 0, clip_rate(finish).fps(), when); // what the screen left
             const auto path = folder + L"\\" + camcorder_media::widen(photo_file_name(local_now()));
             std::string error;
@@ -417,7 +425,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
                 if (!folder.empty()) {
                     const auto path = folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now()));
                     started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box, published.own_lines),
-                                             published.sound, origin, published.finish, std::time(nullptr), error);
+                                             published.sound, origin, published.finish, stamp_clock(std::time(nullptr), published.finish), error);
                 }
                 if (started) {
                     c.failed_clip = 0;

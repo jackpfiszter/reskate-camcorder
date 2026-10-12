@@ -221,8 +221,13 @@ struct Capture::Impl {
                         if (sound && !clip_sound && !silence_to(time + span)) broken = true;
                         continue;
                     }
-                    // Sound: any gap before it filled, then only what fits in the clip.
-                    if (!silence_to(time)) {
+                    // Sound: packets follow on from each other. Their times are rounded (a packet's start
+                    // lands a sample either side of where the last ended), so within a few ms a packet
+                    // is taken as following straight on: filling or cutting that one sample each
+                    // packet ticked, 47 times a second. Only a real gap is filled with silence.
+                    constexpr LONGLONG tolerance = audio_rate / 200; // 5 ms
+                    const LONGLONG start = frames_at(time);
+                    if (start - frames_written > tolerance && !silence_to(time)) {
                         broken = true;
                         break;
                     }
@@ -230,9 +235,9 @@ struct Capture::Impl {
                     BYTE *data{};
                     DWORD bytes{};
                     if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) || FAILED(buffer->Lock(&data, nullptr, &bytes))) continue;
-                    const LONGLONG first = frames_at(time), frames = bytes / (audio_channels * 2);
-                    // Overlap with what is written already (a gap fill, rounding) is skipped.
-                    const LONGLONG skip_frames = std::clamp<LONGLONG>(frames_written - first, 0, frames);
+                    const LONGLONG frames = bytes / (audio_channels * 2);
+                    // A real overlap (more than the rounding) is skipped, so nothing plays twice.
+                    const LONGLONG skip_frames = frames_written - start > tolerance ? std::clamp<LONGLONG>(frames_written - start, 0, frames) : 0;
                     const LONGLONG n = std::clamp<LONGLONG>(std::min(frames - skip_frames, sound_limit - frames_written), 0, frames);
                     if (n > 0) {
                         if (FAILED(camcorder_media::write_sample(writer.Get(), audio_stream, data + skip_frames * audio_channels * 2,

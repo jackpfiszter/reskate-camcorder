@@ -122,7 +122,7 @@ What "record" can mean, from cheapest to most real:
    (gaps filled, overlaps trimmed: `audio.h`) and encoded as AAC beside the H.264; the VX mic
    colours it like the camera's own microphone and level control.
    **Stills** (`camcorder still`) are the next picture off the same readback, saved as a JPEG to
-   Pictures\ReSkate Camcorder. **Capturing the tape** joins the current tape's clips, in order,
+   Videos\ReSkate Camcorder\Stills. **Capturing the tape** joins the current tape's clips, in order,
    into one MP4, the way a MiniDV tape went into the computer: each clip is decoded and encoded
    again on a worker thread (`camcorder_tape.cpp`), scaled to the first clip's size, with
    silence where a clip had none so the sound stays in step at every cut.

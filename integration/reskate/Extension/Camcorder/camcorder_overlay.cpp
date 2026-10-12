@@ -8,6 +8,7 @@
 #include "camcorder_review.h"
 #include "camcorder_runtime.h"
 #include "camcorder_warp.h"
+#include "Extension/UI/Overlay/overlay.h"
 #include "camcorder/look.h"
 #include "camcorder/viewfinder.h"
 #include <imgui.h>
@@ -135,7 +136,7 @@ PicturePass pass_numbers(const camcorder_runtime::Published &p, const Rect &pict
 
 // The camera's date stamp, over the picture: what it records is what it shows.
 void draw_stamp(ImDrawList *list, const camcorder_runtime::Published &p, const Rect &picture) {
-    const auto time = std::time(nullptr);
+    const auto time = stamp_clock(std::time(nullptr), p.finish);
     std::tm local{};
     localtime_s(&local, &time);
     const auto marks = stamp_marks(static_cast<int>(picture.width), static_cast<int>(picture.height), local,
@@ -185,7 +186,7 @@ void draw_guide(ImDrawList *list, ImFont *font, const Rect &picture) {
         "REC / STBY: F6 after SET UP KEYS (the CAMCORDER page), or REC there",
         "Aim: the mouse or right stick with AIM WHILE FILMING on (you keep skating)",
         "Zoom: wheel or triggers      Height: LB / RB",
-        "Quick menu: F7: camera, lens, look, light, height, tripod, play the last clip",
+        "Quick menu: F7: camera, lens, look, light, height, tripod",
         "Tripod: F10 sets one up; move and aim it; F10 again (or REC), then skate",
         "Esc or Start: back out of camera controls and menus",
         "Everything else: the CAMCORDER page in the ReSkate menu",
@@ -261,7 +262,7 @@ void draw_camcorder() {
         if (p.guide) draw_guide(list, font, v.picture);
         return;
     }
-    const int width = static_cast<int>(io.DisplaySize.x + 0.5f), height = static_cast<int>(io.DisplaySize.y + 0.5f);
+    const int height = static_cast<int>(io.DisplaySize.y + 0.5f);
     const bool warped = p.frame.optics.warped;
     // A film camera's picture moves at its own rate (Super 8's 18): the copy is held in between.
     static double next_picture = 0;
@@ -274,15 +275,32 @@ void draw_camcorder() {
     }
     bool look_on_screen = false;
     if ((warped || p.finish.dv.on || film_rate > 0 || p.light) && height > 0 && camcorder_picture_pass_ready()) {
-        if (camcorder_warp_request(width, height, copy)) {
+        if (camcorder_warp_request(copy)) {
             if (copy) ++pictures; // the grain changes with the picture
             camcorder_picture_pass(list, pass_numbers(p, v.picture, io.DisplaySize.x, io.DisplaySize.y, pictures));
             look_on_screen = p.finish.dv.on;
         }
     } else if (warped && height > 0) {
         // No picture pass on this system: the bend alone, as a mesh; the look is left to the recording.
-        if (const auto texture = camcorder_warp_request(width, height))
+        if (const auto texture = camcorder_warp_request())
             warp(list, *texture, p.frame.optics, v.picture, io.DisplaySize.x / io.DisplaySize.y);
+    }
+    // The look or the light asked for and not on screen for a while: say why, once a game.
+    {
+        static double missing_since = 0;
+        static bool said = false;
+        const bool wanted = p.finish.dv.on || p.light;
+        if (!wanted || look_on_screen || (p.light && camcorder_picture_pass_ready() && camcorder_warp_why_not().empty())) {
+            missing_since = 0;
+        } else if (missing_since == 0) {
+            missing_since = now;
+        } else if (now - missing_since > 3 && !said) {
+            said = true;
+            const auto why = !camcorder_picture_pass_ready() ? std::string("its shader could not be set up (logs\\ReSkate.log has why)")
+                                                             : camcorder_warp_why_not();
+            notify(NoticeLevel::warning, "The camcorder's look isn't showing on screen.",
+                   "Clips and stills still get it. Why: " + (why.empty() ? std::string("unknown") : why) + ".");
+        }
     }
     // With fields, a stamp in the copy would be split between them and twitter up and down in
     // clips: the recording then burns its own after the fields, and the screen's comes after the copy.

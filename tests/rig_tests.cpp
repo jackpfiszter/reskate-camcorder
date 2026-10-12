@@ -422,3 +422,18 @@ TEST(handheld_shake_does_not_repeat) {
     for (std::size_t i = 0; i < 60; ++i) size += std::abs(yaw[i]);
     CHECK(closest > 0.15f * size / 60);
 }
+
+TEST(handheld_tilts_for_a_dutch_angle_and_comes_back_level) {
+    HandheldRig rig;
+    Filmer f;
+    f.valid = true;
+    f.position = {0, 1, 0};
+    OperatorInput tilt;
+    tilt.tilt = 1;
+    const auto roll_of = [](const Shot &shot) { return std::atan2(shot.camera[1], shot.camera[5]); }; // right's up over up's up
+    Shot shot;
+    for (int i = 0; i < 120; ++i) shot = rig.step(f, nullptr, tilt, 1.0f / 60, 1);
+    CHECK(std::abs(roll_of(shot)) > 20 * degrees);
+    for (int i = 0; i < 240; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    CHECK(std::abs(roll_of(shot)) < 2 * degrees);
+}

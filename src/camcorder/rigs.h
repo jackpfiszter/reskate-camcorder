@@ -43,6 +43,7 @@ struct OperatorInput {
     float raise{};                // up: a tripod's head being set up, or the handheld camera
     float zoom{};                 // -1 wide, 1 tele
     bool fast{};                  // tripod setup: move quickly
+    float tilt{};                 // handheld: the frame turned on its side (a dutch angle), -1 left, 1 right
 };
 struct Shot {
     bool valid{};
@@ -154,6 +155,7 @@ private:
     // a held camera does; pitch absolute.
     float offset_yaw_{}, free_pitch_{};
     float lift_{};
+    float tilt_{};          // the dutch angle the operator holds now (radians)
     // How far the root sits above the feet, measured from the ground under the filmer (smoothed;
     // not while airborne). 0 until the game has found the ground.
     float root_above_feet_{};

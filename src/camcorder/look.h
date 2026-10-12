@@ -21,7 +21,9 @@
 #include "audio.h"
 #include "recorder.h"
 #include <array>
+#include <cstdint>
 #include <ctime>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -91,6 +93,7 @@ struct Finish {
     DvLook dv;
     bool date_stamp{};
     int stamp_year{}; // 0: the real year; otherwise the year the stamp says (1996, say)
+    std::int64_t stamp_offset{}; // seconds the camera's clock runs ahead of the real one (set with `date set`)
     // The camera's: how it records motion, its look, its stamp and its mic (profiles.h).
     Motion motion{Motion::ntsc_60i};
     LookProfile look;
@@ -124,6 +127,12 @@ struct StampMarks {
     std::array<std::uint8_t, 3> colour{};
 };
 StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile & = {});
+
+// The camera's clock at real time `now`: the real time, or what the player set it to, running on.
+inline std::time_t stamp_clock(std::time_t now, const Finish &finish) { return now + static_cast<std::time_t>(finish.stamp_offset); }
+// Setting the camera's clock to `date` (YYYY-MM-DD) and `time` (HH:MM; empty keeps the time of day):
+// the offset from the real clock at `now`, in local time. Nothing when the date or time is not one.
+std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view time, std::time_t now);
 
 // The auto white balance's red and blue gains at `seconds` into a clip.
 std::array<float, 2> white_balance(const LookProfile &, const DvClip &, double seconds);

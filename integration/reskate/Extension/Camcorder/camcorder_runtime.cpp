@@ -75,6 +75,7 @@ struct State {
     int quick_last{};          // that direction: -1 up, 1 down, 2 do, -2 close, 0 none
     std::uint32_t review{}, review_stop{}; // requests for the overlay's clip review
     bool back_held{};          // Esc or Start, while the camera has the controls
+    bool pad_was_held{};       // the camera had the controls last tick
     PresenceBeacon beacon;               // telling the others we film (the REC light by our name)
     std::mutex presence_mutex;
     PresenceBook presence;               // what the others said
@@ -210,6 +211,7 @@ Preferences current_preferences(const State &s) {
         {"dv-grain", on_off(dv.grain)},
         {"date", on_off(s.finish.date_stamp)},
         {"date-year", s.finish.stamp_year > 0 ? std::to_string(s.finish.stamp_year) : "now"},
+        {"date-offset", std::to_string(s.finish.stamp_offset)},
         {"sensitivity", [&] { char t[16]; std::snprintf(t, sizeof(t), "%g", static_cast<double>(s.sensitivity)); return std::string(t); }()},
         {"invert", on_off(s.invert)},
         {"light", on_off(s.light)},
@@ -359,7 +361,6 @@ std::vector<QuickItem> quick_items(const State &s) {
     std::vector<QuickItem> items{
         {"REC", status.transport == Transport::recording ? "recording" : "standby", "rec", {}, true},
         {"Take a still", "", "still", {}, true},
-        {"Play the last clip", "", "review", {}, true},
         {"Camera", status.camera_name, "camera", {"next"}, false},
         {"Lens", status.lens_name, "lens", {"next"}, false},
         {"Look", on(s.finish.dv.on), "look", {"toggle"}, false},
@@ -454,6 +455,10 @@ OperatorInput read_controls(State &s, float dt) {
         DingoSDKOverlayReadControllerInput(&pressed);
         constexpr std::uint32_t start_button = 0x0010; // XINPUT_GAMEPAD_START (Options on a PlayStation pad)
         const bool back = (DingoSDKOverlayReadPromptKeys() & 8u) != 0 || (pressed.buttons & start_button) != 0;
+        // A press already down when the camera took the controls (Esc closing the ReSkate menu
+        // straight after SET UP A TRIPOD) is not a press to back out with.
+        if (!s.pad_was_held) s.back_held = back;
+        s.pad_was_held = true;
         if (back && !s.back_held) {
             if (s.quick) s.quick = false;
             else if (s.camcorder.tripod_setup()) s.camcorder.set_tripod_setup(false);
@@ -466,6 +471,7 @@ OperatorInput read_controls(State &s, float dt) {
         }
     } else {
         s.back_held = false;
+        s.pad_was_held = false;
     }
     if (s.quick) {
         // The quick menu has the controls; nothing moves the camera meanwhile.
@@ -500,6 +506,7 @@ OperatorInput read_controls(State &s, float dt) {
     }
     in.move_x = pad.right;   // the pad's reading includes the keyboard's WASD, Q and E
     in.move_y = pad.forward;
+    if (!s.camcorder.tripod_setup()) in.tilt = pad.right; // handheld: the left stick (A / D) tilts the frame
     // The same everywhere, handheld or setting up a tripod: Q / E or the triggers zoom, R / F or
     // LB / RB the height (the camera's in the hand, the tripod's head), Shift or L3 faster.
     in.zoom = pad.up;
@@ -553,11 +560,11 @@ void publish(State &s, const Frame &frame) {
     if (s.quick)
         s.published.hint = "W/S or wheel choose   D do it   A or Esc close   (stick: up/down, right, left)";
     else if (status.tripod_setup)
-        s.published.hint = "WASD carry it   Mouse aim   Q/E zoom   R/F height   Tripod key or Esc: done   REC: done and roll";
+        s.published.hint = "WASD / L-stick carry it   Mouse / R-stick aim   Q/E or LT/RT zoom   R/F or LB/RB height   Tripod key or Esc: done   REC: roll";
     else if (s.operating && wants_pad(s))
-        s.published.hint = "Mouse aim   Q/E or wheel zoom   R/F height   Esc: back to skating";
+        s.published.hint = "Mouse / R-stick aim   Q/E, wheel or LT/RT zoom   R/F or LB/RB height   L-stick tilt   Esc: back to skating";
     else if (wants_aim(s))
-        s.published.hint = "Mouse / R-stick aim   wheel / triggers zoom   LB/RB height   you skate";
+        s.published.hint = "Mouse / R-stick aim   wheel or LT/RT zoom   LB/RB height";
     else
         s.published.hint.clear();
     s.published.quick.clear();
@@ -833,6 +840,25 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         return "DV " + part + (*flag ? " on." : " off.") + (dv.on ? "" : " (The DV look itself is off: camcorder look dv.)");
     }
     if (verb == "date") {
+        // The camera's clock: set like a real camcorder's, it runs on from there (and is kept).
+        if (!words.empty() && words[0] == "set") {
+            if (words.size() < 2 || words[1] == "now") {
+                s.finish.stamp_offset = 0;
+                save();
+                return "The camera's clock is the real time.";
+            }
+            const auto offset = clock_offset(words[1], words.size() > 2 ? words[2] : std::string(), std::time(nullptr));
+            if (!offset) return "Usage: camcorder date set <YYYY-MM-DD> [HH:MM] | now";
+            s.finish.stamp_offset = *offset;
+            s.finish.stamp_year = 0; // the set date says its own year
+            s.finish.date_stamp = true;
+            save();
+            return "The camera's clock is set to " + words[1] + (words.size() > 2 ? " " + words[2] : std::string()) + ", and runs on from there.";
+        }
+        if (!words.empty() && words[0] == "offset") { // the settings file's form of `date set`
+            if (words.size() > 1) s.finish.stamp_offset = std::atoll(words[1].c_str());
+            return "";
+        }
         if (!words.empty() && words[0] == "year") {
             if (words.size() < 2 || words[1] == "now") s.finish.stamp_year = 0;
             else {
@@ -857,7 +883,7 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     if (verb == "still" || verb == "photo") {
         if (!s.camcorder.powered()) return "Turn the camcorder on first.";
         ++s.still;
-        return "Still taken: it goes to Pictures\\ReSkate Camcorder.";
+        return "Still taken: it goes to Videos\\ReSkate Camcorder\\Stills.";
     }
     if (verb == "tape" && !words.empty() && words[0] == "capture") {
         ++s.capture_tape;
@@ -931,15 +957,19 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         std::thread([stills] {
             const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
             PWSTR base{};
-            if (SUCCEEDED(SHGetKnownFolderPath(stills ? FOLDERID_Pictures : FOLDERID_Videos, KF_FLAG_CREATE, nullptr, &base)) && base) {
-                const std::wstring path = std::wstring(base) + L"\\ReSkate Camcorder";
+            if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Videos, KF_FLAG_CREATE, nullptr, &base)) && base) {
+                std::wstring path = std::wstring(base) + L"\\ReSkate Camcorder";
                 CreateDirectoryW(path.c_str(), nullptr);
+                if (stills) {
+                    path += L"\\Stills";
+                    CreateDirectoryW(path.c_str(), nullptr);
+                }
                 ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             }
             if (base) CoTaskMemFree(base);
             if (SUCCEEDED(com)) CoUninitialize();
         }).detach();
-        return stills ? "Opening Pictures\\ReSkate Camcorder." : "Opening Videos\\ReSkate Camcorder.";
+        return stills ? "Opening Videos\\ReSkate Camcorder\\Stills." : "Opening Videos\\ReSkate Camcorder.";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";

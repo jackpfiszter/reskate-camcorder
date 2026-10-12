@@ -239,3 +239,25 @@ TEST(stamp_marks_are_what_burn_date_draws) {
     for (const auto &d : stamp_marks(640, 480, when, 0, left).dots) CHECK(d.x < 320);
     CHECK(stamp_marks(32, 24, when, 0).dots.empty());
 }
+
+TEST(the_camera_clock_can_be_set) {
+    const std::time_t now = 1'700'000'000; // November 2023
+    const auto offset = clock_offset("1996-10-12", "16:03", now);
+    CHECK(offset.has_value());
+    Finish finish;
+    finish.stamp_offset = *offset;
+    std::tm local{};
+    const auto shown = stamp_clock(now, finish);
+#ifdef _WIN32
+    localtime_s(&local, &shown);
+#else
+    localtime_r(&shown, &local);
+#endif
+    CHECK(local.tm_year == 96 && local.tm_mon == 9 && local.tm_mday == 12 && local.tm_hour == 16 && local.tm_min == 3);
+    // It runs on: a minute later, the stamp is a minute later.
+    CHECK(stamp_clock(now + 60, finish) - shown == 60);
+    CHECK(!clock_offset("1996-02-31", "", now)); // no such day
+    CHECK(!clock_offset("12/10/1996", "", now));
+    CHECK(!clock_offset("1996-10-12", "25:00", now));
+    CHECK(clock_offset("1996-10-12", "", now).has_value()); // the time of day kept
+}

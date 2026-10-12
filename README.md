@@ -33,7 +33,7 @@ and skate the line.
 - **Clips to MP4.** REC to STBY writes the 4:3 picture (fisheye corners and all, readouts not) to
   Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480, with
   the game's own sound (nothing else on the PC), clean or through the VX mic. Stills go to
-  Pictures\ReSkate Camcorder as JPEGs.
+  Videos\ReSkate Camcorder\Stills as JPEGs.
 - **The tape look.** On screen, in clips and in stills: the camera's 480 lines, 60 fields of
   video motion, a CCD's hard white, drifting colour, sharpened edges, smeared colour, a little
   noise, and the camcorder's date stamp (any year you like). A camera light for night sessions.

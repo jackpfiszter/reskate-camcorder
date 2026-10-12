@@ -214,6 +214,8 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     const float turn = dt > 0 ? wrap_angle(yaw_.value - last_yaw_) / dt : 0;
     last_yaw_ = yaw_.value;
     roll_ = damp(roll_, std::clamp(-turn * 0.06f, -8 * degrees, 8 * degrees), 0.25f, dt);
+    // A dutch angle, held as long as the stick is: up to 25 degrees, eased in and back to level.
+    tilt_ = damp(tilt_, clamp_unit(input.tilt) * 25 * degrees, 0.18f, dt);
 
     const float speed = std::sqrt(filmer.velocity[0] * filmer.velocity[0] + filmer.velocity[2] * filmer.velocity[2]);
     HandShake::Amounts amounts = settings_.shake;
@@ -227,7 +229,7 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     const float sideways = dot(swing, flat_right(facing));
     shot.camera = camera_matrix(add(eye, shake.position), yaw_.value + shake.yaw,
                                 pitch_.value + shake.pitch + swing[1] * settings_.arm_tilt,
-                                roll_ + shake.roll + sideways * settings_.arm_tilt * 0.5f);
+                                roll_ + tilt_ + shake.roll + sideways * settings_.arm_tilt * 0.5f);
     shot.valid = valid_camera_matrix(shot.camera);
     return shot;
 }
