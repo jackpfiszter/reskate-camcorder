@@ -29,7 +29,7 @@ index 639ed1e..2938c5d 100644
  struct ControllerBindingsModel {
      bool available{};
 diff --git a/Extension/Console/commands.cpp b/Extension/Console/commands.cpp
-index a8245e6..2056b39 100644
+index 63f68c1..a7020d3 100644
 --- a/Extension/Console/commands.cpp
 +++ b/Extension/Console/commands.cpp
 @@ -226,6 +226,7 @@ const Commands &game_commands() {
@@ -39,9 +39,9 @@ index a8245e6..2056b39 100644
 +        register_camcorder_commands(*result);
          register_road_rash_commands(*result);
          register_board_break_commands(*result);
-         return result;
+         register_grind_exit_commands(*result);
 diff --git a/Extension/Console/commands.h b/Extension/Console/commands.h
-index 71ae717..3fbbb63 100644
+index 0caee4c..fe25e1a 100644
 --- a/Extension/Console/commands.h
 +++ b/Extension/Console/commands.h
 @@ -27,6 +27,7 @@ void start_memory_trace_from_environment() noexcept;
@@ -51,7 +51,7 @@ index 71ae717..3fbbb63 100644
 +void register_camcorder_commands(Commands &);
  void register_road_rash_commands(Commands &);
  void register_board_break_commands(Commands &);
- // Runtime adapters. Invoked only by the verified game-thread dispatcher.
+ void register_grind_exit_commands(Commands &);
 diff --git a/Extension/Multiplayer/Hud/custom_nametags.cpp b/Extension/Multiplayer/Hud/custom_nametags.cpp
 index 8c4dadd..3960d78 100644
 --- a/Extension/Multiplayer/Hud/custom_nametags.cpp
@@ -65,7 +65,7 @@ index 8c4dadd..3960d78 100644
              for (auto &line : player.bubbles)
                  tag.bubbles.push_back({std::move(line.text), std::move(line.raw), line.appear, line.fade});
 diff --git a/Extension/Multiplayer/Hud/custom_nametags.h b/Extension/Multiplayer/Hud/custom_nametags.h
-index baa24da..27abfb7 100644
+index 5f3710e..1d9c85d 100644
 --- a/Extension/Multiplayer/Hud/custom_nametags.h
 +++ b/Extension/Multiplayer/Hud/custom_nametags.h
 @@ -23,6 +23,7 @@ struct NametagPlayer {
@@ -105,7 +105,7 @@ index f74c419..cfbf26b 100644
      try {
          auto &s = state();
 diff --git a/Extension/Multiplayer/Session/session.cpp b/Extension/Multiplayer/Session/session.cpp
-index 4130fa7..829ab35 100644
+index 14b4ab6..fb60cfb 100644
 --- a/Extension/Multiplayer/Session/session.cpp
 +++ b/Extension/Multiplayer/Session/session.cpp
 @@ -7,6 +7,7 @@
@@ -116,7 +116,7 @@ index 4130fa7..829ab35 100644
  #include "Extension/Throwdowns/native_throwdowns.h"
  #include "Extension/Throwdowns/throwdown_relay.h"
  #include "Extension/Progression/script_natives.h"
-@@ -396,9 +397,12 @@ void relay_throwdowns(Session &s, bool in_world) {
+@@ -397,9 +398,12 @@ void relay_throwdowns(Session &s, bool in_world) {
      }
      if (names)
          input.local_name = in_session ? s.transport.name(local) : std::string(steam_social_snapshot()->local.name);
@@ -130,7 +130,7 @@ index 4130fa7..829ab35 100644
      for (auto &text : take_throwdown_relay_notices()) add_chat(s, 0, "ReSkate", std::move(text));
  }
  // A player in the local coop celebration stands at their spot there: the whole pose moves,
-@@ -443,7 +447,13 @@ std::uint64_t far_sample_interval(const Peer &p, float distance) {
+@@ -444,7 +448,13 @@ std::uint64_t far_sample_interval(const Peer &p, float distance) {
      return 0;
  }
  void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::uint64_t now) {
@@ -145,7 +145,7 @@ index 4130fa7..829ab35 100644
      const auto view = latest_game_view();
      // ReSkate's nametags and chat bubbles: every shown player, placed above their head
      // each frame.
-@@ -494,6 +504,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -495,6 +505,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
          // Friends only: everyone else keeps their chat bubbles and loses the name and dot.
          tag.nameless = s.nametags_friends && !std::binary_search(s.friend_ids.begin(), s.friend_ids.end(), p.member.id);
          tag.talking = std::any_of(voices.begin(), voices.end(), [&](const auto &v) { return v.id == p.member.id && v.speaking; });
@@ -153,7 +153,7 @@ index 4130fa7..829ab35 100644
          tag.bubbles = recent_bubbles(p.member.id);
          nametags.push_back(std::move(tag));
      };
-@@ -577,6 +588,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -578,6 +589,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                                     mark_styles(p));
              present_audio(p);
              update_party_position(&p.render_pose);
@@ -161,7 +161,7 @@ index 4130fa7..829ab35 100644
              if (labels) label(p);
              return;
          }
-@@ -638,6 +650,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -639,6 +651,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                      // The spectate camera follows this every frame; the map and
                      // indicators below only need network-rate updates.
                      update_party_position(&p.render_pose);
@@ -169,7 +169,7 @@ index 4130fa7..829ab35 100644
                      if (labels) label(p);
                      if (!p.ui_visible || now >= p.next_ui_update) {
                          update_player_ui(s.base, &p.render_pose, p.member.name);
-@@ -658,7 +671,10 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -659,7 +672,10 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                                                    : "Waiting for player poses.";
                  // No skater for them, but still their name or dot where they are, and where the
                  // Social menu's teleport and spectate find them.
@@ -181,7 +181,7 @@ index 4130fa7..829ab35 100644
                  if (!p.shown_wanted && sampled && labels) label(p);
              }
          }
-@@ -689,6 +705,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -690,6 +706,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
              nametags.push_back(std::move(tag));
          }
      }
@@ -189,7 +189,7 @@ index 4130fa7..829ab35 100644
      if (labels)
          publish_custom_nametags(s.base, std::move(nametags),
                                  local.ready ? std::optional(local.pose.root.position) : std::nullopt,
-@@ -893,6 +910,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+@@ -897,6 +914,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
              physics_tuning::release(base); // the player's own tuning again after a session
              set_session_tuning_enforced(false);
              relay_throwdowns(s, ready);
@@ -204,7 +204,7 @@ index 4130fa7..829ab35 100644
              // Without a session the UI model follows at the same 10 Hz as in one;
              // commands still publish at once.
              if (const auto now = now_us(); now >= s.next_publish) {
-@@ -966,7 +991,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+@@ -970,7 +995,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
          else
              local.detail = s.awaiting_map ? "Waiting for the host's map and local skater." : "Load a map to skate.";
          const auto captured_at = capture_pose ? now_us() : 0;
@@ -230,7 +230,7 @@ index 0bd11ee..2f9b889 100644
              const bool wanted = can_transmit && (settings.open_mic || held) && settings.microphone > 0.f;
              const auto player_gain = [&](std::uint64_t id) {
 diff --git a/Extension/UI/Overlay/input_capture.cpp b/Extension/UI/Overlay/input_capture.cpp
-index a3e4896..df919fb 100644
+index 79c687a..372f9a5 100644
 --- a/Extension/UI/Overlay/input_capture.cpp
 +++ b/Extension/UI/Overlay/input_capture.cpp
 @@ -36,6 +36,17 @@ bool block_polled_input() {
@@ -297,16 +297,15 @@ index a3e4896..df919fb 100644
          "Native PlayStation HID report neutralized; overlay retains its independent input stream. (%s over %s, report 0x%02x of %lu bytes, "
          "the game's buffer %lu.)", read.kind == PlayStationPad::dualsense ? "DualSense" : "DualShock 4",
          bluetooth ? "Bluetooth" : "USB", bytes[0], size, read.capacity);
-@@ -283,6 +308,8 @@ DWORD WINAPI captured_front(DWORD user, XINPUT_STATE* output) {
-     if (result == ERROR_SUCCESS && output && capture) {
-         output->Gamepad = {};
+@@ -307,6 +332,7 @@ DWORD WINAPI captured_front(DWORD user, XINPUT_STATE* output) {
          output->dwPacketNumber ^= 0x80000000u;
-+    } else if (result == ERROR_SUCCESS && output && block_camera_aim()) {
-+        aim_gamepad(output->Gamepad);
+     } else if (result == ERROR_SUCCESS) {
+         filter_pad(outer, user, output);
++        if (output && block_camera_aim()) aim_gamepad(output->Gamepad);
      }
      return result;
  }
-@@ -311,9 +338,10 @@ void keep_xinput_capture_first() {
+@@ -335,9 +361,10 @@ void keep_xinput_capture_first() {
      };
      for (std::size_t i = 0; i < h.xinput_state.size(); ++i) guard(h.xinput_state[i].target), guard(h.xinput_extended[i].target);
  }
@@ -318,7 +317,7 @@ index a3e4896..df919fb 100644
  }
  SHORT WINAPI captured_key(int key) {
      const auto value = original<SHORT(WINAPI*)(int)>(input_hooks().key)(key);
-@@ -339,7 +367,10 @@ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT
+@@ -363,7 +390,10 @@ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT
          const bool mouse = raw->header.dwType == RIM_TYPEMOUSE && result >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
          const bool keyboard =
              raw->header.dwType == RIM_TYPEKEYBOARD && result >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
@@ -330,7 +329,7 @@ index a3e4896..df919fb 100644
              if ((mouse || keyboard) && !overlay_input_access) held_input().seen(*raw);
          } else if ((mouse || keyboard) && held_input().release_only(*raw)) {
              // A key or button the game holds still comes up; presses stay blocked.
-@@ -428,6 +459,8 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+@@ -452,6 +482,8 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
      const auto result = original<UINT(WINAPI*)(PRAWINPUT, PUINT, UINT)>(
          input_hooks().raw_buffer)(data, size, header_size);
      const bool capture = result != UINT(-1) && data && block_polled_input();
@@ -339,7 +338,7 @@ index a3e4896..df919fb 100644
      note_prompt_read(prompt_raw);
      if (result != UINT(-1) && data && header_size == sizeof(RAWINPUTHEADER)) {
          // Skate drains its mouse here; read the packets on the way past.
-@@ -444,18 +477,28 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+@@ -468,18 +500,28 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
              const bool mouse = record->header.dwType == RIM_TYPEMOUSE && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
              const bool keyboard =
                  record->header.dwType == RIM_TYPEKEYBOARD && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
@@ -372,7 +371,7 @@ index a3e4896..df919fb 100644
      }
      return capture ? 0 : result;
  }
-@@ -548,13 +591,15 @@ BOOL WINAPI captured_release_capture() {
+@@ -572,13 +614,15 @@ BOOL WINAPI captured_release_capture() {
      return original<BOOL(WINAPI*)()>(input_hooks().release_capture)();
  }
  HCURSOR WINAPI captured_cursor(HCURSOR cursor) {
@@ -390,7 +389,7 @@ index a3e4896..df919fb 100644
      return original<int(WINAPI*)(BOOL)>(input_hooks().show_cursor)(show);
  }
  BOOL WINAPI captured_physical_cursor(int x, int y) {
-@@ -564,7 +609,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
+@@ -588,7 +632,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
  BOOL WINAPI captured_cursor_position(LPPOINT output) {
      thread_local POINT last{};
      thread_local bool sampled = false;
@@ -399,16 +398,15 @@ index a3e4896..df919fb 100644
      const auto result = original<BOOL(WINAPI*)(LPPOINT)>(input_hooks().cursor_position)(output);
      if (result && output && !overlay_input_access) { last = *output; sampled = true; }
      return result;
-@@ -584,6 +629,8 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
-         // The game must notice a neutral state even if the physical packet did
-         // not change between opening the menu and its next controller poll.
+@@ -611,6 +655,7 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
          output->dwPacketNumber ^= 0x80000000u;
-+    } else if (result == ERROR_SUCCESS && output && block_camera_aim()) {
-+        aim_gamepad(output->Gamepad);
+     } else if (result == ERROR_SUCCESS) {
+         filter_pad(outer, user, output);
++        if (output && block_camera_aim()) aim_gamepad(output->Gamepad);
      }
      return result;
  }
-@@ -758,6 +805,8 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -785,6 +830,8 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (relative) {
          s.raw_mouse_x.fetch_add(mouse.lLastX);
          s.raw_mouse_y.fetch_add(mouse.lLastY);
@@ -417,7 +415,7 @@ index a3e4896..df919fb 100644
      }
      auto buttons = s.raw_mouse_buttons.load();
      const auto flags = mouse.usButtonFlags;
-@@ -768,6 +817,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -795,6 +842,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) buttons |= 4u;
      if (flags & RI_MOUSE_MIDDLE_BUTTON_UP) buttons &= ~4u;
      s.raw_mouse_buttons.store(buttons);
@@ -468,7 +466,7 @@ index 4cd0123..be9eef0 100644
              }
          }
 diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
-index 5b30bf9..1e1c11e 100644
+index a18e222..8dca805 100644
 --- a/Extension/UI/Overlay/overlay.h
 +++ b/Extension/UI/Overlay/overlay.h
 @@ -91,6 +91,9 @@ struct FlightInput {
@@ -480,16 +478,16 @@ index 5b30bf9..1e1c11e 100644
 +    float key_raise = 0; // R - F on the keyboard
  };
  
- struct DebugModel {
-@@ -378,6 +381,7 @@ struct Nametag {
-     std::string tag;                  // role badge before the name ("Dev", "Staff", "Content Creator", "Centrix", "Homie", "Admin", "Host", "Friend")
+ // May change what the GAME reads from an XInput pad (never what ReSkate itself reads). `user` is
+@@ -413,6 +416,7 @@ struct Nametag {
+     std::string tag;                  // role badge before the name ("Dev", "ReSkate Admin", "Content Creator", "Centrix", "Homie", "Admin", "Host", "Friend")
      float distance{};                 // metres from the local skater
      bool talking{};
 +    std::uint8_t camcorder{}; // their camcorder: 0 none, 1 on, 2 recording (the REC light)
      // Recent chat lines to show as bubbles above the head, oldest first ("" = none).
      std::vector<NametagBubble> bubbles;
      bool self{};                      // the local player: bubbles only, never a name or dot
-@@ -480,6 +484,13 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
+@@ -515,6 +519,13 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
  // Poll only on the client update thread. Returns no input while either overlay
  // surface is open, the game is unfocused, or the overlay has stopped.
  extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* input, bool flight_active, bool player_flight = false);
@@ -503,7 +501,7 @@ index 5b30bf9..1e1c11e 100644
  extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active);
  // The same hold on the game's input while a card asks something of the player and a
  // controller answers it (the map download's): the buttons that answer must not also skate.
-@@ -487,6 +498,10 @@ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active);
+@@ -522,6 +533,10 @@ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active);
  // The keyboard keys such a card answers to, read past that hold: bit 0 left, 1 right, 2 Enter,
  // 3 Esc. Nothing while the game is not in front or the menu, console or chat has the keys.
  extern "C" unsigned DingoSDKOverlayReadPromptKeys();
@@ -634,7 +632,7 @@ index ff84664..2222cbf 100644
 +    }
 +}
 diff --git a/Extension/UI/Overlay/overlay_internal.h b/Extension/UI/Overlay/overlay_internal.h
-index c0ce6f9..9acfda3 100644
+index 097e60a..9260557 100644
 --- a/Extension/UI/Overlay/overlay_internal.h
 +++ b/Extension/UI/Overlay/overlay_internal.h
 @@ -113,6 +113,10 @@ struct State {
@@ -756,7 +754,7 @@ index 7169615..a1484cc 100644
      ++s.submitted_draws;
      ++s.rendered_frames;
 diff --git a/Extension/UI/Overlay/skate_menu.cpp b/Extension/UI/Overlay/skate_menu.cpp
-index c03b0f4..9a038a1 100644
+index 400c0db..585037f 100644
 --- a/Extension/UI/Overlay/skate_menu.cpp
 +++ b/Extension/UI/Overlay/skate_menu.cpp
 @@ -1,4 +1,5 @@
@@ -765,22 +763,22 @@ index c03b0f4..9a038a1 100644
  #include "skate_menu_internal.h"
  #include "skate_menu.h"
  #include "modding_menu.h"
-@@ -276,11 +277,12 @@ ImFont* embedded_font(const wchar_t* name, float size, const ImWchar* ranges) {
+@@ -278,11 +279,12 @@ ImFont* embedded_font(const wchar_t* name, float size, const ImWchar* ranges) {
          &config, ranges);
  }
  
--enum Page { map, world, build, skater, training, multiplayer, progress, mods, settings, special, developer, page_count };
-+enum Page { map, world, build, skater, training, filming, multiplayer, progress, mods, settings, special, developer, page_count };
+-enum Page { map, world, build, skater, training, multiplayer, progress, mods, music, settings, special, developer, page_count };
++enum Page { map, world, build, skater, training, filming, multiplayer, progress, mods, music, settings, special, developer, page_count };
  constexpr std::array<const char*, page_count> page_names{
--    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "MULTIPLAYER", "PROGRESS", "MODS", "SETTINGS", "SPECIAL", "DEVELOPER"};
-+    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "CAMCORDER", "MULTIPLAYER", "PROGRESS", "MODS", "SETTINGS", "SPECIAL", "DEVELOPER"};
+-    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "MULTIPLAYER", "PROGRESS", "MODS", "MUSIC", "SETTINGS", "SPECIAL", "DEVELOPER"};
++    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "CAMCORDER", "MULTIPLAYER", "PROGRESS", "MODS", "MUSIC", "SETTINGS", "SPECIAL", "DEVELOPER"};
  constexpr std::array<const char*, page_count> page_subtitles{
      "Pick your spot.", "Set the vibe.", "Make the park yours.", "Ride it your way.", "Tune it. Drill it. Measure it.",
 +    "Film the line.",
-     "Bring your crew.", "Pick up where you want.", "Bring your own.", "Your controls, your screen.", "Not everyone gets this page.",
+     "Bring your crew.", "Pick up where you want.", "Bring your own.", "Your sound, in the game.", "Your controls, your screen.", "Not everyone gets this page.",
      "Under the hood."};
  }
-@@ -427,6 +429,7 @@ void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& cal
+@@ -429,6 +431,7 @@ void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& cal
          case build: build_page(menu, model, callbacks); break;
          case skater: skater_page(menu, model, callbacks); break;
          case training: trainer_page(menu, model, callbacks); break;
@@ -789,10 +787,10 @@ index c03b0f4..9a038a1 100644
          case progress: progression_page(menu, model, callbacks); break;
          case mods:
 diff --git a/Runtime/client_tick.cpp b/Runtime/client_tick.cpp
-index b5e52e4..173305f 100644
+index a87cff4..04230bb 100644
 --- a/Runtime/client_tick.cpp
 +++ b/Runtime/client_tick.cpp
-@@ -34,6 +34,7 @@
+@@ -40,6 +40,7 @@
  #include "Extension/Skater/skater_slot_override.h"
  #include "Extension/Throwdowns/native_throwdowns.h"
  #include "Extension/Trainer/trainer.h"
@@ -800,7 +798,7 @@ index b5e52e4..173305f 100644
  #include "Extension/World/level_loading.h"
  #include "Extension/World/loading_screen.h"
  #include <dxgi.h>
-@@ -441,7 +442,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+@@ -455,7 +456,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
      }
      // Capture belongs to the freecam state itself. Keep it active across brief
      // request/loading phases instead of opening a path back to player input.
@@ -809,8 +807,8 @@ index b5e52e4..173305f 100644
 +        dingosdk::camcorder_runtime::wants_controller());
      dingosdk::ControllerInput controller;
      if (freecam_controller_combo || freecam_combo || tp_to_freecam_combo || noclip_combo || forward_velocity_combo || up_velocity_combo || offboard_up_velocity_combo ||
-         vote_yes_combo || vote_no_combo || poll_answers || map_prompt ||
-@@ -511,7 +513,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+         vote_yes_combo || vote_no_combo || poll_answers || map_prompt || map_vote ||
+@@ -536,7 +538,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
      if (r.freecam_controller_bind_latch.update(freecam_controller_combo, controller, r.observer_failed || controller_busy || !r.debug_model.free_camera)) {
          if (dingosdk::set_local_freecam_controller(!freecam_controller))
              freecam_controller = !freecam_controller;
@@ -820,7 +818,7 @@ index b5e52e4..173305f 100644
          record("{\"event\":\"controller_binding_triggered\",\"action\":\"freecam_controller\"}");
      }
      
-@@ -604,7 +607,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
+@@ -629,7 +632,8 @@ void update_model(std::uintptr_t client, TickState& frame) {
              phase_issue == nullptr,
              debug_request ? &*debug_request : nullptr, &flight_input);
          // Input ownership must follow the live camera even with every overlay closed.
@@ -830,7 +828,7 @@ index b5e52e4..173305f 100644
          // A debug action, or a mode the tick ended by itself (host policy, lost
          // camera), can have replaced the native camera: validate it again.
          if (debug_request || debug.free_camera != r.debug_model.free_camera ||
-@@ -1270,6 +1274,25 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
+@@ -1315,6 +1319,25 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
              dingosdk::multiplayer::tick_native_party_actions(r.base, client,
                  r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
          }
@@ -857,10 +855,10 @@ index b5e52e4..173305f 100644
              DINGO_PROFILE_ZONE("tick/camera view");
              // The camera ReSkate's nametags start from, and the spectate camera's lesson in how
 diff --git a/cmake/Runtime.cmake b/cmake/Runtime.cmake
-index eb18b43..4e700cc 100644
+index eb23e16..b7329ef 100644
 --- a/cmake/Runtime.cmake
 +++ b/cmake/Runtime.cmake
-@@ -142,6 +142,8 @@ add_library(dingosdk_runtime SHARED
+@@ -161,6 +161,8 @@ add_library(dingosdk_runtime SHARED
      Extension/Trainer/trainer_commands.cpp
      Extension/Trainer/trainer_session.cpp
      Extension/Trainer/trainer_waypoint.cpp
@@ -869,16 +867,16 @@ index eb18b43..4e700cc 100644
      Extension/Skater/offboard_flight.cpp
      Extension/Skater/camera_observer.cpp
      Extension/Boot/offline_boot.cpp
-@@ -213,6 +215,7 @@ add_library(dingosdk_custom_level_manifest STATIC
+@@ -232,6 +234,7 @@ add_library(dingosdk_custom_level_manifest STATIC
      Engine/Game/World/custom_level_manifest.cpp)
  target_link_libraries(dingosdk_custom_level_manifest PUBLIC dingosdk_json)
  target_link_libraries(dingosdk_runtime PRIVATE dingosdk_custom_level_manifest)
 +target_link_libraries(dingosdk_runtime PRIVATE dingosdk_camcorder_model)
  
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
- dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
+ 
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..a252fd0 100644
+index 83ec6ba..f9008d6 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
 @@ -2,6 +2,23 @@
@@ -905,8 +903,8 @@ index 34634f2..a252fd0 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +58,17 @@ add_library(dingosdk_overlay STATIC
-     Extension/Trainer/trainer_page.cpp
+@@ -42,8 +59,17 @@ add_library(dingosdk_overlay STATIC
+     Extension/Music/music_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp
 +    Extension/Camcorder/camcorder_overlay.cpp
