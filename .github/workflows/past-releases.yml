@@ -2,7 +2,12 @@ name: past releases
 
 # Publishes the builds made before releases existed as versioned zips on the Releases page, from the
 # files each build run kept (no rebuild: the zip holds exactly what was tested). Runs once when this
-# file changes; later versions come from tags (build.yml's release job).
+# file changes; later versions come from tags (build.yml's release job). (v0.5.0 and v0.6.0 were
+# published by the first run of this file.)
+#
+# A workflow may not tag a commit whose workflow files differ from the repository's, and these
+# versions predate the release job. So each is tagged on a commit holding that version's source
+# with today's .github folder: the same code, built the same way, and the notes name the original.
 on:
   workflow_dispatch:
   push:
@@ -57,21 +62,29 @@ jobs:
             run: 38195257904
             title: Sound
             notes: Clips carry the game's own sound (nothing else on the PC), clean or through the VX1000's mic.
-          - tag: v0.5.0
-            sha: a0deb139547da19923760ac4c94dd892ad5745dc
-            run: 38197569941
-            title: Steer while filming, stills, tape capture
-            notes: Steer while filming (keys skate, mouse aims, wheel zooms); stills to Pictures\ReSkate Camcorder; capture a tape's clips into one MP4; tripods stand on the ground; footsteps in the hand shake.
-          - tag: v0.6.0
-            sha: aa363b258bde106aecfa2818901058ac005605ad
-            run: 38200261437
-            title: True fisheye and the tape look
-            notes: The fisheye bends straight lines as the Century lens does; the DV tape look (60 fields, hard highlights, drifting colour, sharpening, colour smear) and a date stamp on clips and stills; settings kept between games.
-            latest: true
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.sha }}
+      - name: A commit to tag (the version's source, today's CI files)
+        id: anchor
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          old_tree=$(gh api "repos/$REPO/git/commits/${{ matrix.sha }}" --jq .tree.sha)
+          ci_tree=$(gh api "repos/$REPO/git/trees/${{ github.sha }}" --jq '.tree[] | select(.path == ".github") | .sha')
+          tree=$(jq -n --arg base "$old_tree" --arg sha "$ci_tree" \
+            '{base_tree: $base, tree: [{path: ".github", mode: "040000", type: "tree", sha: $sha}]}' |
+            gh api "repos/$REPO/git/trees" --input - --jq .sha)
+          when=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          commit=$(jq -n --arg tree "$tree" --arg parent "${{ matrix.sha }}" --arg when "$when" \
+            --arg message "${{ matrix.tag }}: ${{ matrix.sha }} with this repository's current CI files" \
+            '{message: $message, tree: $tree, parents: [$parent],
+              author: {name: "Jack Pfiszter", email: "130564204+jackpfiszter@users.noreply.github.com", date: $when},
+              committer: {name: "Jack Pfiszter", email: "130564204+jackpfiszter@users.noreply.github.com", date: $when}}' |
+            gh api "repos/$REPO/git/commits" --input - --jq .sha)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: ReSkate-camcorder
@@ -86,13 +99,15 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ matrix.tag }}
-          target_commitish: ${{ matrix.sha }}
+          target_commitish: ${{ steps.anchor.outputs.commit }}
           name: ${{ matrix.tag }} - ${{ matrix.title }}
           body: |
             ${{ matrix.notes }}
 
             **Install:** back up `ReSkate.dll` and `ReSkateLauncher.exe` beside `Skate.exe`, put the two from this zip there, and start the game with this `ReSkateLauncher.exe`. `TESTING.md` in the zip has the details. To go back, restore the two files.
 
+            Built from commit ${{ matrix.sha }} (the tag adds only today's CI files to it).
+
             This zip holds a modified `ReSkate.dll` (GPL-3.0). Its source is this repository at `${{ matrix.tag }}` plus ReSkate at the commit in `integration/reskate/reskate.commit`.
           files: ReSkate-camcorder-${{ matrix.tag }}.zip
-          make_latest: ${{ matrix.latest && 'true' || 'false' }}
+          make_latest: false
