@@ -31,6 +31,7 @@ struct State {
     bool captured{};         // we asked the overlay to hold the pad
     bool owned{};            // update_party_camera holds the screen for us
     bool clean_feed{};
+    bool dv{};
     bool was_powered{};
     std::string last_detail;
     std::string refused; // why the game has not handed over its camera, while it has not
@@ -130,6 +131,7 @@ void publish(State &s, const Frame &frame) {
     s.published.frame = frame;
     s.published.clean_feed = s.clean_feed;
     s.published.operating = s.operating;
+    s.published.dv = s.dv;
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
     const auto &status = frame.status;
@@ -260,6 +262,11 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     if (verb == "operate") {
         s.operating = words.empty() || words[0] == "toggle" ? !s.operating : words[0] == "on" || words[0] == "1";
         return s.operating ? "The pad works the camera." : "The pad is the skater's again.";
+    }
+    if (verb == "quality") {
+        if (!words.empty() && (words[0] == "dv" || words[0] == "hd")) s.dv = words[0] == "dv";
+        else if (!words.empty()) return "Usage: camcorder quality hd|dv";
+        return s.dv ? "Recording at 640 x 480, the VX1000's own size." : "Recording in HD (1440 x 1080).";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";

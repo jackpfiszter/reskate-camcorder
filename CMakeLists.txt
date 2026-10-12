@@ -9,11 +9,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(camcorder STATIC
     src/camcorder/camcorder.cpp
     src/camcorder/commands.cpp
+    src/camcorder/recorder.cpp
     src/camcorder/rigs.cpp
     src/camcorder/tape.cpp
     src/camcorder/viewfinder.cpp
     src/camcorder/vx1000.cpp)
 target_include_directories(camcorder PUBLIC src)
+find_package(Threads REQUIRED)
+target_link_libraries(camcorder PUBLIC Threads::Threads)
 if(MSVC)
     target_compile_options(camcorder PRIVATE /W4 /WX)
 else()
@@ -26,6 +29,7 @@ if(BUILD_TESTING)
         tests/test_main.cpp
         tests/camcorder_tests.cpp
         tests/command_tests.cpp
+        tests/recorder_tests.cpp
         tests/rig_tests.cpp
         tests/tape_tests.cpp
         tests/viewfinder_tests.cpp

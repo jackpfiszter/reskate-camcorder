@@ -27,6 +27,8 @@ and skate the line.
   the skater. Cut between them live.
 - **The viewfinder.** STBY / red REC, the tape counter, minutes of tape left, battery, the W-T
   zoom bar; 4:3 bars either side. A clean feed keeps the frame and lens for screen capture.
+- **Clips to MP4.** REC to STBY writes the 4:3 picture (fisheye corners and all, readouts not) to
+  Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
   numbered clip list per tape (`camcorder tape clips`).
 

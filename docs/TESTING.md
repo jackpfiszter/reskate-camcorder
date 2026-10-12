@@ -106,13 +106,28 @@ With a friend:
 - [ ] Party Spectate while the camcorder is on: the camcorder turns off ("stop spectating to film"),
       and Spectate works.
 
+### Recording
+
+REC writes an MP4 of the 4:3 picture to **Videos\ReSkate Camcorder** ("ReSkate 2026-10-12 14-03-22
+clip 01.mp4"); STBY closes it and a notice says where it went. 29.97 frames a second, H.264, the
+fisheye's round corners included, the readouts and hints not. HD (1440 x 1080) by default;
+`camcorder quality dv` (or the menu) records at the VX1000's own 640 x 480. No sound yet.
+
+- [ ] REC for ten seconds of skating, then STBY: a notice names the file; it plays in any video
+      player, about ten seconds long, smooth, colours right, no REC or hint text in it.
+- [ ] With the fisheye at full wide the file has the round black corners; zoomed in it does not.
+- [ ] Two clips in a row: two files. A clip shot in DV quality is 640 x 480.
+- [ ] HDR display on (if you have one): colours in the file look normal, not washed out or dark.
+- [ ] Watch the frame rate while recording, and `logs\ReSkate.log` for "frames were dropped".
+
 ### Known gaps (expected)
 
 - Tripods keep the height they were placed at; they don't follow the ground yet.
 - Hand shake always uses the on-board kind (wheel buzz), even on foot.
 - The fisheye is the wide angle plus round corners; straight lines don't bend yet.
-- Nothing is saved as a video file: capture the screen (OBS, the GPU's recorder).
-  `camcorder clean on` hides the readouts and keeps the frame and lens.
+- Clips have no sound yet.
+- The recording is of what is on screen: it records the camcorder's picture only while you look
+  through it.
 
 ### Worth reporting
 

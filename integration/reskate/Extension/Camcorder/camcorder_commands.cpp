@@ -28,6 +28,7 @@ void register_camcorder_commands(Commands &registry) {
         {"height", "The active tripod's height", "<metres>"},
         {"tape", "List the clips, or put in a new tape", "clips|new"},
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},
+        {"quality", "Record in HD (1440 x 1080) or at the VX1000's own 640 x 480", "hd|dv"},
     };
     for (const auto &verb : verbs) {
         std::vector<Argument> arguments;

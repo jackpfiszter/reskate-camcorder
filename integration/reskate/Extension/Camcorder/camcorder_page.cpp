@@ -1,4 +1,5 @@
 #include "camcorder_page.h"
+#include "camcorder_capture.h"
 #include "camcorder_runtime.h"
 #include "Extension/UI/Overlay/skate_menu_internal.h"
 #include "camcorder/commands.h"
@@ -95,11 +96,16 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     }
     end_card();
 
-    begin_card(menu, "camcorder-tape", "TAPE");
+    begin_card(menu, "camcorder-tape", "TAPE", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
+    field(menu, "Quality", "HD for sharing, or the VX1000's own 640 x 480.");
+    int quality = published.dv ? 1 : 0;
+    if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", "DV 640 x 480"}))
+        run(menu, callbacks, quality ? "quality dv" : "quality hd");
     if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
     ImGui::SameLine();
     if (small_button("NEW TAPE")) run(menu, callbacks, "tape new");
-    note("Recording to a video file is coming. For now, capture the screen (OBS) with the clean picture on.");
+    if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last clip", last);
+    note("Clips are the picture only, no sound yet.");
     end_card();
 
     begin_card(menu, "camcorder-controls", "CONTROLS");

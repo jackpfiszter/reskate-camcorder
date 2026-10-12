@@ -51,6 +51,7 @@ struct Published {
     std::string hint;     // the viewfinder's control hints, empty for none
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
     std::string subject;  // who is, empty for nobody
+    bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

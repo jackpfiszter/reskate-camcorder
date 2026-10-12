@@ -95,12 +95,17 @@ What "record" can mean, from cheapest to most real:
    list are real (`tape.h`: 29.97 drop-frame timecode, a 60-minute cassette that ends, clips
    numbered per tape). Players capture the screen with OBS or the GPU's recorder; `camcorder
    clean` keeps the 4:3 frame and the fisheye shadow and hides the readouts. Cheap, and it works.
-2. **Clips to files (later).** The engine already encodes video for the replay editor's export
-   (`addr::replay_export::submit_frame`, which ReSkate hooks so exports keep every frame).
-   Starting that encoder outside the replay editor, from REC to STBY, would write each clip to
-   disk with game audio. Needs reverse engineering how an export session starts.
-3. **Tape as data (later).** Keep each clip's camera path and settings with the clip, so a
-   take can be re-rendered or re-framed. Overlaps with the game's own replay recorder.
+2. **Clips to files (built).** From REC to STBY the overlay copies the 4:3 picture off the back
+   buffer before it draws the readouts (`camcorder_capture.cpp`, a ring of readback buffers, never
+   waiting on the GPU), and a worker thread crops, scales, adds the fisheye's corners, converts to
+   NV12 and encodes H.264 to MP4 with Windows' own Media Foundation (`camcorder_video.cpp`). The
+   pixel work and the 29.97 pacing are in the tested model (`recorder.h`). Picture only for now;
+   sound would be WASAPI loopback of the game's audio, muxed into the same file.
+3. **Tape as data, re-filmed from replays (later).** Keep each clip's camera path, and play it
+   back through the game's replay with the replay editor's own encoder
+   (`addr::replay_export::submit_frame`). That is how a tripod could film while the player skates
+   with the normal camera, like real self-filming. Needs the replay editor's playback and export
+   driven from code.
 
 ## The look
 

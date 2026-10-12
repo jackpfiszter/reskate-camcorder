@@ -57,6 +57,10 @@ void draw_camcorder() {
     options.clean_feed = p.clean_feed;
     options.blink_time = p.blink;
     options.hint = p.hint;
+    // While recording the overlay must draw something every frame, or it skips the frame and the
+    // picture is not copied for the clip (camcorder_capture.h): one pixel, all but transparent.
+    if (p.frame.status.transport == Transport::recording)
+        ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, {1, 1}, IM_COL32(0, 0, 0, 1));
     const auto v = layout_viewfinder(p.frame, io.DisplaySize.x, io.DisplaySize.y, options);
     if (!v.visible) return;
     auto *list = ImGui::GetBackgroundDrawList();
