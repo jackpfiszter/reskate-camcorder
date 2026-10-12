@@ -19,10 +19,10 @@ jobs:
         run: |
           missing=0
           for f in src/camcorder/*.cpp; do
-            grep -q "^+ *Extension/Camcorder/Model/camcorder/$(basename "$f")$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+            grep -q "^+ *Extension/Camcorder/Model/camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
           done
           for f in integration/reskate/Extension/Camcorder/*.cpp; do
-            grep -q "^+ *Extension/Camcorder/$(basename "$f")$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+            grep -q "^+ *Extension/Camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
           done
           exit $missing
 
