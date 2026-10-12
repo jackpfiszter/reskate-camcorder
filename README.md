@@ -14,12 +14,12 @@ have come on since).</sub>
 
 ## What you get
 
-- 📼 **The VX1000 and the Century fisheye.** Real zoom, the round black corners at full wide, and
+- 📹 **The VX1000 and the Century fisheye.** Real zoom, the round black corners at full wide, and
   straight lines bending like through the real glass.
 - 🛹 **Film handheld while you skate.** Low on a long grip for the classic follow shot, at the hip,
   or at eye level. It keeps your friend in frame for you, a beat late like a real filmer.
-- 🎥 **Tripods.** Set up to four at a spot, aim them, and cut between angles.
-- 🌈 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, a date stamp set to any
+- 🔭 **Tripods.** Set up to four at a spot, aim them, and cut between angles.
+- 📼 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, a date stamp set to any
   day you like, and a camera light for night sessions.
 - 🔊 **The game's sound in your clips,** heard from where the camera stands. Nothing else from your
   PC gets in.
