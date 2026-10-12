@@ -41,8 +41,8 @@ public:
     Writer &operator=(const Writer &) = delete;
     // Opens `path` for a clip of `size` and starts the encoding thread, and the game's sound unless
     // `sound` is off. `origin_seconds` is the clip's start on the steady clock (the pacer's) and
-    // `started` on the wall clock (for the date stamp); `finish` is the DV look and the stamp, and
-    // with fields the clip runs at 59.94. False and why when it cannot.
+    // `started` on the wall clock (for the date stamp); `finish` is the camera's look, motion and
+    // stamp (the clip runs at clip_rate(finish)). False and why when it cannot.
     bool start(const std::wstring &path, camcorder::VideoSize size, camcorder::Sound sound, double origin_seconds,
                const camcorder::Finish &finish, std::time_t started, std::string &error);
     // Queues a picture; drops it (and counts it) when the encoder is too far behind.

@@ -4,7 +4,7 @@
 using namespace dingosdk::camcorder;
 
 namespace {
-Frame on_frame(Adapter adapter = Adapter::century_fisheye) {
+Frame on_frame(std::optional<Adapter> adapter = century_fisheye()) {
     Camcorder cam;
     cam.set_adapter(adapter);
     cam.power(true);
@@ -69,7 +69,7 @@ TEST(clean_feed_keeps_the_frame_and_lens_only) {
     CHECK(!v.battery.visible);
     CHECK(v.bars.size() == 2);
     CHECK(v.vignette.has_value());
-    const auto stock = layout_viewfinder(on_frame(Adapter::none), 1920, 1080, options);
+    const auto stock = layout_viewfinder(on_frame(std::nullopt), 1920, 1080, options);
     CHECK(!stock.vignette.has_value());
 }
 

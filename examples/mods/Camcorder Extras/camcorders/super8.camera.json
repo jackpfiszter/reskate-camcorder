@@ -1,0 +1,24 @@
+{
+  "name": "Super 8 film",
+  "sensor_mm": [5.79, 4.01],
+  "zoom_mm": [9, 36],
+  "zoom_seconds": [2, 8],
+  "motion": "18p",
+  "lines": 480,
+  "tape_minutes": 3.3,
+  "look": {
+    "format": "Super 8",
+    "black_crush": 0.06,
+    "highlight_gain": 1,
+    "saturation": 1.15,
+    "white_balance_drift": 0.06,
+    "sharpen": 0,
+    "grain": 0.45,
+    "chroma_width": 0,
+    "softness": 1
+  },
+  "stamp": {
+    "lines": "date",
+    "colour": [255, 140, 40]
+  }
+}

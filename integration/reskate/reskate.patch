@@ -674,10 +674,10 @@ index eb18b43..4e700cc 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..f0e4c9c 100644
+index 34634f2..114ddd3 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
-@@ -2,6 +2,20 @@
+@@ -2,6 +2,22 @@
  add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
  target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
  
@@ -686,8 +686,10 @@ index 34634f2..f0e4c9c 100644
 +    Extension/Camcorder/Model/camcorder/audio.cpp
 +    Extension/Camcorder/Model/camcorder/camcorder.cpp
 +    Extension/Camcorder/Model/camcorder/commands.cpp
++    Extension/Camcorder/Model/camcorder/json.cpp
 +    Extension/Camcorder/Model/camcorder/look.cpp
 +    Extension/Camcorder/Model/camcorder/preferences.cpp
++    Extension/Camcorder/Model/camcorder/profiles.cpp
 +    Extension/Camcorder/Model/camcorder/recorder.cpp
 +    Extension/Camcorder/Model/camcorder/rigs.cpp
 +    Extension/Camcorder/Model/camcorder/tape.cpp
@@ -698,7 +700,7 @@ index 34634f2..f0e4c9c 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +55,16 @@ add_library(dingosdk_overlay STATIC
+@@ -41,8 +57,16 @@ add_library(dingosdk_overlay STATIC
      Extension/Trainer/trainer_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp

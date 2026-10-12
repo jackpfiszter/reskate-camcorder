@@ -178,6 +178,22 @@ the console). Turning the DV look on also switches to DV quality (640 x 480).
 - [ ] A still has the look and the stamp too.
 - [ ] HD with the DV look and fields on: watch `ReSkate.log` for "frames were dropped".
 
+### Cameras and lenses from mods
+
+Copy `examples/mods/Camcorder Extras` (or the zip from the Releases page) into the game's `Mods`
+folder, and make sure it is enabled in the mod list.
+
+- [ ] `camcorder mods`: lists vx2000, hi8 and super8, and wide-half, from Camcorder Extras, and
+      "Nothing wrong". The CAMCORDER card shows them as buttons (hover: which mod).
+- [ ] VX2000: zooms further than the VX1000 (12x). Hi8: its look is softer, less saturated, a
+      little grainy, with a yellow stamp bottom left. Super 8: its clips are 18 frames a second,
+      grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
+      about 3 minutes 20.
+- [ ] The 0.5x wide converter: about twice as wide, no bend, slightly dark corners at full wide.
+- [ ] Break a file on purpose (delete a comma, misspell a field), `camcorder mods reload`: the
+      problem is named with its file and line, and the rest still load.
+- [ ] `camcorder export`: `Mods/My Camcorder` appears with the camera and lens in use as files.
+
 ### Settings
 
 - [ ] Change the lens, grip, quality, sound, steer while filming, the tape look and the stamp; quit

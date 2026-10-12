@@ -57,8 +57,15 @@ struct Published {
     std::uint32_t still{};        // counts `camcorder still` requests: each new number takes one
     std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
     std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
-    camcorder::Finish finish;     // `camcorder look|dv|date`: the DV look and the date stamp
+    camcorder::Finish finish;     // `camcorder look|dv|date` and the camera's own look, motion and stamp
+    int own_lines{480};           // the camera's own recording height (quality dv)
     bool warp{true};              // `camcorder warp`: the true fisheye
+    // The cameras and lenses to choose from (built in, and from mods: camcorder/profiles.h).
+    struct Choice {
+        std::string id, name, source; // source: the mod's name, empty when built in
+    };
+    std::vector<Choice> cameras, lenses;
+    std::size_t mod_notes{};      // problems found in the mods' profiles (`camcorder mods`)
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

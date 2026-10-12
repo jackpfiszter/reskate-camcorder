@@ -30,8 +30,8 @@ TEST(commands_power_and_record) {
 
 TEST(commands_change_the_lens_grip_and_lock_on) {
     Camcorder cam;
-    CHECK(run_command(cam, "lens", {"stock"}) == "Stock lens.");
-    CHECK(cam.settings().adapter == Adapter::none);
+    CHECK(run_command(cam, "lens", {"stock"}) == "The camera's own lens.");
+    CHECK(!cam.settings().adapter);
     CHECK(run_command(cam, "lens", {}) == "Century Optics 0.3x fisheye.");
     CHECK(run_command(cam, "grip", {"eye"}) == "Eye level.");
     CHECK(run_command(cam, "grip", {"next"}) == "Long grip.");

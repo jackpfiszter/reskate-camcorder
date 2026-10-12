@@ -91,8 +91,8 @@ PixelBox capture_box(int width, int height) noexcept {
     return box;
 }
 
-VideoSize video_size(Quality quality, const PixelBox &capture) noexcept {
-    const int tallest = quality == Quality::dv ? 480 : 1080;
+VideoSize video_size(Quality quality, const PixelBox &capture, int own_lines) noexcept {
+    const int tallest = quality == Quality::dv ? std::clamp(own_lines, 120, 1080) : 1080;
     const int height = std::max(2, std::min(tallest, capture.height) & ~1);
     return {std::max(2, (height * 4 / 3) & ~1), height};
 }

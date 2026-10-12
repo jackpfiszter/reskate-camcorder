@@ -22,7 +22,7 @@ std::string failed(const char *what, HRESULT result) {
     return text;
 }
 
-HRESULT open_mp4(const std::wstring &path, VideoSize size, bool sound, bool fields, ComPtr<IMFSinkWriter> &writer, DWORD &video,
+HRESULT open_mp4(const std::wstring &path, VideoSize size, bool sound, FrameRate rate, ComPtr<IMFSinkWriter> &writer, DWORD &video,
                  DWORD &audio) {
     ComPtr<IMFAttributes> attributes;
     ComPtr<IMFMediaType> out, in;
@@ -35,13 +35,13 @@ HRESULT open_mp4(const std::wstring &path, VideoSize size, bool sound, bool fiel
         if (SUCCEEDED(r)) r = type->SetGUID(MF_MT_SUBTYPE, subtype);
         if (SUCCEEDED(r)) r = type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         if (SUCCEEDED(r)) r = MFSetAttributeSize(type, MF_MT_FRAME_SIZE, static_cast<UINT32>(size.width), static_cast<UINT32>(size.height));
-        if (SUCCEEDED(r)) r = MFSetAttributeRatio(type, MF_MT_FRAME_RATE, fields ? 60000 : 30000, 1001);
+        if (SUCCEEDED(r)) r = MFSetAttributeRatio(type, MF_MT_FRAME_RATE, static_cast<UINT32>(rate.numerator), static_cast<UINT32>(rate.denominator));
         if (SUCCEEDED(r)) r = MFSetAttributeRatio(type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
         return r;
     };
     hr = MFCreateMediaType(&out);
     if (SUCCEEDED(hr)) hr = describe(out.Get(), MFVideoFormat_H264);
-    if (SUCCEEDED(hr)) hr = out->SetUINT32(MF_MT_AVG_BITRATE, video_bitrate(size, fields ? 60000.0 / 1001 : 30000.0 / 1001));
+    if (SUCCEEDED(hr)) hr = out->SetUINT32(MF_MT_AVG_BITRATE, video_bitrate(size, rate.fps()));
     if (SUCCEEDED(hr)) hr = writer->AddStream(out.Get(), &video);
     if (SUCCEEDED(hr)) hr = MFCreateMediaType(&in);
     if (SUCCEEDED(hr)) hr = describe(in.Get(), MFVideoFormat_NV12);

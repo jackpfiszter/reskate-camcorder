@@ -136,7 +136,7 @@ void save_still(StillJob &job, camcorder_video::RawFrame frame, Finish finish) {
             convert_to_bgra(frame.bytes.data(), frame.pitch, frame.width, frame.height, frame.format, image, frame.white_nits);
             apply_vignette(image, frame.vignette);
             const auto when = local_now();
-            finish_frame(image, finish, DvClip{0.5f}, 0, clip_frame_rate(finish), when);
+            finish_frame(image, finish, DvClip{0.5f}, 0, clip_rate(finish).fps(), when);
             const auto path = folder + L"\\" + camcorder_media::widen(photo_file_name(local_now()));
             std::string error;
             result = camcorder_media::save_jpeg(image, path, error) ? std::pair{true, narrow(path)} : std::pair{false, error};
@@ -360,13 +360,13 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
                 const double origin = now_seconds();
                 if (!folder.empty()) {
                     const auto path = folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now()));
-                    started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box),
+                    started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box, published.own_lines),
                                              published.sound, origin, published.finish, std::time(nullptr), error);
                 }
                 if (started) {
                     c.failed_clip = 0;
                     c.recording = true;
-                    c.pacer.start(origin, clip_frame_rate(published.finish));
+                    c.pacer.start(origin, clip_rate(published.finish).fps());
                 } else {
                     c.failed_clip = status.clip;
                     say(NoticeLevel::warning, "The camcorder cannot record.", error);
@@ -382,7 +382,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
     armed.desc = desc;
     armed.box = box;
     armed.source = *source;
-    armed.vignette = published.frame.optics.fisheye ? published.frame.optics.vignette_radius : 0.0f;
+    armed.vignette = published.frame.optics.vignette_radius;
     armed.due = std::max(due, 0);
     armed.index = c.pacer.first();
     armed.still = still;

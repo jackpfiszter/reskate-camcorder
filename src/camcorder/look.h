@@ -1,43 +1,105 @@
 #pragma once
-// What tape did to the VX1000's picture, for the recorded clips and stills: the DV look and the
-// date stamp. The game's picture is clean and sharp; a 90s part is not.
+// What tape did to the camera's picture, for the recorded clips and stills: the tape look and the
+// date stamp. The game's picture is clean and sharp; a 90s part is not. How much of each a camera
+// gives is its LookProfile (a VX1000's MiniDV by default; a mod's camera brings its own,
+// profiles.h); which parts are applied is the player's DvLook.
 //
-// - Fields: NTSC video is 60 fields a second, each every other line, so motion is smooth and
-//   detail is half height. A clip with fields on runs at 59.94 frames a second, each frame one
-//   field with the lines between filled in, as a player shows interlaced video.
-// - Highlights: a 1/3" CCD clips white hard and early (sky, lights), and its blacks are dense.
+// - Fields: interlaced video is 60 (or 50) fields a second, each every other line, so motion is
+//   smooth and detail is half height. With fields on, an interlaced camera's clip runs at 59.94
+//   (or 50) frames a second, each frame one field with the lines between filled in, as a player
+//   shows interlaced video.
+// - Highlights: a small CCD clips white hard and early, and its blacks are dense. Saturation too.
 // - White balance: the auto white balance never quite settles; the colour drifts warm and cool.
 // - Sharpening: the camera's edge enhancement, a bright and dark halo along hard edges.
-// - Chroma: DV keeps colour at a quarter of the width (4:1:1), so colour smears sideways.
+// - Grain: sensor noise, or film grain.
+// - Chroma: tape keeps colour at a fraction of the width (DV's 4:1:1), so colour smears
+//   sideways; and analogue tape is soft (blur).
 // - The date stamp: the camcorder's own character generator, recorded into the picture.
 //
-// Order, as in the camera: fields (the sensor), highlights, white balance and sharpening (the
-// camera's processing), the date stamp (its character generator), chroma (the tape).
+// Order, as in the camera: fields (the sensor), grain, tone and white balance and sharpening (the
+// camera's processing), the date stamp (its character generator), then softness and chroma (the tape).
 #include "recorder.h"
 #include <array>
 #include <ctime>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace dingosdk::camcorder {
+// How a camera records motion.
+enum class Motion : std::uint8_t {
+    ntsc_60i, // NTSC video: 29.97 frames of two fields (59.94 fields a second)
+    pal_50i,  // PAL video: 25 frames of two fields
+    p30,      // 29.97 whole frames
+    p25,      // 25 whole frames
+    p24,      // 23.976 whole frames (film-like video)
+    p18,      // 18 frames: Super 8
+};
+bool interlaced(Motion) noexcept;
+// "60i", "50i", "30p", "25p", "24p", "18p": the words profiles use.
+std::string_view motion_word(Motion) noexcept;
+bool motion_from_word(std::string_view, Motion &) noexcept;
+
+// Frames a second as a fraction (Media Foundation and MP4 keep it that way).
+struct FrameRate {
+    int numerator{30000}, denominator{1001};
+    double fps() const { return static_cast<double>(numerator) / denominator; }
+    bool operator==(const FrameRate &) const = default;
+};
+
+// How strongly a camera and its tape do each part of the look (profiles.h reads these).
+struct LookProfile {
+    std::string format{"MiniDV"};   // what the menu calls the look ("MiniDV look")
+    float black_crush{0.035f};       // the share of the darkest range pushed to black
+    float highlight_gain{1.1f};      // >1: white arrives early (1.1 clips the top 10%)
+    float saturation{1};             // 1 as the game draws it; Hi8 and VHS are lower
+    float white_balance_drift{0.035f}; // how far red and blue wander, as a gain (0.035 is 3.5%)
+    float sharpen{0.44f};            // edge enhancement, 0 none
+    float grain{0};                  // noise, 0 none, 1 heavy
+    float chroma_width{4};           // colour averaged over this many pixels of a 720-wide picture
+    float softness{0};               // blur, in pixels of a 720-wide picture (VHS about 1.5)
+    bool operator==(const LookProfile &) const = default;
+};
+
+// How a camera's date stamp looks.
+struct StampProfile {
+    enum class Corner : std::uint8_t { bottom_right, bottom_left };
+    enum class Lines : std::uint8_t { time_over_date, date_only, date_over_time };
+    enum class Date : std::uint8_t { month_day_year, day_month_year };
+    Corner corner{Corner::bottom_right};
+    Lines lines{Lines::time_over_date};
+    Date date{Date::month_day_year};
+    std::array<std::uint8_t, 3> colour{235, 235, 235}; // R, G, B
+    bool operator==(const StampProfile &) const = default;
+};
+
+// The player's switches for the look.
 struct DvLook {
     bool on{};             // the whole look; the parts below only count while it is on
     bool fields{true};
-    bool highlights{true};
+    bool highlights{true}; // tone: highlights, blacks, saturation
     bool white_balance{true};
     bool sharpen{true};
-    bool chroma{true};
+    bool chroma{true};     // the tape: colour smear and softness
+    bool grain{true};
     bool operator==(const DvLook &) const = default;
 };
+
 // Everything done to a recorded picture after the lens.
 struct Finish {
     DvLook dv;
     bool date_stamp{};
     int stamp_year{}; // 0: the real year; otherwise the year the stamp says (1996, say)
+    // The camera's: how it records motion, its look and its stamp (profiles.h).
+    Motion motion{Motion::ntsc_60i};
+    LookProfile look;
+    StampProfile stamp;
     bool operator==(const Finish &) const = default;
-    // A clip runs at 59.94 frames a second when its frames are fields.
-    bool fields() const { return dv.on && dv.fields; }
+    // A clip's frames are fields: the look's fields on an interlaced camera.
+    bool fields() const { return dv.on && dv.fields && interlaced(motion); }
 };
-// Frames a second of a clip with this finish: 30000/1001, or 60000/1001 with fields.
+// Frames a second of a clip with this finish (59.94 for a VX1000's fields, 29.97 without).
+FrameRate clip_rate(const Finish &) noexcept;
 double clip_frame_rate(const Finish &) noexcept;
 
 // What changes from frame to frame in one clip: the white balance's wander.
@@ -45,14 +107,15 @@ struct DvClip {
     float seed{}; // where in its wander the white balance starts, 0 to 1 (a clip's own)
 };
 
-// The DV look on frame `index` of a clip running at `frame_rate`. Nothing when `look.on` is false.
-void apply_dv(Image &image, const DvLook &look, const DvClip &clip, std::int64_t index, double frame_rate);
-// The date stamp's two lines, "4:03:22 PM" over "OCT 12 1996", as the VX1000 showed them.
-// `year` 0 keeps the real year.
-std::array<std::string, 2> date_stamp_lines(const std::tm &local_time, int year);
-// Draws them into the bottom right of the picture: white, blocky, with a dark edge.
-void burn_date(Image &image, const std::tm &local_time, int year);
-// The DV look's parts before the stamp, the stamp, then the chroma: one finished frame.
+// The look on frame `index` of a clip running at `frame_rate`. Nothing when `look.on` is false.
+void apply_dv(Image &image, const DvLook &look, const LookProfile &profile, const DvClip &clip, std::int64_t index,
+              double frame_rate);
+// The date stamp's lines, top first: "4:03:22 PM" over "OCT 12 1996" for a VX1000. `year` 0 keeps
+// the real year.
+std::vector<std::string> date_stamp_lines(const std::tm &local_time, int year, const StampProfile & = {});
+// Draws them into a bottom corner of the picture: blocky, with a dark edge.
+void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile & = {});
+// The look's camera parts, the stamp, then the tape: one finished frame.
 void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::int64_t index, double frame_rate,
                   const std::tm &local_time);
 } // namespace dingosdk::camcorder

@@ -9,18 +9,10 @@ constexpr float widest_render = 150.0f;       // degrees: past this a flat rende
 constexpr float widest_approximate = 100.0f;  // degrees: the most a flat stand-in is given
 } // namespace
 
-AdapterSpec adapter_spec(Adapter adapter) noexcept {
-    switch (adapter) {
-    case Adapter::century_fisheye:
-        // 125 degrees across is Century's figure. The shadow's size is set by eye from MK1 footage:
-        // round black corners at full wide that are gone by about 1.5x.
-        return {"Century Optics 0.3x fisheye", true, 125.0f, 1.08f, 0.35f};
-    case Adapter::none:
-    default:
-        return {"Stock lens", false, 0, 0, 0};
-    }
+const Adapter &century_fisheye() {
+    static const Adapter century{"century", "Century Optics 0.3x fisheye", true, 125.0f, 1, 1.08f, 0.35f, {}};
+    return century;
 }
-std::string_view adapter_name(Adapter adapter) noexcept { return adapter_spec(adapter).name; }
 
 float focal_length(float zoom, const LensSpec &lens) noexcept {
     const float z = std::isfinite(zoom) ? std::clamp(zoom, 0.0f, 1.0f) : 0.0f;
@@ -51,14 +43,20 @@ TextureUv warp_uv(const Optics &o, float x, float y, float render_aspect) noexce
     return {0.5f + 0.5f * t.x / (tall * aspect), 0.5f - 0.5f * t.y / tall};
 }
 
-Optics optics(Adapter adapter, float zoom, FisheyeRender render, float render_aspect, const LensSpec &lens) noexcept {
+Optics optics(const Adapter *adapter, float zoom, FisheyeRender render, float render_aspect, const LensSpec &lens) noexcept {
     Optics o;
     o.focal_mm = focal_length(zoom, lens);
     o.zoom_ratio = o.focal_mm / lens.wide_mm;
-    const auto spec = adapter_spec(adapter);
-    if (!spec.fisheye) {
-        o.horizontal_fov = rectilinear_fov(lens.sensor_width_mm, o.focal_mm);
-        o.vertical_fov = rectilinear_fov(lens.sensor_height_mm, o.focal_mm);
+    const auto shadow = [&](float radius, float growth) {
+        const float vignette = radius > 0 ? radius + (o.zoom_ratio - 1) * growth : 0;
+        return vignette > 0 && vignette < picture_corner ? vignette : 0.0f;
+    };
+    if (!adapter || !adapter->fisheye) {
+        // A flat converter scales the focal length (a 0.5x wide halves it).
+        const float magnification = adapter && adapter->magnification > 0 ? adapter->magnification : 1.0f;
+        o.horizontal_fov = rectilinear_fov(lens.sensor_width_mm, o.focal_mm * magnification);
+        o.vertical_fov = rectilinear_fov(lens.sensor_height_mm, o.focal_mm * magnification);
+        if (adapter) o.vignette_radius = shadow(adapter->vignette_radius, adapter->vignette_growth);
         // The 4:3 picture is cut from the middle of the game's wider one, top to bottom: the game's
         // vertical FOV is the picture's.
         o.render_vertical_fov = o.vertical_fov;
@@ -66,10 +64,9 @@ Optics optics(Adapter adapter, float zoom, FisheyeRender render, float render_as
     }
     // Equidistant: the angle shrinks in step with zoom, and is linear in the distance from centre.
     o.fisheye = true;
-    o.horizontal_fov = spec.horizontal_fov_deg / o.zoom_ratio;
+    o.horizontal_fov = adapter->fisheye_fov / o.zoom_ratio;
     o.vertical_fov = o.horizontal_fov * picture_half_height;
-    const float vignette = spec.vignette_radius > 0 ? spec.vignette_radius + (o.zoom_ratio - 1) * spec.vignette_growth : 0;
-    o.vignette_radius = vignette > 0 && vignette < picture_corner ? vignette : 0;
+    o.vignette_radius = shadow(adapter->vignette_radius, adapter->vignette_growth);
     if (render == FisheyeRender::approximate) {
         o.render_vertical_fov = std::min(o.vertical_fov, widest_approximate);
         return o;

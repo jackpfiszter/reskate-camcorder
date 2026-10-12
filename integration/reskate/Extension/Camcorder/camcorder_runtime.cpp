@@ -1,5 +1,7 @@
 #include "camcorder_runtime.h"
 #include "Engine/Core/Log/logging.h"
+#include "Engine/Vfs/mod_catalog.h"
+#include "Engine/Vfs/mod_list.h"
 #include "Engine/Game/UI/game_view.h"
 #include "Extension/Profile/local_profile_runtime.h"
 #include "Extension/Skater/no_bail.h"
@@ -8,6 +10,7 @@
 #include "Extension/UI/Overlay/overlay.h"
 #include "camcorder/commands.h"
 #include "camcorder/preferences.h"
+#include "camcorder/profiles.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -47,6 +50,8 @@ struct State {
     bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
     std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
     bool preferences_loaded{}, loading{};
+    Catalogue catalogue;                 // the built-in cameras and lenses, and the mods'
+    std::vector<std::string> mod_notes;  // what reading the mods' profiles found wrong
     bool was_powered{};
     std::string last_detail;
     std::string refused; // why the game has not handed over its camera, while it has not
@@ -125,7 +130,8 @@ Preferences current_preferences(const State &s) {
     const auto status = s.camcorder.status();
     const auto &dv = s.finish.dv;
     return {
-        {"lens", status.adapter == Adapter::century_fisheye ? "fisheye" : "stock"},
+        {"camera", status.camera_id},
+        {"lens", status.lens_id.empty() ? std::string("stock") : status.lens_id},
         {"warp", on_off(s.warp)},
         {"grip", status.grip == Grip::long_grip ? "long" : status.grip == Grip::hip ? "hip" : "eye"},
         {"lockon", on_off(status.lock_on)},
@@ -140,6 +146,7 @@ Preferences current_preferences(const State &s) {
         {"dv-balance", on_off(dv.white_balance)},
         {"dv-sharpen", on_off(dv.sharpen)},
         {"dv-chroma", on_off(dv.chroma)},
+        {"dv-grain", on_off(dv.grain)},
         {"date", on_off(s.finish.date_stamp)},
         {"date-year", s.finish.stamp_year > 0 ? std::to_string(s.finish.stamp_year) : "now"},
     };
@@ -154,9 +161,95 @@ void save_preferences(const State &s) {
     if (!file) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder: could not save its settings.");
 }
 bool is_setting(std::string_view verb) {
-    for (const auto *name : {"lens", "warp", "grip", "lockon", "head", "aim", "clean", "quality", "sound", "look", "dv", "date"})
+    for (const auto *name : {"camera", "lens", "warp", "grip", "lockon", "head", "aim", "clean", "quality", "sound", "look", "dv", "date"})
         if (verb == name) return true;
     return false;
+}
+
+// The Mods folder, where profiles come from and `camcorder export` writes.
+std::filesystem::path mods_root() { return mods::engine_data_root() / mods::mods_folder; }
+
+// Every enabled mod's camcorders/*.camera.json and *.lens.json (profiles.h), lowest priority first
+// so a higher mod's profile replaces a lower one's with the same id.
+void scan_profiles(State &s) {
+    Catalogue catalogue;
+    std::vector<std::string> notes;
+    std::size_t found = 0;
+    const auto list = mods::scan_mods(mods::engine_data_root());
+    for (auto entry = list.entries.rbegin(); entry != list.entries.rend(); ++entry) {
+        if (!entry->enabled) continue;
+        std::error_code error;
+        const auto folder = entry->mod.directory / L"camcorders";
+        if (!std::filesystem::is_directory(folder, error)) continue;
+        const auto source = entry->mod.title.empty() ? entry->mod.name : entry->mod.title;
+        for (std::filesystem::directory_iterator file(folder, error), end; !error && file != end; file.increment(error)) {
+            const auto name = mods::ascii_path(file->path().filename());
+            const auto kind = profile_file(name);
+            std::error_code ignored;
+            if (!kind || !file->is_regular_file(ignored)) continue;
+            const auto where = entry->mod.name + "/camcorders/" + name + ": ";
+            if (file->file_size(ignored) > 64 * 1024) {
+                notes.push_back(where + "larger than 64 KB; left out.");
+                continue;
+            }
+            std::ifstream in(file->path(), std::ios::binary);
+            std::stringstream text;
+            text << in.rdbuf();
+            const auto take = [&](auto reading) {
+                for (const auto &note : reading.notes) notes.push_back(where + note);
+                if (!reading.profile) {
+                    notes.push_back(where + reading.error + " Left out.");
+                    return;
+                }
+                reading.profile->source = source;
+                catalogue.add(std::move(*reading.profile));
+                ++found;
+            };
+            if (kind->first == ProfileKind::camera) take(read_camera(text.str(), kind->second));
+            else take(read_adapter(text.str(), kind->second));
+        }
+    }
+    s.catalogue = std::move(catalogue);
+    s.mod_notes = std::move(notes);
+    // What is in use takes its profile's numbers now (a mod's VX1000 replaces the built-in one).
+    const auto &settings = s.camcorder.settings();
+    if (const auto *camera = s.catalogue.camera(settings.camera.id); camera && !(*camera == settings.camera))
+        s.camcorder.set_camera(*camera);
+    if (settings.adapter)
+        if (const auto *lens = s.catalogue.adapter(settings.adapter->id)) s.camcorder.set_adapter(*lens);
+    logging::printf(logging::Level::info, logging::Channel::ui, "Camcorder: %zu camera and lens profiles from mods%s.",
+                    found, s.mod_notes.empty() ? "" : " (camcorder mods lists what was wrong with some)");
+    for (const auto &note : s.mod_notes) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder mods: " + note);
+}
+
+// `camcorder export`: the camera and lens in use as a mod to start from, in Mods/My Camcorder.
+std::string export_profiles(const State &s) {
+    const auto folder = mods_root() / L"My Camcorder";
+    const auto profiles = folder / L"camcorders";
+    std::error_code error;
+    std::filesystem::create_directories(profiles, error);
+    // (path::string() throws on characters outside the code page; ascii_path does not.)
+    const auto shown = mods::ascii_path(folder).empty() ? std::string("Mods/My Camcorder") : mods::ascii_path(folder);
+    if (error) return "Could not make " + shown + ".";
+    if (!std::filesystem::exists(folder / mods::manifest_file, error))
+        std::ofstream(folder / mods::manifest_file, std::ios::binary)
+            << "{\n  \"name\": \"My Camcorder\",\n  \"author\": \"\",\n  \"version_number\": \"1.0.0\",\n"
+               "  \"description\": \"Cameras and lenses for the ReSkate camcorder.\"\n}\n";
+    std::string written;
+    const auto write = [&](const std::string &file, const std::string &text) {
+        const auto path = profiles / file;
+        if (std::filesystem::exists(path, error)) {
+            written += " " + file + " is already there (left as it is).";
+            return;
+        }
+        std::ofstream(path, std::ios::binary) << text;
+        written += " Wrote " + file + ".";
+    };
+    const auto &settings = s.camcorder.settings();
+    write(settings.camera.id + ".camera.json", write_camera(settings.camera));
+    if (settings.adapter) write(settings.adapter->id + ".lens.json", write_adapter(*settings.adapter));
+    return "In " + shown + ":" + written +
+           " Change the id (the file name) and the numbers, then camcorder mods reload. docs/MODDING.md has every field.";
 }
 
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
@@ -248,8 +341,22 @@ void publish(State &s, const Frame &frame) {
     s.published.still = s.still;
     s.published.tape = s.tape;
     s.published.capture_tape = s.capture_tape;
-    s.published.finish = s.finish;
+    {
+        // The player's switches, and the camera's own motion, look and stamp.
+        const auto &camera = s.camcorder.settings().camera;
+        auto finish = s.finish;
+        finish.motion = camera.motion;
+        finish.look = camera.look;
+        finish.stamp = camera.stamp;
+        s.published.finish = finish;
+        s.published.own_lines = camera.lines;
+    }
     s.published.warp = s.warp;
+    s.published.cameras.clear();
+    for (const auto &c : s.catalogue.cameras()) s.published.cameras.push_back({c.id, c.name, c.source});
+    s.published.lenses.clear();
+    for (const auto &a : s.catalogue.adapters()) s.published.lenses.push_back({a.id, a.name, a.source});
+    s.published.mod_notes = s.mod_notes.size();
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
     const auto &status = frame.status;
@@ -294,8 +401,9 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
     auto &s = state();
     try {
         if (!s.preferences_loaded) {
-            // Last time's settings, once: each line is a camcorder command.
+            // The mods' cameras and lenses, then last time's settings, once: each line is a camcorder command.
             s.preferences_loaded = true;
+            scan_profiles(s);
             if (const auto path = preferences_path(); !path.empty()) {
                 std::ifstream file(path, std::ios::binary);
                 std::stringstream text;
@@ -431,7 +539,8 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
             // The look belongs at the VX1000's own size, and 60 fields a second in HD is a lot of work.
             s.dv = true;
             save();
-            return "DV look on clips and stills, recorded at 640 x 480 (camcorder quality hd for HD).";
+            return s.camcorder.settings().camera.look.format + " look on clips and stills, recorded at the camera's own " +
+                   std::to_string(s.camcorder.settings().camera.lines) + " lines (camcorder quality hd for HD).";
         }
         save();
         return s.finish.dv.on ? "DV look on clips and stills." : "Clean picture on clips and stills.";
@@ -441,8 +550,8 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         const auto part = words.empty() ? std::string() : words[0];
         bool *flag = part == "fields" ? &dv.fields : part == "highlights" ? &dv.highlights
                    : part == "balance" ? &dv.white_balance : part == "sharpen" ? &dv.sharpen
-                   : part == "chroma" ? &dv.chroma : nullptr;
-        if (!flag) return "Usage: camcorder dv fields|highlights|balance|sharpen|chroma [on|off|toggle]";
+                   : part == "chroma" ? &dv.chroma : part == "grain" ? &dv.grain : nullptr;
+        if (!flag) return "Usage: camcorder dv fields|highlights|balance|sharpen|chroma|grain [on|off|toggle]";
         const std::vector<std::string> rest(words.begin() + 1, words.end());
         *flag = rest.empty() || rest[0] == "toggle" ? !*flag : rest[0] == "on" || rest[0] == "1";
         save();
@@ -496,10 +605,23 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         save();
         return s.clean_feed ? "Clean feed: the frame and lens only." : "Viewfinder readouts on.";
     }
+    if (verb == "mods") {
+        if (!words.empty() && words[0] == "reload") scan_profiles(s);
+        std::string text = "Cameras:";
+        for (const auto &c : s.catalogue.cameras()) text += " " + c.id + (c.source.empty() ? "" : " (" + c.source + ")");
+        text += ". Lenses: stock";
+        for (const auto &a : s.catalogue.adapters()) text += ", " + a.id + (a.source.empty() ? "" : " (" + a.source + ")");
+        text += ".";
+        if (s.mod_notes.empty()) return text + " Nothing wrong in the mods' profiles.";
+        for (const auto &note : s.mod_notes) text += "\n" + note;
+        return text;
+    }
+    if (verb == "export") return export_profiles(s);
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
+    context.catalogue = &s.catalogue;
     auto answer = run_command(s.camcorder, verb, words, context);
-    if (verb == "lens" || verb == "grip" || verb == "lockon" || verb == "head") save();
+    if (verb == "camera" || verb == "lens" || verb == "grip" || verb == "lockon" || verb == "head") save();
     if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.operating)
         answer += " Operate is on: the pad works the camera.";
     else if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.aiming)

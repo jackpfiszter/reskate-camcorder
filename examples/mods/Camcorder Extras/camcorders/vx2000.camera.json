@@ -1,0 +1,9 @@
+{
+  "name": "Sony DCR-VX2000",
+  "zoom_mm": [6, 72],
+  "look": {
+    "highlight_gain": 1.08,
+    "sharpen": 0.36,
+    "white_balance_drift": 0.025
+  }
+}

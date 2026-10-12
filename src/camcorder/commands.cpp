@@ -38,7 +38,7 @@ std::string after(Camcorder &cam) { return describe(cam.status()); }
 } // namespace
 
 const std::vector<std::string_view> &command_verbs() {
-    static const std::vector<std::string_view> verbs{"status", "power", "rec", "stop", "mode", "lens", "grip",
+    static const std::vector<std::string_view> verbs{"status", "power", "rec", "stop", "mode", "camera", "lens", "grip",
                                                      "lockon", "tripod", "head", "height", "tape"};
     return verbs;
 }
@@ -50,9 +50,9 @@ std::string describe(const Status &s) {
     line += s.mode == Mode::tripod ? ", tripod " + std::to_string(s.active_tripod + 1) + " (" +
                                          std::string(head_word(s.head)) + (s.tripod_setup ? ", setup" : "") + ")"
                                    : ", handheld (" + std::string(grip_name(s.grip)) + (s.lock_on ? ", lock on" : "") + ")";
-    line += ", " + std::string(adapter_name(s.adapter));
+    line += ", " + s.camera_name + ", " + s.lens_name;
     char zoom[32];
-    std::snprintf(zoom, sizeof(zoom), ", zoom %.1fx", static_cast<double>(focal_length(s.zoom) / vx1000_lens.wide_mm));
+    std::snprintf(zoom, sizeof(zoom), ", zoom %.1fx", static_cast<double>(s.zoom_ratio));
     line += zoom;
     // Rounded up, as the viewfinder shows it: a fresh 60-minute tape reads 60.
     line += ", " + std::to_string(static_cast<int>(std::ceil(s.tape_remaining / 60))) + " min of tape left";
@@ -88,15 +88,44 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         cam.set_mode(mode);
         return cam.status().mode == mode ? after(cam) : cam.status().message;
     }
+    static const Catalogue built_in;
+    const auto &catalogue = context.catalogue ? *context.catalogue : built_in;
+    if (same(verb, "camera")) {
+        if (same(first, "list")) {
+            std::string list;
+            for (const auto &c : catalogue.cameras())
+                list += (list.empty() ? "" : "\n") + c.id + "  " + c.name + (c.source.empty() ? "" : "  (" + c.source + ")") +
+                        (c.id == cam.settings().camera.id ? "  <- this one" : "");
+            return list;
+        }
+        const CameraProfile *camera = first.empty() || same(first, "next") ? &catalogue.next_camera(cam.settings().camera.id)
+                                                                           : catalogue.camera(first);
+        if (!camera) return "No camera called " + std::string(first) + " (camcorder camera list).";
+        cam.set_camera(*camera);
+        return camera->name + ".";
+    }
     if (same(verb, "lens")) {
-        Adapter adapter{};
-        if (same(first, "fisheye")) adapter = Adapter::century_fisheye;
-        else if (same(first, "stock")) adapter = Adapter::none;
-        else if (first.empty() || same(first, "toggle"))
-            adapter = cam.settings().adapter == Adapter::none ? Adapter::century_fisheye : Adapter::none;
-        else return "Usage: camcorder lens fisheye|stock|toggle";
-        cam.set_adapter(adapter);
-        return std::string(adapter_name(adapter)) + ".";
+        if (same(first, "list")) {
+            const auto &on = cam.settings().adapter;
+            std::string list = std::string("stock  the camera's own lens") + (on ? "" : "  <- this one");
+            for (const auto &a : catalogue.adapters())
+                list += "\n" + a.id + "  " + a.name + (a.source.empty() ? "" : "  (" + a.source + ")") +
+                        (on && on->id == a.id ? "  <- this one" : "");
+            return list;
+        }
+        const Adapter *adapter = nullptr;
+        const std::string current = cam.settings().adapter ? cam.settings().adapter->id : std::string();
+        if (same(first, "stock") || same(first, "none")) adapter = nullptr;
+        else if (same(first, "fisheye")) {
+            adapter = catalogue.fisheye();
+            if (!adapter) return "No fisheye lens to put on.";
+        } else if (first.empty() || same(first, "next") || same(first, "toggle")) adapter = catalogue.next_adapter(current);
+        else {
+            adapter = catalogue.adapter(first);
+            if (!adapter) return "No lens called " + std::string(first) + " (camcorder lens list).";
+        }
+        cam.set_adapter(adapter ? std::optional<Adapter>(*adapter) : std::nullopt);
+        return adapter ? adapter->name + "." : std::string("The camera's own lens.");
     }
     if (same(verb, "grip")) {
         Grip grip{};

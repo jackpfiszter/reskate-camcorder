@@ -13,7 +13,15 @@ std::string_view head_name(TripodRig::Head head) {
 } // namespace
 
 Camcorder::Camcorder(Settings settings)
-    : settings_(settings), handheld_(settings.handheld), deck_(settings.deck) {}
+    : settings_(settings), handheld_(settings.handheld), deck_(settings.deck) {
+    deck_.settings().tape_seconds = settings_.camera.tape_minutes * 60;
+}
+
+void Camcorder::set_camera(const CameraProfile &camera) {
+    settings_.camera = camera;
+    deck_.settings().tape_seconds = camera.tape_minutes * 60;
+    message_ = camera.name + ".";
+}
 
 void Camcorder::power(bool on) {
     if (powered_ == on) return;
@@ -135,7 +143,8 @@ const TripodRig *Camcorder::tripod(int slot) const {
 }
 
 std::string Camcorder::shot_label() const {
-    std::string lens = settings_.adapter == Adapter::century_fisheye ? "fisheye" : "long lens";
+    const auto &adapter = settings_.adapter;
+    const std::string lens = !adapter ? "long lens" : adapter->fisheye ? "fisheye" : adapter->name;
     if (mode_ == Mode::tripod && active_tripod_ >= 0 && tripods_[active_tripod_])
         return "Tripod " + std::to_string(active_tripod_ + 1) + ", " +
                std::string(head_name(tripods_[active_tripod_]->settings().head)) + ", " + lens;
@@ -146,8 +155,9 @@ Frame Camcorder::tick(const TickInput &in) {
     const float dt = std::isfinite(in.dt) ? std::clamp(in.dt, 0.0f, 0.25f) : 0.0f;
     Frame frame;
     if (powered_) {
-        zoom_.step(in.controls.zoom, dt);
-        frame.optics = optics(settings_.adapter, zoom_.position, settings_.fisheye_render, in.render_aspect);
+        zoom_.step(in.controls.zoom, dt, settings_.camera.lens);
+        frame.optics = optics(settings_.adapter ? &*settings_.adapter : nullptr, zoom_.position, settings_.fisheye_render,
+                              in.render_aspect, settings_.camera.lens);
         const Subject *subject = in.subject ? &*in.subject : nullptr;
         if (mode_ == Mode::tripod && !active()) mode_ = Mode::handheld;
         if (mode_ == Mode::tripod) {
@@ -190,7 +200,12 @@ Status Camcorder::status() const {
     if (const auto *clip = deck_.current_clip()) s.clip = clip->number;
     s.zoom = zoom_.position;
     s.zoom_bar = zoom_.shown_for > 0;
-    s.adapter = settings_.adapter;
+    s.zoom_ratio = focal_length(zoom_.position, settings_.camera.lens) / settings_.camera.lens.wide_mm;
+    s.camera_id = settings_.camera.id;
+    s.camera_name = settings_.camera.name;
+    s.lens_id = settings_.adapter ? settings_.adapter->id : std::string();
+    s.lens_name = settings_.adapter ? settings_.adapter->name : "stock lens";
+    s.fisheye = settings_.adapter && settings_.adapter->fisheye;
     s.grip = handheld_.settings().grip;
     s.lock_on = handheld_.settings().lock_on;
     s.head = active_tripod_ >= 0 && tripods_[active_tripod_] ? tripods_[active_tripod_]->settings().head

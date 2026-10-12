@@ -14,6 +14,7 @@
 // camcorder records.
 #include "camera_math.h"
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace dingosdk::camcorder {
@@ -23,24 +24,29 @@ struct LensSpec {
     float max_aperture = 1.6f;
     float fastest_zoom_s = 4.1f, slowest_zoom_s = 20.0f; // servo, wide to tele
     float aspect() const { return sensor_width_mm / sensor_height_mm; }
+    bool operator==(const LensSpec &) const = default;
 };
 inline constexpr LensSpec vx1000_lens{};
 
-enum class Adapter : std::uint8_t {
-    none,            // the stock 5.9-59 mm lens
-    century_fisheye, // Century Optics 0.3x Ultra Fisheye (MK1)
-};
-struct AdapterSpec {
-    std::string_view name;
+// A lens screwed onto the front of the camera's own: a fisheye, or a flat wide or tele converter.
+// The built-in one is the Century below; mods add more (profiles.h). No adapter is the stock lens.
+struct Adapter {
+    std::string id;   // short, for commands and the settings file: "century"
+    std::string name; // "Century Optics 0.3x fisheye"
     bool fisheye{};
-    // Degrees across the 4:3 picture at full wide (fisheye only; a plain adapter scales focal length).
-    float horizontal_fov_deg{};
+    // A fisheye's degrees across the 4:3 picture with the camera's lens at its widest.
+    float fisheye_fov{};
+    // A flat converter's effect on focal length: 0.5 for a half-wide, 1.5 for a tele converter.
+    float magnification{1};
     // The housing's round shadow, as a radius in half picture widths (the picture's corners are at
     // 1.25), at full wide, and how far it opens with each 1x of zoom. 0 means no shadow.
     float vignette_radius{}, vignette_growth{};
+    std::string source; // the mod folder it came from (profiles.h); empty when built in
+    bool operator==(const Adapter &) const = default;
 };
-AdapterSpec adapter_spec(Adapter) noexcept;
-std::string_view adapter_name(Adapter) noexcept;
+// Century Optics 0.3x Ultra Fisheye (MK1), "the death lens": 125 degrees is Century's figure; the
+// shadow's size is set by eye from MK1 footage (round black corners at full wide, gone by about 1.5x).
+const Adapter &century_fisheye();
 
 // How the game camera shows a fisheye. The game renders a flat (rectilinear) picture.
 enum class FisheyeRender : std::uint8_t {
@@ -71,7 +77,8 @@ float focal_length(float zoom, const LensSpec & = vx1000_lens) noexcept;
 float rectilinear_fov(float extent_mm, float focal_mm) noexcept;
 // `render_aspect` is the game's back buffer's width over height (16:9 is 1.778): with the warp, the
 // flat camera must cover the 4:3 picture cut from its middle.
-Optics optics(Adapter, float zoom, FisheyeRender = FisheyeRender::approximate,
+// `adapter` null: the camera's own lens alone.
+Optics optics(const Adapter *adapter, float zoom, FisheyeRender = FisheyeRender::approximate,
               float render_aspect = 16.0f / 9.0f, const LensSpec & = vx1000_lens) noexcept;
 
 // For the warp: a point of the recorded picture, x and y in half picture widths from its centre

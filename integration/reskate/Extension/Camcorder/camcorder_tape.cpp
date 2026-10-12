@@ -34,13 +34,15 @@ bool clip_size(IMFSourceReader *reader, VideoSize &size) {
     size = {static_cast<int>(width) & ~1, static_cast<int>(height) & ~1};
     return true;
 }
-// A clip of fields (look.h) runs at 59.94 frames a second.
-bool has_fields(IMFSourceReader *reader) {
+// A clip's frame rate (its camera's, look.h), 29.97 when it does not say.
+FrameRate reader_rate(IMFSourceReader *reader) {
     ComPtr<IMFMediaType> type;
     UINT32 numerator{}, denominator{};
-    return SUCCEEDED(reader->GetNativeMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &type)) &&
-           SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator)) && denominator &&
-           numerator > 45 * denominator;
+    if (SUCCEEDED(reader->GetNativeMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &type)) &&
+        SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator)) && numerator && denominator &&
+        numerator <= 1'000'000 && denominator <= 1'000'000)
+        return {static_cast<int>(numerator), static_cast<int>(denominator)};
+    return {};
 }
 bool has_sound(IMFSourceReader *reader) {
     ComPtr<IMFMediaType> type;
@@ -104,16 +106,17 @@ struct Capture::Impl {
         };
         // The first readable clip decides the size; any clip with sound gives the tape a sound track.
         VideoSize size{};
-        bool sound = false, fields = false;
+        bool sound = false;
+        FrameRate rate;
         for (const auto &clip : clips)
             if (auto reader = open_clip(clip)) {
-                if (!size.width && clip_size(reader.Get(), size)) fields = has_fields(reader.Get());
+                if (!size.width && clip_size(reader.Get(), size)) rate = reader_rate(reader.Get());
                 sound = sound || has_sound(reader.Get());
             }
         ComPtr<IMFSinkWriter> writer;
         DWORD video_stream{}, audio_stream{};
         HRESULT hr = !camcorder_media::available() ? E_FAIL : size.width ? S_OK : E_INVALIDARG;
-        if (SUCCEEDED(hr)) hr = camcorder_media::open_mp4(path, size, sound, fields, writer, video_stream, audio_stream);
+        if (SUCCEEDED(hr)) hr = camcorder_media::open_mp4(path, size, sound, rate, writer, video_stream, audio_stream);
         if (FAILED(hr)) {
             done.error = size.width ? camcorder_media::failed("Opening the tape file", hr) : "None of the clips could be read.";
         } else {
@@ -161,7 +164,7 @@ struct Capture::Impl {
                     if (flags & MF_SOURCE_READERF_ENDOFSTREAM) reading = false;
                     if (!sample) continue;
                     LONGLONG span{};
-                    if (FAILED(sample->GetSampleDuration(&span)) || span <= 0) span = camcorder_media::frame_time(1, fields);
+                    if (FAILED(sample->GetSampleDuration(&span)) || span <= 0) span = camcorder_media::frame_time(1, rate);
                     if (!packed_nv12(sample.Get(), size, nv12)) { broken = true; break; }
                     if (FAILED(camcorder_media::write_sample(writer.Get(), video_stream, nv12.data(), nv12.size(),
                                                               offset + time, span))) { broken = true; break; }

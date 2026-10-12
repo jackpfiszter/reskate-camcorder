@@ -1,0 +1,25 @@
+{
+  "name": "Hi8 handycam",
+  "sensor_mm": [3.6, 2.7],
+  "zoom_mm": [4.2, 50],
+  "zoom_seconds": [3, 12],
+  "motion": "60i",
+  "lines": 480,
+  "tape_minutes": 120,
+  "look": {
+    "format": "Hi8",
+    "black_crush": 0.05,
+    "highlight_gain": 1.12,
+    "saturation": 0.85,
+    "white_balance_drift": 0.05,
+    "sharpen": 0.6,
+    "grain": 0.12,
+    "chroma_width": 7,
+    "softness": 1.2
+  },
+  "stamp": {
+    "corner": "bottom-left",
+    "lines": "date-time",
+    "colour": [255, 210, 60]
+  }
+}

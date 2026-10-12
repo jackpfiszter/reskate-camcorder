@@ -16,7 +16,7 @@ void register_camcorder_commands(Commands &registry) {
         {"rec", "REC / STBY", nullptr},
         {"stop", "Stop recording", nullptr},
         {"mode", "Film handheld or from a tripod", "handheld|tripod|toggle"},
-        {"lens", "The Century fisheye or the stock lens", "fisheye|stock|toggle"},
+        {"lens", "A lens on the front: the Century fisheye, one a mod adds, or none", "<id>|fisheye|stock|next|list"},
         {"grip", "How the handheld camera is held", "long|hip|eye|next"},
         {"lockon", "Keep the subject framed by yourself", "[on|off|toggle]"},
         {"subject", "Who to film", "<player>|next|none"},
@@ -30,9 +30,12 @@ void register_camcorder_commands(Commands &registry) {
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},
         {"quality", "Record in HD (1440 x 1080) or at the VX1000's own 640 x 480", "hd|dv"},
         {"sound", "Clips without sound, with the game's, or through the VX mic", "off|game|vx"},
+        {"camera", "The camera: the VX1000, or one a mod adds", "<id>|next|list"},
+        {"mods", "The cameras and lenses mods add, and what is wrong with any", "[reload]"},
+        {"export", "Write the camera and lens in use to Mods/My Camcorder, to start a mod from", nullptr},
         {"warp", "The true fisheye (lines bend) or the flat stand-in", "[on|off|toggle]"},
         {"look", "The DV look on clips and stills, or a clean picture", "dv|clean|toggle"},
-        {"dv", "One part of the DV look", "fields|highlights|balance|sharpen|chroma [on|off|toggle]"},
+        {"dv", "One part of the DV look", "fields|highlights|balance|sharpen|chroma|grain [on|off|toggle]"},
         {"date", "The camcorder's date stamp on clips and stills, and the year it says", "[on|off|toggle] | year <yyyy>|now"},
     };
     for (const auto &verb : verbs) {

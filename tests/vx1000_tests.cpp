@@ -12,19 +12,19 @@ TEST(focal_length_spans_the_ten_to_one_zoom) {
 }
 
 TEST(stock_lens_angles_match_a_third_inch_sensor) {
-    const auto wide = optics(Adapter::none, 0);
+    const auto wide = optics(nullptr, 0);
     CHECK_NEAR(wide.horizontal_fov, 44.27, 0.05);
     CHECK_NEAR(wide.vertical_fov, 33.96, 0.05);
     CHECK_NEAR(wide.render_vertical_fov, wide.vertical_fov, 1e-4);
     CHECK(!wide.fisheye);
     CHECK(wide.vignette_radius == 0);
-    const auto tele = optics(Adapter::none, 1);
+    const auto tele = optics(nullptr, 1);
     CHECK_NEAR(tele.horizontal_fov, 4.66, 0.02);
     CHECK_NEAR(tele.zoom_ratio, 10.0, 1e-3);
 }
 
 TEST(century_fisheye_is_125_degrees_with_round_corners_at_wide) {
-    const auto wide = optics(Adapter::century_fisheye, 0);
+    const auto wide = optics(&century_fisheye(), 0);
     CHECK(wide.fisheye);
     CHECK_NEAR(wide.horizontal_fov, 125.0, 1e-3);
     CHECK_NEAR(wide.vertical_fov, 93.75, 1e-3);
@@ -37,15 +37,15 @@ TEST(century_fisheye_is_125_degrees_with_round_corners_at_wide) {
 TEST(fisheye_shadow_clears_after_a_touch_of_zoom) {
     // Zoom position for a 1.6x ratio.
     const float zoom = std::log(1.6f) / std::log(10.0f);
-    const auto o = optics(Adapter::century_fisheye, zoom);
+    const auto o = optics(&century_fisheye(), zoom);
     CHECK_NEAR(o.zoom_ratio, 1.6, 1e-3);
     CHECK(o.vignette_radius == 0);
-    const auto slight = optics(Adapter::century_fisheye, std::log(1.2f) / std::log(10.0f));
-    CHECK(slight.vignette_radius > optics(Adapter::century_fisheye, 0).vignette_radius);
+    const auto slight = optics(&century_fisheye(), std::log(1.2f) / std::log(10.0f));
+    CHECK(slight.vignette_radius > optics(&century_fisheye(), 0).vignette_radius);
 }
 
 TEST(fisheye_source_is_equidistant) {
-    const auto o = optics(Adapter::century_fisheye, 0);
+    const auto o = optics(&century_fisheye(), 0);
     const auto centre = fisheye_source(o, 0, 0);
     CHECK_NEAR(centre.x, 0, 1e-6);
     CHECK_NEAR(centre.y, 0, 1e-6);
@@ -60,7 +60,7 @@ TEST(fisheye_source_is_equidistant) {
 TEST(warp_render_covers_every_visible_point) {
     for (const float aspect : {16.0f / 9.0f, 4.0f / 3.0f, 21.0f / 9.0f}) {
         for (const float zoom : {0.0f, 0.1f, 0.3f}) {
-            const auto o = optics(Adapter::century_fisheye, zoom, FisheyeRender::warp, aspect);
+            const auto o = optics(&century_fisheye(), zoom, FisheyeRender::warp, aspect);
             const double tan_v = std::tan(o.render_vertical_fov * 0.5 * 3.14159265 / 180);
             const double tan_h = tan_v * aspect;
             const float radius = o.vignette_radius > 0 ? o.vignette_radius : 1.25f;
@@ -115,9 +115,9 @@ TEST(zoom_servo_stops_soon_after_release_and_hides_the_bar) {
 
 TEST(warp_uv_maps_the_picture_into_the_flat_render) {
     const float aspect = 16.0f / 9.0f;
-    const auto o = optics(Adapter::century_fisheye, 0.0f, FisheyeRender::warp, aspect);
+    const auto o = optics(&century_fisheye(), 0.0f, FisheyeRender::warp, aspect);
     CHECK(o.warped);
-    CHECK(!optics(Adapter::century_fisheye, 0.0f, FisheyeRender::approximate, aspect).warped);
+    CHECK(!optics(&century_fisheye(), 0.0f, FisheyeRender::approximate, aspect).warped);
     const auto centre = warp_uv(o, 0, 0, aspect);
     CHECK_NEAR(centre.u, 0.5, 1e-6);
     CHECK_NEAR(centre.v, 0.5, 1e-6);

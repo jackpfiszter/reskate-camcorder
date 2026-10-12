@@ -29,34 +29,43 @@ void keep_field(Image &image, int parity) {
 }
 
 // The camera's tone and colour, by table per channel: dense blacks, a hard early white clip, and
-// the white balance's cast (red and blue gains) for this frame.
-void tone_and_balance(Image &image, const DvLook &look, const DvClip &clip, double seconds) {
+// the white balance's cast (red and blue gains) for this frame; then its saturation.
+void tone_and_balance(Image &image, const DvLook &look, const LookProfile &profile, const DvClip &clip, double seconds) {
     float red = 1, blue = 1;
-    if (look.white_balance) {
+    if (look.white_balance && profile.white_balance_drift > 0) {
         // Two slow wanders, never in step: a cast that drifts over tens of seconds, never still.
-        const double phase = clip.seed * two_pi;
-        const double cast = 0.035 * std::sin(seconds * two_pi / 37.0 + phase) + 0.02 * std::sin(seconds * two_pi / 11.0 + 2.1 * phase);
+        const double phase = clip.seed * two_pi, amount = profile.white_balance_drift;
+        const double cast = amount * std::sin(seconds * two_pi / 37.0 + phase) +
+                            0.57 * amount * std::sin(seconds * two_pi / 11.0 + 2.1 * phase);
         red = static_cast<float>(1 + cast);
         blue = static_cast<float>(1 - cast);
     }
+    const float crush = std::clamp(profile.black_crush, 0.0f, 0.5f);
+    const float gain = std::clamp(profile.highlight_gain, 0.5f, 2.0f);
     std::array<std::array<std::uint8_t, 256>, 3> table{}; // B, G, R
     for (int c = 0; c < 3; ++c) {
-        const float gain = c == 0 ? blue : c == 2 ? red : 1.0f;
+        const float balance = c == 0 ? blue : c == 2 ? red : 1.0f;
         for (int i = 0; i < 256; ++i) {
-            float v = i / 255.0f * gain;
+            float v = i / 255.0f * balance;
             if (look.highlights) {
-                v = std::max(0.0f, (v - 0.035f) / 0.965f); // dense blacks
-                v *= 1.1f;                                 // white arrives early, and stays
+                v = std::max(0.0f, (v - crush) / (1 - crush)); // dense blacks
+                v *= gain;                                     // white arrives early, and stays
             }
             table[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)] = byte(static_cast<int>(std::lround(v * 255)));
         }
     }
+    // Saturation in 1/256ths, about luma.
+    const int saturation = look.highlights ? static_cast<int>(std::lround(std::clamp(profile.saturation, 0.0f, 2.0f) * 256)) : 256;
     for_rows(image.height, [&](int first, int last) {
         for (int y = first; y < last; ++y) {
             auto *p = image.pixels.data() + at(image, 0, y);
             for (int x = 0; x < image.width; ++x, p += 4) {
                 for (int c = 0; c < 3; ++c) p[c] = table[static_cast<std::size_t>(c)][p[c]];
-                if (!look.highlights) continue;
+                if (saturation != 256) {
+                    const int yy = (13933 * p[2] + 46871 * p[1] + 4732 * p[0]) >> 16;
+                    for (int c = 0; c < 3; ++c) p[c] = byte(yy + ((p[c] - yy) * saturation >> 8));
+                }
+                if (!look.highlights || gain <= 1) continue;
                 // A clipped channel bleeds into the others: blown highlights go white, not orange.
                 const int top = std::max({p[0], p[1], p[2]});
                 if (top > 236) {
@@ -69,10 +78,11 @@ void tone_and_balance(Image &image, const DvLook &look, const DvClip &clip, doub
 }
 
 // Edge enhancement along the line (as a camera's aperture correction works): each pixel pushed away
-// from the average of its neighbours `reach` pixels either side.
-void sharpen(Image &image) {
+// from the average of its neighbours `reach` pixels either side, by `amount` (0.44 a VX1000's).
+void sharpen(Image &image, float amount) {
     const int w = image.width;
     const int reach = std::max(1, w / 640);
+    const int strength = static_cast<int>(std::lround(std::clamp(amount, 0.0f, 2.0f) * 256));
     for_rows(image.height, [&](int first, int last) {
         std::vector<std::uint8_t> line(static_cast<std::size_t>(w) * 4);
         for (int y = first; y < last; ++y) {
@@ -84,17 +94,63 @@ void sharpen(Image &image) {
                 const auto *m = line.data() + static_cast<std::size_t>(x) * 4;
                 for (int c = 0; c < 3; ++c) {
                     const int detail = 2 * m[c] - l[c] - r[c];
-                    row[x * 4 + c] = byte(m[c] + detail * 7 / 16);
+                    row[x * 4 + c] = byte(m[c] + detail * strength / 512);
                 }
             }
         }
     });
 }
 
-// 4:1:1: luma stays, colour is averaged over four DV pixels' width and smeared sideways.
-void smear_chroma(Image &image) {
+// Noise, the same on every channel (a sensor's or film's), new every frame.
+void add_grain(Image &image, float amount, std::int64_t index) {
+    const int strength = static_cast<int>(std::lround(std::clamp(amount, 0.0f, 1.0f) * 56));
+    if (strength <= 0) return;
+    const auto frame = static_cast<std::uint32_t>(index * 0x9E3779B9u);
+    for_rows(image.height, [&](int first, int last) {
+        for (int y = first; y < last; ++y) {
+            auto *p = image.pixels.data() + at(image, 0, y);
+            for (int x = 0; x < image.width; ++x, p += 4) {
+                std::uint32_t h = static_cast<std::uint32_t>(x) * 0x85EBCA6Bu ^ static_cast<std::uint32_t>(y) * 0xC2B2AE35u ^ frame;
+                h ^= h >> 15;
+                h *= 0x2C1B3C6Du;
+                h ^= h >> 12;
+                // Two uniform draws added: a softer, more grain-like spread than one.
+                const int noise = (static_cast<int>(h & 0xff) + static_cast<int>((h >> 8) & 0xff) - 255) * strength / 255;
+                for (int c = 0; c < 3; ++c) p[c] = byte(p[c] + noise);
+            }
+        }
+    });
+}
+
+// Analogue tape's softness: a sideways blur of `radius` pixels.
+void soften(Image &image, int radius) {
+    if (radius < 1) return;
+    const int w = image.width, span = 2 * radius + 1;
+    for_rows(image.height, [&](int first, int last) {
+        std::vector<std::uint8_t> line(static_cast<std::size_t>(w) * 4);
+        for (int y = first; y < last; ++y) {
+            auto *row = image.pixels.data() + at(image, 0, y);
+            std::copy(row, row + line.size(), line.begin());
+            for (int c = 0; c < 3; ++c) {
+                const auto px = [&](int x) { return static_cast<int>(line[static_cast<std::size_t>(std::clamp(x, 0, w - 1)) * 4 + static_cast<std::size_t>(c)]); };
+                int sum = 0;
+                for (int x = -radius; x <= radius; ++x) sum += px(x);
+                for (int x = 0; x < w; ++x) {
+                    row[x * 4 + c] = static_cast<std::uint8_t>((sum + span / 2) / span);
+                    sum += px(x + radius + 1) - px(x - radius);
+                }
+            }
+        }
+    });
+}
+
+// 4:1:1 and the like: luma stays, colour is averaged over `width` pixels of a 720-wide picture
+// and smeared sideways.
+void smear_chroma(Image &image, float width) {
     const int w = image.width;
-    const int span = std::max(4, (w * 4 + 360) / 720) | 1; // 4 DV pixels of 720, odd so it centres
+    if (!(width > 1)) return;
+    // `width` of a 720-wide picture, and never fewer pixels than that (odd, so it centres).
+    const int span = std::max(static_cast<int>(std::lround(width)), static_cast<int>(std::lround(width * w / 720.0f))) | 1;
     const int half = span / 2;
     for_rows(image.height, [&](int first, int last) {
         std::vector<int> luma(static_cast<std::size_t>(w)), cb(luma.size()), cr(luma.size());
@@ -131,15 +187,19 @@ void smear_chroma(Image &image) {
     });
 }
 
-void dv_camera(Image &image, const DvLook &look, const DvClip &clip, std::int64_t index, double frame_rate) {
+void dv_camera(Image &image, const DvLook &look, const LookProfile &profile, bool fields, const DvClip &clip,
+               std::int64_t index, double frame_rate) {
     if (!look.on || image.width <= 0 || image.height <= 0) return;
-    if (look.fields) keep_field(image, static_cast<int>(index & 1));
+    if (fields) keep_field(image, static_cast<int>(index & 1));
+    if (look.grain) add_grain(image, profile.grain, index);
     const double seconds = frame_rate > 0 ? static_cast<double>(index) / frame_rate : 0;
-    if (look.highlights || look.white_balance) tone_and_balance(image, look, clip, seconds);
-    if (look.sharpen) sharpen(image);
+    if (look.highlights || look.white_balance) tone_and_balance(image, look, profile, clip, seconds);
+    if (look.sharpen && profile.sharpen > 0) sharpen(image, profile.sharpen);
 }
-void dv_tape(Image &image, const DvLook &look) {
-    if (look.on && look.chroma && image.width > 0 && image.height > 0) smear_chroma(image);
+void dv_tape(Image &image, const DvLook &look, const LookProfile &profile) {
+    if (!look.on || !look.chroma || image.width <= 0 || image.height <= 0) return;
+    soften(image, static_cast<int>(std::lround(std::clamp(profile.softness, 0.0f, 8.0f) * image.width / 720.0f)));
+    smear_chroma(image, std::clamp(profile.chroma_width, 0.0f, 16.0f));
 }
 
 // 5 x 7 dots a character, each row 5 bits from the left.
@@ -170,7 +230,7 @@ const Glyph *glyph(char c) {
         if (g.c == c) return &g;
     return nullptr; // a space, or anything the camera could not show
 }
-void fill(Image &image, int x0, int y0, int x1, int y1, std::uint8_t value) {
+void fill(Image &image, int x0, int y0, int x1, int y1, const std::array<std::uint8_t, 3> &rgb) {
     x0 = std::max(x0, 0);
     y0 = std::max(y0, 0);
     x1 = std::min(x1, image.width);
@@ -178,7 +238,9 @@ void fill(Image &image, int x0, int y0, int x1, int y1, std::uint8_t value) {
     for (int y = y0; y < y1; ++y)
         for (int x = x0; x < x1; ++x) {
             auto *p = image.pixels.data() + at(image, x, y);
-            p[0] = p[1] = p[2] = value;
+            p[0] = rgb[2];
+            p[1] = rgb[1];
+            p[2] = rgb[0];
         }
 }
 // Each lit dot of `text`, right-aligned to `right`, its top at `top`, `dot` pixels a dot.
@@ -195,47 +257,98 @@ template <class Dot> void each_dot(const std::string &text, int right, int top, 
 }
 } // namespace
 
-double clip_frame_rate(const Finish &finish) noexcept { return finish.fields() ? 2 * ntsc_frame_rate : ntsc_frame_rate; }
+bool interlaced(Motion motion) noexcept { return motion == Motion::ntsc_60i || motion == Motion::pal_50i; }
 
-void apply_dv(Image &image, const DvLook &look, const DvClip &clip, std::int64_t index, double frame_rate) {
-    dv_camera(image, look, clip, index, frame_rate);
-    dv_tape(image, look);
+std::string_view motion_word(Motion motion) noexcept {
+    switch (motion) {
+    case Motion::ntsc_60i: return "60i";
+    case Motion::pal_50i: return "50i";
+    case Motion::p30: return "30p";
+    case Motion::p25: return "25p";
+    case Motion::p24: return "24p";
+    case Motion::p18: return "18p";
+    }
+    return "60i";
 }
 
-std::array<std::string, 2> date_stamp_lines(const std::tm &t, int year) {
+bool motion_from_word(std::string_view word, Motion &motion) noexcept {
+    for (const auto m : {Motion::ntsc_60i, Motion::pal_50i, Motion::p30, Motion::p25, Motion::p24, Motion::p18})
+        if (word == motion_word(m)) {
+            motion = m;
+            return true;
+        }
+    return false;
+}
+
+FrameRate clip_rate(const Finish &finish) noexcept {
+    const int twice = finish.fields() ? 2 : 1;
+    switch (finish.motion) {
+    case Motion::ntsc_60i:
+    case Motion::p30: return {30000 * twice, 1001};
+    case Motion::pal_50i:
+    case Motion::p25: return {25 * twice, 1};
+    case Motion::p24: return {24000, 1001};
+    case Motion::p18: return {18, 1};
+    }
+    return {30000, 1001};
+}
+double clip_frame_rate(const Finish &finish) noexcept { return clip_rate(finish).fps(); }
+
+void apply_dv(Image &image, const DvLook &look, const LookProfile &profile, const DvClip &clip, std::int64_t index,
+              double frame_rate) {
+    dv_camera(image, look, profile, look.fields, clip, index, frame_rate);
+    dv_tape(image, look, profile);
+}
+
+std::vector<std::string> date_stamp_lines(const std::tm &t, int year, const StampProfile &stamp) {
     static constexpr const char *months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
     const int hour = t.tm_hour % 12 == 0 ? 12 : t.tm_hour % 12;
+    const char *month = months[std::clamp(t.tm_mon, 0, 11)];
+    const int shown_year = year > 0 ? year : t.tm_year + 1900;
     char time[32], date[32];
     std::snprintf(time, sizeof(time), "%d:%02d:%02d %s", hour, t.tm_min, t.tm_sec, t.tm_hour < 12 ? "AM" : "PM");
-    std::snprintf(date, sizeof(date), "%s %d %d", months[std::clamp(t.tm_mon, 0, 11)], t.tm_mday,
-                  year > 0 ? year : t.tm_year + 1900);
+    if (stamp.date == StampProfile::Date::day_month_year)
+        std::snprintf(date, sizeof(date), "%d %s %d", t.tm_mday, month, shown_year);
+    else
+        std::snprintf(date, sizeof(date), "%s %d %d", month, t.tm_mday, shown_year);
+    switch (stamp.lines) {
+    case StampProfile::Lines::date_only: return {date};
+    case StampProfile::Lines::date_over_time: return {date, time};
+    case StampProfile::Lines::time_over_date: break;
+    }
     return {time, date};
 }
 
-void burn_date(Image &image, const std::tm &local_time, int year) {
+void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile &stamp) {
     if (image.width < 64 || image.height < 48) return;
-    const auto lines = date_stamp_lines(local_time, year);
+    const auto lines = date_stamp_lines(local_time, year, stamp);
     const int dot = std::max(1, static_cast<int>(std::lround(image.height / 130.0)));
     const int edge = std::max(1, dot / 3);
     // Inside the picture's safe area, as the camera kept it.
-    const int right = image.width - static_cast<int>(image.width * 0.07f);
+    const int margin = static_cast<int>(image.width * 0.07f);
+    const bool left = stamp.corner == StampProfile::Corner::bottom_left;
     const int bottom = image.height - static_cast<int>(image.height * 0.08f);
     const int line_height = 9 * dot;
-    const int top = bottom - 2 * line_height + 2 * dot;
-    // The dark edge first, then the white dots over it.
+    const int count = static_cast<int>(lines.size());
+    const int top = bottom - count * line_height + 2 * dot;
+    // The dark edge first, then the dots over it.
     for (int pass = 0; pass < 2; ++pass)
-        for (int i = 0; i < 2; ++i)
-            each_dot(lines[static_cast<std::size_t>(i)], right, top + i * line_height, dot, [&](int x, int y) {
-                if (pass == 0) fill(image, x - edge, y - edge, x + dot + edge, y + dot + edge, 16);
-                else fill(image, x, y, x + dot, y + dot, 235);
+        for (int i = 0; i < count; ++i) {
+            const auto &text = lines[static_cast<std::size_t>(i)];
+            const int width = static_cast<int>(text.size()) * 6 * dot - dot;
+            const int right = left ? margin + width : image.width - margin;
+            each_dot(text, right, top + i * line_height, dot, [&](int x, int y) {
+                if (pass == 0) fill(image, x - edge, y - edge, x + dot + edge, y + dot + edge, {16, 16, 16});
+                else fill(image, x, y, x + dot, y + dot, stamp.colour);
             });
+        }
 }
 
 void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::int64_t index, double frame_rate,
                   const std::tm &local_time) {
-    dv_camera(image, finish.dv, clip, index, frame_rate);
-    if (finish.date_stamp) burn_date(image, local_time, finish.stamp_year);
-    dv_tape(image, finish.dv);
+    dv_camera(image, finish.dv, finish.look, finish.fields(), clip, index, frame_rate);
+    if (finish.date_stamp) burn_date(image, local_time, finish.stamp_year, finish.stamp);
+    dv_tape(image, finish.dv, finish.look);
 }
 } // namespace dingosdk::camcorder

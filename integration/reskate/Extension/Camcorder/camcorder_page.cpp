@@ -27,7 +27,7 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     const auto &s = published.frame.status;
     ImGui::BeginChild("camcorder-body", ImVec2(0, page_body_height(menu)));
 
-    begin_card(menu, "camcorder-camera", "SONY VX1000", "The camera of 90s skate video. MiniDV, 4:3, a 10x zoom.");
+    begin_card(menu, "camcorder-camera", "CAMCORDER", "The VX1000 was the camera of 90s skate video; mods add others.");
     info(menu, "Now", describe(s));
     if (primary_button(menu, s.powered ? "TURN THE CAMERA OFF" : "TURN THE CAMERA ON"))
         run(menu, callbacks, s.powered ? "power off" : "power on");
@@ -41,11 +41,30 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     int mode = s.mode == Mode::tripod ? 1 : 0;
     if (choice(menu, "camcorder-mode", mode, {"HANDHELD", "TRIPOD"}))
         run(menu, callbacks, mode ? "mode tripod" : "mode handheld");
-    field(menu, "Lens", "The Century 0.3x fisheye of every 90s part, or the VX1000's own lens.");
-    int lens = s.adapter == Adapter::century_fisheye ? 0 : 1;
-    if (choice(menu, "camcorder-lens", lens, {"FISHEYE", "STOCK LENS"}))
-        run(menu, callbacks, lens ? "lens stock" : "lens fisheye");
-    if (s.adapter == Adapter::century_fisheye) {
+    // Buttons that wrap: mods can add any number of cameras and lenses.
+    const auto pick = [&](const char *id, const std::vector<camcorder_runtime::Published::Choice> &items,
+                          const std::string &current, const char *verb, const char *none) {
+        ImGui::PushID(id);
+        bool first = true;
+        const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+        const auto button = [&](const std::string &label, const std::string &word, bool on, const std::string &tip) {
+            const float width = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+            if (!first && ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + width < right) ImGui::SameLine();
+            first = false;
+            ImGui::PushID(word.c_str());
+            if (small_button(label.c_str(), on)) run(menu, callbacks, std::string(verb) + " " + word);
+            if (!tip.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip.c_str());
+            ImGui::PopID();
+        };
+        if (none) button(none, "stock", current.empty(), "");
+        for (const auto &item : items) button(item.name, item.id, item.id == current, item.source.empty() ? "" : "From " + item.source);
+        ImGui::PopID();
+    };
+    field(menu, "Camera", "Its zoom, tape, frame rate, look and date stamp. Mods add cameras (hover for which).");
+    pick("camcorder-cameras", published.cameras, s.camera_id, "camera", nullptr);
+    field(menu, "Lens", "The Century 0.3x fisheye of every 90s part, the camera's own lens, or a mod's.");
+    pick("camcorder-lenses", published.lenses, s.lens_id, "lens", "STOCK LENS");
+    if (s.fisheye) {
         bool bend = published.warp;
         if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
             run(menu, callbacks, bend ? "warp on" : "warp off");
@@ -106,21 +125,24 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     }
     end_card();
 
-    begin_card(menu, "camcorder-look", "TAPE LOOK", "What MiniDV did to the picture. On clips and stills, not the screen.");
     const auto &finish = published.finish;
+    const std::string format = finish.look.format;
+    begin_card(menu, "camcorder-look", "TAPE LOOK", ("What " + format + " did to the picture. On clips and stills, not the screen.").c_str());
     bool dv_look = finish.dv.on;
-    if (toggle_row(menu, "DV look", "Video motion, hard white, drifting colour, sharpened edges, smeared colour. Sets DV quality.", dv_look))
+    const std::string look_label = format + " look";
+    if (toggle_row(menu, look_label.c_str(), "The camera's motion, highlights, colour drift, sharpening, grain and tape smear. Sets its own size.", dv_look))
         run(menu, callbacks, dv_look ? "look dv" : "look clean");
     if (finish.dv.on) {
         const auto part = [&](const char *label, const char *detail, bool on, const char *word) {
             bool value = on;
             if (toggle_row(menu, label, detail, value)) run(menu, callbacks, std::string("dv ") + word + (value ? " on" : " off"));
         };
-        part("Fields", "60 a second: smooth video motion, half the lines each.", finish.dv.fields, "fields");
+        if (interlaced(finish.motion)) part("Fields", "60 (or 50) a second: smooth video motion, half the lines each.", finish.dv.fields, "fields");
         part("Highlights", "White clips early and hard; blacks are dense.", finish.dv.highlights, "highlights");
         part("White balance", "The colour drifts warm and cool.", finish.dv.white_balance, "balance");
         part("Sharpening", "Bright and dark halos on hard edges.", finish.dv.sharpen, "sharpen");
-        part("Colour smear", "DV's 4:1:1: colour bleeds sideways.", finish.dv.chroma, "chroma");
+        part("Tape smear", "Colour bleeds sideways (DV's 4:1:1), and analogue tape softens.", finish.dv.chroma, "chroma");
+        if (finish.look.grain > 0) part("Grain", "Sensor noise or film grain.", finish.dv.grain, "grain");
     }
     bool stamp = finish.date_stamp;
     if (toggle_row(menu, "Date stamp", "The camera's date and time in the corner.", stamp))
@@ -137,9 +159,10 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     end_card();
 
     begin_card(menu, "camcorder-tape", "TAPE", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
-    field(menu, "Quality", "HD for sharing, or the VX1000's own 640 x 480.");
+    field(menu, "Quality", "HD for sharing, or the camera's own size.");
     int quality = published.dv ? 1 : 0;
-    if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", "DV 640 x 480"}))
+    const std::string own = "OWN " + std::to_string(published.own_lines * 4 / 3) + " x " + std::to_string(published.own_lines);
+    if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", own.c_str()}))
         run(menu, callbacks, quality ? "quality dv" : "quality hd");
     field(menu, "Sound", "The game's own sound (nothing else on your PC), or as the VX1000's mic heard it.");
     int sound = static_cast<int>(published.sound);
@@ -162,6 +185,12 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     note("Steer while filming: you keep skating on the keyboard or left stick and buttons; the mouse (or right "
          "stick) aims and the wheel (or triggers) zooms. Mouse or right-stick tricks wait until you turn it off.");
     note("Settings are kept between games.");
+    note("Cameras and lenses from mods: Mods/<mod>/camcorders/*.camera.json and *.lens.json. camcorder mods lists them, "
+         "camcorder export writes the ones in use to Mods/My Camcorder to start from.");
+    if (published.mod_notes) {
+        const std::string warning = std::to_string(published.mod_notes) + " problem(s) in the mods' camera profiles: camcorder mods.";
+        note(warning.c_str());
+    }
     note("Put the camcorder on keys or buttons in SETTINGS > CONTROLS: Camcorder on / off, REC, camera controls, "
          "steer while filming, set up a tripod, next tripod, take a still. Every action is also a console command: camcorder status.");
     end_card();

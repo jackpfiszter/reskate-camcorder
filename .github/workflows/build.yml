@@ -79,7 +79,12 @@ jobs:
         run: |
           cp LICENSE README.md docs/TESTING.md package/
           cd package && zip -r "../ReSkate-camcorder-${GITHUB_REF_NAME}.zip" .
+      # The example camera mod, ready to drop into Mods (or upload to the mod browser).
+      - name: Zip the example mod
+        run: cd examples/mods && zip -r "../../Camcorder-Extras-mod-${GITHUB_REF_NAME}.zip" "Camcorder Extras"
       - uses: softprops/action-gh-release@v2
         with:
-          files: ReSkate-camcorder-*.zip
+          files: |
+            ReSkate-camcorder-*.zip
+            Camcorder-Extras-mod-*.zip
           generate_release_notes: true

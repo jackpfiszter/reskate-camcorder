@@ -6,6 +6,7 @@
 //
 // Nothing here touches the game: the ReSkate side (integration/reskate) reads the world, hands
 // this the numbers and applies the shot through ReSkate's camera lease.
+#include "profiles.h"
 #include "rigs.h"
 #include "tape.h"
 #include "vx1000.h"
@@ -22,7 +23,8 @@ enum class Mode : std::uint8_t {
 inline constexpr std::size_t tripod_slots = 4;
 
 struct Settings {
-    Adapter adapter = Adapter::century_fisheye;
+    CameraProfile camera = vx1000();                    // the body: its lens, tape and look
+    std::optional<Adapter> adapter = century_fisheye(); // on the front; none is the stock lens
     FisheyeRender fisheye_render = FisheyeRender::approximate;
     HandheldRig::Settings handheld; // the handheld rig's at construction (then set_grip, set_lock_on)
     TripodRig::Settings tripod;     // for tripods set up from now on
@@ -53,8 +55,11 @@ struct Status {
     double battery{1};
     std::uint32_t clip{};                  // the clip being recorded or last recorded; 0 none
     float zoom{};                          // 0 wide, 1 tele
+    float zoom_ratio{1};                   // 1x at wide
     bool zoom_bar{};                       // the zoom bar is up
-    Adapter adapter{};
+    std::string camera_id, camera_name;    // the body
+    std::string lens_id, lens_name;        // the adapter; an empty id is the stock lens
+    bool fisheye{};
     Grip grip{};
     bool lock_on{};
     TripodRig::Head head{};
@@ -80,7 +85,10 @@ public:
     // REC / STBY, as the button under the thumb.
     void toggle_record();
     void set_mode(Mode);
-    void set_adapter(Adapter adapter) { settings_.adapter = adapter; }
+    // A new body: its lens and its cassette's length from now on (the zoom keeps its place).
+    void set_camera(const CameraProfile &camera);
+    // A lens on the front, or none for the camera's own.
+    void set_adapter(std::optional<Adapter> adapter) { settings_.adapter = std::move(adapter); }
     void set_grip(Grip grip) { handheld_.settings().grip = grip; }
     // Points the handheld camera this way in the world (it then turns with the filmer).
     void aim_handheld(YawPitch aim) { handheld_.face(aim); }

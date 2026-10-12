@@ -125,6 +125,16 @@ What "record" can mean, from cheapest to most real:
    with the normal camera, like real self-filming. Needs the replay editor's playback and export
    driven from code.
 
+## Cameras and lenses as data
+
+The VX1000 and the Century are profiles (`profiles.h`): the camera's sensor, zoom range and
+speeds, how it records motion, its own recording size, cassette length, look and date stamp; a
+lens's fisheye angle or converter factor and its housing's shadow. Mods add more as JSON files in
+`Mods/<mod>/camcorders`, read from enabled mods at start (`camcorder mods reload` again), every
+field optional and checked, so a mod is data only like every other ReSkate mod. The model reads
+and tests them on its own (a small JSON reader, `json.h`), so a mod that loads in the tests loads
+in the game. [MODDING.md](MODDING.md) is the reference.
+
 ## A second view (not yet possible)
 
 The wish: skate with the normal camera and see the camcorder's shot in a small window, like a

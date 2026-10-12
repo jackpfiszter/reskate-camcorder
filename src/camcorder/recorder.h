@@ -20,13 +20,14 @@ PixelBox capture_box(int width, int height) noexcept;
 
 enum class Quality : std::uint8_t {
     hd, // 1440 x 1080 (or the picture's own size when smaller): sharp, for sharing today
-    dv, // 640 x 480: the VX1000's own resolution (720 x 480 DV shown at 4:3)
+    dv, // the camera's own: 640 x 480 for the VX1000 (720 x 480 DV shown at 4:3), a profile's `lines`
 };
 struct VideoSize {
     int width{}, height{};
     bool operator==(const VideoSize &) const = default;
 };
-VideoSize video_size(Quality, const PixelBox &capture) noexcept;
+// `own_lines`: the camera's own height (CameraProfile::lines), for Quality::dv.
+VideoSize video_size(Quality, const PixelBox &capture, int own_lines = 480) noexcept;
 // Bits a second for the encoder: about what the picture needs at `frame_rate` (29.97 or 59.94).
 std::uint32_t video_bitrate(const VideoSize &, double frame_rate = 30000.0 / 1001.0) noexcept;
 

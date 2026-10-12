@@ -10,8 +10,10 @@ add_library(camcorder STATIC
     src/camcorder/audio.cpp
     src/camcorder/camcorder.cpp
     src/camcorder/commands.cpp
+    src/camcorder/json.cpp
     src/camcorder/look.cpp
     src/camcorder/preferences.cpp
+    src/camcorder/profiles.cpp
     src/camcorder/recorder.cpp
     src/camcorder/rigs.cpp
     src/camcorder/tape.cpp
@@ -35,11 +37,14 @@ if(BUILD_TESTING)
         tests/command_tests.cpp
         tests/look_tests.cpp
         tests/preference_tests.cpp
+        tests/profile_tests.cpp
         tests/recorder_tests.cpp
         tests/rig_tests.cpp
         tests/tape_tests.cpp
         tests/viewfinder_tests.cpp
         tests/vx1000_tests.cpp)
     target_link_libraries(camcorder_tests PRIVATE camcorder)
+    # The example mod must always load cleanly: modders copy it.
+    target_compile_definitions(camcorder_tests PRIVATE CAMCORDER_EXAMPLE_MODS="${CMAKE_CURRENT_SOURCE_DIR}/examples/mods")
     add_test(NAME camcorder_tests COMMAND camcorder_tests)
 endif()

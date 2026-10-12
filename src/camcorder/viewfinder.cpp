@@ -29,7 +29,7 @@ Viewfinder layout_viewfinder(const Frame &frame, float width, float height, cons
             v.bars.push_back({0, p.y + p.height, width, height - p.y - p.height});
         }
     }
-    if (frame.optics.fisheye && frame.optics.vignette_radius > 0)
+    if (frame.optics.vignette_radius > 0)
         v.vignette = Circle{p.x + p.width * 0.5f, p.y + p.height * 0.5f, frame.optics.vignette_radius * p.width * 0.5f};
     if (options.clean_feed) return v;
 

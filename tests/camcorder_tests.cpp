@@ -28,7 +28,7 @@ TEST(camcorder_on_films_handheld_through_the_fisheye) {
     CHECK(frame.shot.valid);
     CHECK(frame.optics.fisheye);
     CHECK(frame.status.mode == Mode::handheld);
-    cam.set_adapter(Adapter::none);
+    cam.set_adapter(std::nullopt);
     CHECK(!cam.tick(tick_at()).optics.fisheye);
 }
 

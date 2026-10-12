@@ -8,7 +8,8 @@
 //   camcorder rec                       REC / STBY
 //   camcorder stop
 //   camcorder mode handheld|tripod|toggle
-//   camcorder lens fisheye|stock|toggle
+//   camcorder camera <id>|next|list     the body (profiles.h: mods add more)
+//   camcorder lens <id>|fisheye|stock|next|list
 //   camcorder grip long|hip|eye|next
 //   camcorder lockon [on|off|toggle]
 //   camcorder tripod place|next|setup [on|off|toggle]|remove [1-4]|<1-4>
@@ -24,7 +25,8 @@
 
 namespace dingosdk::camcorder {
 struct CommandContext {
-    Filmer filmer; // where a new tripod goes
+    Filmer filmer;                      // where a new tripod goes
+    const Catalogue *catalogue{};       // the cameras and lenses to choose from; none: the built-in ones
 };
 // The verbs this parser knows, for the console's completion and help.
 const std::vector<std::string_view> &command_verbs();

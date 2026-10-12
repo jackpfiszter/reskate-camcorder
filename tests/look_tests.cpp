@@ -46,7 +46,7 @@ TEST(dv_look_off_leaves_the_picture_alone) {
     auto image = gradient(64, 48);
     const auto before = image.pixels;
     DvLook look; // off
-    apply_dv(image, look, {}, 3, 59.94);
+    apply_dv(image, look, LookProfile{}, {}, 3, 59.94);
     CHECK(image.pixels == before);
 }
 
@@ -57,7 +57,7 @@ TEST(a_field_fills_the_other_lines_from_its_own) {
     for (int parity = 0; parity < 2; ++parity) {
         auto image = gradient(32, 24);
         const auto before = image;
-        apply_dv(image, look, {}, parity, 59.94);
+        apply_dv(image, look, LookProfile{}, {}, parity, 59.94);
         for (int y = 0; y < 24; ++y) {
             if (y % 2 == parity) {
                 CHECK(std::equal(pixel(image, 0, y), pixel(image, 0, y) + 32 * 4, pixel(before, 0, y)));
@@ -79,7 +79,7 @@ TEST(highlights_clip_white_early_and_blacks_get_dense) {
     const std::uint8_t values[3][3] = {{8, 8, 8}, {240, 240, 240}, {120, 160, 250}};
     for (int i = 0; i < 3; ++i)
         for (int c = 0; c < 3; ++c) image.pixels[static_cast<std::size_t>(i * 4 + c)] = values[i][c];
-    apply_dv(image, look, {}, 0, 29.97);
+    apply_dv(image, look, LookProfile{}, {}, 0, 29.97);
     CHECK(pixel(image, 0, 0)[0] < 8);   // dark goes darker
     CHECK(pixel(image, 1, 0)[0] == 255); // bright white clips
     // A blown channel pulls the others toward white.
@@ -97,7 +97,7 @@ TEST(white_balance_wanders_over_a_clip) {
     int lowest = 255, highest = 0;
     for (int second = 0; second < 40; ++second) {
         auto image = grey;
-        apply_dv(image, look, {0.3f}, static_cast<std::int64_t>(second * 30), 30.0);
+        apply_dv(image, look, LookProfile{}, {0.3f}, static_cast<std::int64_t>(second * 30), 30.0);
         const int red_minus_blue = image.pixels[2] - image.pixels[0];
         lowest = std::min(lowest, red_minus_blue);
         highest = std::max(highest, red_minus_blue);
@@ -114,7 +114,7 @@ TEST(sharpening_rings_on_an_edge) {
     Image image;
     image.resize(16, 1);
     for (int x = 0; x < 16; ++x) std::fill_n(image.pixels.begin() + x * 4, 3, static_cast<std::uint8_t>(x < 8 ? 60 : 180));
-    apply_dv(image, look, {}, 0, 29.97);
+    apply_dv(image, look, LookProfile{}, {}, 0, 29.97);
     CHECK(pixel(image, 7, 0)[0] < 60);  // the dark side darker at the edge
     CHECK(pixel(image, 8, 0)[0] > 180); // the bright side brighter
     CHECK(pixel(image, 2, 0)[0] == 60); // flat areas untouched
@@ -135,7 +135,7 @@ TEST(chroma_smears_colour_but_keeps_brightness) {
     const auto luma = [](const std::uint8_t *p) { return 0.2126 * p[2] + 0.7152 * p[1] + 0.0722 * p[0]; };
     std::vector<double> before;
     for (int x = 0; x < 40; ++x) before.push_back(luma(pixel(image, x, 0)));
-    apply_dv(image, look, {}, 0, 29.97);
+    apply_dv(image, look, LookProfile{}, {}, 0, 29.97);
     CHECK(pixel(image, 16, 0)[2] > pixel(image, 16, 0)[0] + 10); // colour reaches past the bar
     CHECK(pixel(image, 19, 0)[2] < 230);                          // and is weaker in it
     for (int x = 0; x < 40; ++x) CHECK(std::abs(luma(pixel(image, x, 0)) - before[static_cast<std::size_t>(x)]) < 4);

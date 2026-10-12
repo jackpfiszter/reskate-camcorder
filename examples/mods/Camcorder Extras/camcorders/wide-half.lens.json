@@ -1,0 +1,6 @@
+{
+  "name": "0.5x wide converter",
+  "fisheye": false,
+  "magnification": 0.5,
+  "vignette": [1.2, 0.5]
+}
