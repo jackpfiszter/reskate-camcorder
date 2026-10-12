@@ -95,13 +95,13 @@ struct Writer::Impl {
             scale_bgra(picture, scaled);
             apply_vignette(scaled, frame->vignette);
             const bool fields = finish.fields();
-            const bool finishing = finish.dv.on || finish.date_stamp;
-            if (!finishing) bgra_to_nv12(scaled, nv12);
+            const bool styled = finish.dv.on || finish.date_stamp;
+            if (!styled) bgra_to_nv12(scaled, nv12);
             Image finished;
             for (int i = 0; i < frame->repeats && !failed; ++i) {
                 // On the clip's clock: after a stall the picture skips ahead with the sound.
                 const auto index = frame->index + i;
-                if (finishing) {
+                if (styled) {
                     // Each repeat is its own frame of tape: the other field, the next second of the stamp.
                     finished = scaled;
                     finish_frame(finished, finish, dv_clip, index, clip_frame_rate(finish), when(index));
