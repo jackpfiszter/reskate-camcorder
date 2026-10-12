@@ -5,10 +5,14 @@ and your friends the way 90s skate videos were shot, without the replay editor. 
 VX1000 with a Century fisheye and chase the skater, or set up tripods at the spot, press REC,
 and skate the line.
 
-[![A kickflip under a gantry, through the fisheye: a still from the demo edit](docs/demo.jpg)](https://vimeo.com/1235181226)
+<!-- DEMO VIDEO: drag the MP4 onto the empty line below this comment (in the github.com editor),
+     then delete this comment and the still underneath. -->
 
-**▶ [Watch the demo edit](https://vimeo.com/1235181226)**, filmed in game with the camcorder (an
-earlier version: the look and the camera light have come on since).
+
+![A kickflip under a gantry, through the fisheye: a still from the demo edit](docs/demo.jpg)
+
+The demo edit, filmed in game with the camcorder (an earlier version: the look and the camera
+light have come on since).
 
 > **Status: early, in testing.** Filming, recording to MP4 and sound work in game. The
 > camcorder's model (camera, lens, zoom, tape, rigs, viewfinder, commands) is unit-tested, and
