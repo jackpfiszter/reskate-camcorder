@@ -12,20 +12,31 @@ Mods/
       vx2000.camera.json           a camera
       hi8.camera.json              another
       wide-half.lens.json          a lens
+      pole.grip.json               a way of holding it
+      handling.json                how it all feels (optional; one per mod)
 ```
 
+ReSkate.dll holds only the camcorder's workings (taking the camera, the controls, the picture,
+recording, sound). Everything about a particular camera, and every number that sets how filming
+feels, is data like this, so it can change from one mod release to the next with no ReSkate
+update.
+
 `examples/mods/Camcorder Extras` in this repository is a complete one (the VX2000, a Hi8
-handycam, Super 8 film and a 0.5x wide converter): copy it and change it. The quickest start is
-in the game: choose the camera and lens closest to what you want, then type `camcorder export`.
-That writes them, every field filled in, to `Mods/My Camcorder`.
+handycam, Super 8 film, a 0.5x wide converter, a pole cam and a board cam): copy it and change
+it. The quickest start is in the game: choose the camera, lens and grip closest to what you want,
+then type `camcorder export`. That writes them, and the handling in use, every field filled in,
+to `Mods/My Camcorder`.
 
 ## How the camcorder reads them
 
 - The file name is the id: `vx2000.camera.json` is the camera `vx2000`, used in the console
   (`camcorder camera vx2000`) and the settings file. Ids are lowercase letters, digits, `-` and
   `_`, up to 32.
-- **Every field is optional.** What a camera leaves out is the VX1000's, and what a lens leaves
-  out is the Century fisheye's. So the VX2000 is just its name and its longer zoom.
+- **Every field is optional.** What a camera leaves out is the VX1000's, what a lens leaves out
+  is the Century fisheye's, and what a grip leaves out is the long grip's. So the VX2000 is just
+  its name and its longer zoom.
+- `handling.json` is layered instead: each mod's changes only the numbers it gives, a higher
+  mod's over a lower one's, over the camcorder's own.
 - A profile with the id of a built-in one, or of one in a mod lower in the load order, replaces
   it. A `vx1000.camera.json` can retune the built-in VX1000.
 - Values outside their range are brought into it, and unknown fields are ignored. Either way the
@@ -73,6 +84,66 @@ These apply to clips and stills when the player turns the look on (the TAPE LOOK
 | `lines` | `"time-date"` | `time-date` `date-time` `date` | What it shows, top line first |
 | `date` | `"month-day-year"` | `month-day-year` `day-month-year` | `OCT 12 1996` or `12 OCT 1996` |
 | `colour` | `[235, 235, 235]` | 0 to 255 each | Red, green, blue. Film cameras' stamps were orange |
+
+### `mic`
+
+The camera's own microphone, used when the player records with `camcorder sound mic` (CAMERA MIC).
+
+| Field | Default (VX1000) | Range | What it is |
+|---|---|---|---|
+| `high_cut` | `120` | 10 to 2000 | Hz: little below this (a small capsule has no bass) |
+| `low_cut` | `9000` | 1000 to 23000 | Hz: rolled off above this |
+| `target` | `0.25` | 0.02 to 0.9 | The level its automatic level control aims for |
+| `most_gain` | `3` | 0 to 10 | The most it turns a quiet room up (the pumping) |
+| `attack` | `0.01` | 0.001 to 0.5 | Seconds to duck a slam |
+| `release` | `0.4` | 0.02 to 5 | Seconds to bring the room back up |
+| `drive` | `1.2` | 0.1 to 5 | How hard it pushes into the converter: loud hits round off |
+
+## Grips (`<id>.grip.json`)
+
+A way of holding the camera handheld, listed beside Long grip, Hip and Eye level.
+
+| Field | Default (long grip) | Range | What it is |
+|---|---|---|---|
+| `name` | the id | up to 48 characters | What the menu shows |
+| `height` | `0.45` | 0.05 to 3 | The lens above the feet, standing, metres |
+| `side` | `0.35` | -1 to 1 | Out to the right (negative: left) |
+| `ahead` | `0.55` | -1 to 2 | In front of the body (negative: behind) |
+| `pitch` | `5` | -60 to 60 | Degrees it starts tilted up (negative: down) |
+| `crouch` | `0.92` | 0.5 to 1.2 | On a board the filmer crouches: heights times this (1 for a rig fixed to the board) |
+| `shake` | `1` | 0 to 4 | The hand shake times this: a pole wobbles more, a mount less |
+
+## Handling (`handling.json`)
+
+How filming feels. Every number is optional; the defaults are the camcorder's own.
+
+| Section | Field | Default | Range | What it is |
+|---|---|---|---|---|
+| `filmer` | `reaction` | `1.6` | 0.2 to 10 | Hz: how fast the filmer swings onto a locked-on subject |
+| | `look_speed` | `2.2` | 0.2 to 10 | Radians a second at full stick, at wide |
+| | `aim_height` | `0.8` | 0 to 2 | Metres above a subject's feet to frame (handheld and tripods) |
+| | `lead` | `0.12` | 0 to 1 | Seconds: aim where the subject is going |
+| | `steadiness` | `0.5` | 0 to 1 | 0 a nervous first-timer, 1 a seasoned filmer |
+| | `max_nudge` | `25` | 0 to 60 | Degrees the stick shifts the framing off a locked-on subject |
+| | `raise_speed` | `0.8` | 0.05 to 5 | Metres a second the camera rises and drops (LB / RB) |
+| | `lowest`, `highest` | `0.12`, `2.3` | 0.02 to 4 | The handheld lens's range above the feet |
+| | `height_step` | `0.15` | 0.01 to 1 | Metres a `camcorder height up` / `down` moves it |
+| `shake` | `hands`, `wheels`, `footsteps` | `1` each | 0 to 5 | How much of each kind of shake |
+| `tripod` | `height` | `1.1` | 0.15 to 2 | A new tripod's height |
+| | `drag` | `0.35` | 0.02 to 3 | Seconds the fluid head takes to answer |
+| | `pan_speed` | `1.4` | 0.1 to 10 | Radians a second at full handle, at wide |
+| | `follow` | `1.1` | 0.1 to 10 | Hz: how fast a following head swings after the subject |
+| `controls` | `mouse` | `0.0025` | 0.0002 to 0.02 | Radians of aim a pixel of mouse movement |
+| | `wheel_notch` | `0.15` | 0.02 to 1 | Seconds of zoom a mouse wheel notch gives |
+
+For example, a steadier filmer with a faster mouse:
+
+```json
+{
+  "filmer": { "steadiness": 0.85 },
+  "controls": { "mouse": 0.004 }
+}
+```
 
 ## Lenses (`<id>.lens.json`)
 

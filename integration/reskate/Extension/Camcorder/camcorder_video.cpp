@@ -192,7 +192,7 @@ bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double
         // Each clip's white balance starts somewhere of its own in its wander.
         s.dv_clip.seed = static_cast<float>(origin_seconds - std::floor(origin_seconds));
     }
-    if (with_sound) s.audio.start(origin_seconds, sound);
+    if (with_sound) s.audio.start(origin_seconds, sound, finish.mic);
     s.thread = std::thread([&s] { s.run(); });
     return true;
 }

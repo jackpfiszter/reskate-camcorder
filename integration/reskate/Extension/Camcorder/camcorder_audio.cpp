@@ -70,7 +70,7 @@ struct Capture::Impl {
     std::thread thread;
     HANDLE stop_event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
 
-    void run(double origin, Sound mode) {
+    void run(double origin, Sound mode, MicProfile mic_profile) {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         const auto fail = [&](std::string why) {
             std::lock_guard lock(mutex);
@@ -111,7 +111,7 @@ struct Capture::Impl {
             if (SUCCEEDED(hr)) hr = client->Start();
             if (FAILED(hr)) return fail(failed("Setting up the game's sound capture", hr));
             track.start(origin);
-            VxMic mic;
+            VxMic mic(mic_profile);
             Limiter limiter;
             std::vector<float> sound;
             std::vector<std::int16_t> packet;
@@ -173,7 +173,7 @@ Capture::~Capture() {
     if (impl_->stop_event) CloseHandle(impl_->stop_event);
 }
 
-void Capture::start(double origin_seconds, Sound sound) {
+void Capture::start(double origin_seconds, Sound sound, MicProfile mic) {
     auto &s = *impl_;
     stop();
     {
@@ -182,7 +182,7 @@ void Capture::start(double origin_seconds, Sound sound) {
         s.error.clear();
     }
     ResetEvent(s.stop_event);
-    s.thread = std::thread([&s, origin_seconds, sound] { s.run(origin_seconds, sound); });
+    s.thread = std::thread([&s, origin_seconds, sound, mic] { s.run(origin_seconds, sound, mic); });
 }
 
 std::vector<std::int16_t> Capture::take() {

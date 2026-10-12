@@ -64,7 +64,7 @@ struct Published {
     struct Choice {
         std::string id, name, source; // source: the mod's name, empty when built in
     };
-    std::vector<Choice> cameras, lenses;
+    std::vector<Choice> cameras, lenses, grips;
     std::size_t mod_notes{};      // problems found in the mods' profiles (`camcorder mods`)
 };
 Published published() noexcept;

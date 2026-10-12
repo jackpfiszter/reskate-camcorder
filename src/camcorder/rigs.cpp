@@ -23,7 +23,7 @@ HandShake::HandShake(std::uint32_t seed) noexcept {
     for (std::uint32_t i = 0; i < 12; ++i) phases_[i] = hash_phase(seed, i);
 }
 
-HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float steadiness) noexcept {
+HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float steadiness, const Amounts &amounts) noexcept {
     dt = clamp_dt(dt);
     time_ += dt;
     const float t = time_;
@@ -36,60 +36,48 @@ HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float st
                c * std::sin(t * 2 * pi * 2.3f + p[2]);
     };
     Offset o;
-    o.yaw = calm * wave(0, 0.006f, 0.004f, 0.0015f);
-    o.pitch = calm * wave(1, 0.005f, 0.003f, 0.0015f);
-    o.roll = calm * wave(2, 0.008f, 0.004f, 0.002f);
+    const float hands = calm * std::max(amounts.hands, 0.0f);
+    o.yaw = hands * wave(0, 0.006f, 0.004f, 0.0015f);
+    o.pitch = hands * wave(1, 0.005f, 0.003f, 0.0015f);
+    o.roll = hands * wave(2, 0.008f, 0.004f, 0.002f);
     if (on_board) {
         // Wheels on concrete: a fast buzz that grows with speed.
-        const float buzz = std::min(speed / 8.0f, 1.0f) * 0.0025f * (0.5f + calm);
+        const float buzz = std::min(speed / 8.0f, 1.0f) * 0.0025f * (0.5f + calm) * std::max(amounts.wheels, 0.0f);
         o.pitch += buzz * std::sin(t * 2 * pi * 11.0f + phases_[9]);
         o.yaw += buzz * 0.6f * std::sin(t * 2 * pi * 13.7f + phases_[10]);
     } else if (speed > 0.3f) {
         // Footsteps: about two a second walking, three running; the camera dips with each.
         step_phase_ = std::fmod(step_phase_ + dt * std::clamp(1.2f + speed * 0.35f, 1.2f, 3.4f), 1.0f);
-        const float bob = std::min(speed / 5.0f, 1.0f) * (0.5f + calm);
+        const float bob = std::min(speed / 5.0f, 1.0f) * (0.5f + calm) * std::max(amounts.footsteps, 0.0f);
         o.position[1] = -0.025f * bob * std::abs(std::sin(step_phase_ * pi));
         o.roll += 0.01f * bob * std::sin(step_phase_ * 2 * pi + phases_[11]);
     }
     return o;
 }
 
-std::string_view grip_name(Grip grip) noexcept {
-    switch (grip) {
-    case Grip::long_grip: return "Long grip";
-    case Grip::hip: return "Hip";
-    case Grip::eye_level: return "Eye level";
-    }
-    return "Long grip";
+const GripProfile &long_grip() {
+    static const GripProfile grip{};
+    return grip;
 }
-
-float grip_height(Grip grip, bool on_board) noexcept {
-    float height = 0.45f;
-    switch (grip) {
-    case Grip::long_grip: height = 0.45f; break; // a handle's length off the ground: the fisheye follow shot
-    case Grip::hip: height = 1.0f; break;
-    case Grip::eye_level: height = 1.6f; break;
-    }
-    // A filmer on a board crouches: everything sits a little lower.
-    return on_board ? height * 0.92f : height;
+const GripProfile &hip_grip() {
+    static const GripProfile grip{"hip", "Hip", 1.0f, 0.3f, 0.3f, -3, 0.92f, 1, {}};
+    return grip;
+}
+const GripProfile &eye_grip() {
+    static const GripProfile grip{"eye", "Eye level", 1.6f, 0.08f, 0.3f, -3, 0.92f, 1, {}};
+    return grip;
 }
 
 float HandheldRig::lens_height(bool on_board) const {
-    return std::clamp(grip_height(settings_.grip, on_board) + lift_, lowest, highest);
+    const float low = std::max(settings_.lowest, 0.0f), high = std::max(settings_.highest, low);
+    return std::clamp(settings_.grip.height_on(on_board) + lift_, low, high);
 }
 
 Vec3 HandheldRig::grip_position(const Filmer &filmer) const {
     const auto forward = flat_forward(filmer.forward);
     const auto right = flat_right(forward);
-    // Out to the right hand and ahead of the body. Eye level sits clear in front of the face: the
-    // filmer is the player's own skater, whose head is drawn (from inside it the view would be the
-    // inside of the head).
-    float side = 0, ahead = 0;
-    switch (settings_.grip) {
-    case Grip::long_grip: side = 0.35f; ahead = 0.55f; break;
-    case Grip::hip: side = 0.3f; ahead = 0.3f; break;
-    case Grip::eye_level: side = 0.08f; ahead = 0.3f; break;
-    }
+    // Out to the right hand and ahead of the body, as the grip holds it.
+    const float side = settings_.grip.side, ahead = settings_.grip.ahead;
     // From the feet: the root less what it sits above them.
     const Vec3 feet{filmer.position[0], filmer.position[1] - root_above_feet_, filmer.position[2]};
     return add(add(add(feet, {0, lens_height(filmer.on_board), 0}), mul(right, side)), mul(forward, ahead));
@@ -126,13 +114,14 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     // LB / RB (or R / F, or `camcorder height`) raise and lower it, about a metre in a second and a bit.
     if (const float raise = clamp_unit(input.raise); raise != 0) {
         const float now = lens_height(filmer.on_board);
-        set_lift(lift_ + std::clamp(now + raise * 0.8f * dt, lowest, highest) - now);
+        const float low = std::max(settings_.lowest, 0.0f), high = std::max(settings_.highest, low);
+        set_lift(lift_ + std::clamp(now + raise * settings_.raise_speed * dt, low, high) - now);
     }
     const auto eye = grip_position(filmer);
     const auto facing = flat_forward(filmer.forward);
     const float heading = std::atan2(facing[0], facing[2]);
     // Start looking the way the filmer faces, level.
-    if (!started_) face({heading, settings_.grip == Grip::long_grip ? 5 * degrees : -3 * degrees});
+    if (!started_) face({heading, settings_.grip.pitch * degrees});
     if (offset_pending_) {
         offset_yaw_ = wrap_angle(yaw_.value - heading);
         offset_pending_ = false;
@@ -173,7 +162,12 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     roll_ = damp(roll_, std::clamp(-turn * 0.06f, -8 * degrees, 8 * degrees), 0.25f, dt);
 
     const float speed = std::sqrt(filmer.velocity[0] * filmer.velocity[0] + filmer.velocity[2] * filmer.velocity[2]);
-    const auto shake = shake_.step(dt, std::isfinite(speed) ? speed : 0, filmer.on_board, settings_.steadiness);
+    HandShake::Amounts amounts = settings_.shake;
+    const float hold = std::max(settings_.grip.shake, 0.0f);
+    amounts.hands *= hold;
+    amounts.wheels *= hold;
+    amounts.footsteps *= hold;
+    const auto shake = shake_.step(dt, std::isfinite(speed) ? speed : 0, filmer.on_board, settings_.steadiness, amounts);
     Shot shot;
     shot.camera = camera_matrix(add(eye, shake.position), yaw_.value + shake.yaw, pitch_.value + shake.pitch,
                                 roll_ + shake.roll);

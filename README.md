@@ -36,10 +36,13 @@ and skate the line.
 - **The tape look.** Optionally, clips and stills look like MiniDV: 60 fields of video motion,
   a CCD's hard white, drifting colour, sharpened edges, smeared colour, and the camcorder's date
   stamp (any year you like).
-- **More cameras and lenses, from mods.** Cameras and lenses are small JSON files in an ordinary
-  ReSkate mod: zoom, sensor, frame rate (60i, 50i, 30p, 25p, 24p, Super 8's 18), tape length, the
-  look and the date stamp. `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8
-  film and a wide converter; [docs/MODDING.md](docs/MODDING.md) has every field.
+- **Everything about a camera is data, from mods.** Cameras, lenses and grips are small JSON files
+  in an ordinary ReSkate mod: zoom, sensor, frame rate (60i, 50i, 30p, 25p, 24p, Super 8's 18),
+  tape length, the look, the date stamp, the mic; a grip's height and reach; and a `handling.json`
+  for how it all feels (aim speed, operator lag, shake, tripods, mouse). ReSkate.dll keeps only
+  the workings, so the camcorder can change through the mod browser with no ReSkate update.
+  `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8 film, a wide converter,
+  a pole cam and a board cam; [docs/MODDING.md](docs/MODDING.md) has every field.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
   numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
   back to back in one MP4, ready to edit.

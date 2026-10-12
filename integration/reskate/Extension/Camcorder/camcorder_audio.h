@@ -16,7 +16,8 @@ public:
     Capture &operator=(const Capture &) = delete;
     // Starts capturing for a clip that starts at `origin_seconds` (the steady clock, as the picture's
     // pacer). Returns at once; whether it worked comes later through error().
-    void start(double origin_seconds, camcorder::Sound sound);
+    // With Sound::vx_mic the sound goes through `mic`, the camera's own (its profile's).
+    void start(double origin_seconds, camcorder::Sound sound, camcorder::MicProfile mic = {});
     // What has been captured since the last call, interleaved stereo, on the clip's clock.
     std::vector<std::int16_t> take();
     // Stops capturing; what was captured can still be taken.

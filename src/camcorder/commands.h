@@ -10,7 +10,7 @@
 //   camcorder mode handheld|tripod|toggle
 //   camcorder camera <id>|next|list     the body (profiles.h: mods add more)
 //   camcorder lens <id>|fisheye|stock|next|list
-//   camcorder grip long|hip|eye|next
+//   camcorder grip <id>|next|list        long, hip, eye, or a mod's
 //   camcorder lockon [on|off|toggle]
 //   camcorder tripod place|next|setup [on|off|toggle]|remove [1-4]|<1-4>
 //   camcorder head locked|manual|follow|next

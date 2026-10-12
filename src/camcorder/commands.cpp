@@ -49,7 +49,7 @@ std::string describe(const Status &s) {
     line += format_counter(s.counter_seconds);
     line += s.mode == Mode::tripod ? ", tripod " + std::to_string(s.active_tripod + 1) + " (" +
                                          std::string(head_word(s.head)) + (s.tripod_setup ? ", setup" : "") + ")"
-                                   : ", handheld (" + std::string(grip_name(s.grip)) + (s.lock_on ? ", lock on" : "") + ")";
+                                   : ", handheld (" + s.grip_name + (s.lock_on ? ", lock on" : "") + ")";
     line += ", " + s.camera_name + ", " + s.lens_name;
     char zoom[32];
     std::snprintf(zoom, sizeof(zoom), ", zoom %.1fx", static_cast<double>(s.zoom_ratio));
@@ -128,15 +128,20 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         return adapter ? adapter->name + "." : std::string("The camera's own lens.");
     }
     if (same(verb, "grip")) {
-        Grip grip{};
-        if (same(first, "long")) grip = Grip::long_grip;
-        else if (same(first, "hip")) grip = Grip::hip;
-        else if (same(first, "eye")) grip = Grip::eye_level;
-        else if (first.empty() || same(first, "next"))
-            grip = static_cast<Grip>((static_cast<int>(cam.status().grip) + 1) % 3);
-        else return "Usage: camcorder grip long|hip|eye|next";
-        cam.set_grip(grip);
-        return std::string(grip_name(grip)) + ".";
+        const auto current = cam.handheld().settings().grip.id;
+        if (same(first, "list")) {
+            std::string list;
+            for (const auto &g : catalogue.grips())
+                list += (list.empty() ? "" : "\n") + g.id + "  " + g.name + (g.source.empty() ? "" : "  (" + g.source + ")") +
+                        (g.id == current ? "  <- this one" : "");
+            return list;
+        }
+        std::string id(first);
+        for (auto &c : id) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        const GripProfile *grip = first.empty() || same(first, "next") ? &catalogue.next_grip(current) : catalogue.grip(id);
+        if (!grip) return "No grip called " + std::string(first) + " (camcorder grip list).";
+        cam.set_grip(*grip);
+        return grip->name + ".";
     }
     if (same(verb, "lockon")) {
         const auto on = switch_word(words, 0, cam.status().lock_on);
@@ -184,7 +189,7 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
     }
     if (same(verb, "height")) {
         // A step a press: bound to a key or a button, it moves the camera a hand's width.
-        constexpr float step = 0.15f;
+        const float step = cam.handling().height_step;
         const bool up = same(first, "up"), down = same(first, "down"), reset = same(first, "reset");
         float metres{};
         const auto [end, error] = std::from_chars(first.data(), first.data() + first.size(), metres);
@@ -201,9 +206,10 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
             return text;
         }
         const auto &rig = cam.handheld();
-        const float base = grip_height(rig.settings().grip, true);
+        const float base = rig.settings().grip.height_on(true);
         const float lift = up ? rig.lift() + step : down ? rig.lift() - step : reset ? 0.0f : metres - base;
-        cam.set_handheld_lift(std::clamp(base + lift, HandheldRig::lowest, HandheldRig::highest) - base);
+        const float low = rig.settings().lowest, high = std::max(rig.settings().highest, low);
+        cam.set_handheld_lift(std::clamp(base + lift, low, high) - base);
         std::snprintf(text, sizeof(text), "Camera held %.2f m up.", static_cast<double>(cam.handheld().lens_height(true)));
         return text;
     }

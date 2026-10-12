@@ -39,17 +39,17 @@ void place_packet(AudioTimeline &timeline, double seconds, const std::int16_t *s
 void VxMic::process(float *interleaved, std::size_t frames) noexcept {
     if (!interleaved) return;
     constexpr float pi = 3.14159265f, rate = static_cast<float>(audio_rate);
-    const auto coefficient = [](float seconds) { return 1 - std::exp(-1 / (seconds * rate)); };
-    // A small capsule: little below 120 Hz, rolled off above 9 kHz.
-    constexpr float high_cut = 120.0f, low_cut = 9000.0f;
+    const auto coefficient = [](float seconds) { return 1 - std::exp(-1 / (std::max(seconds, 1e-4f) * rate)); };
+    // A small capsule: little below the high cut, rolled off above the low cut.
+    const float high_cut = std::clamp(mic_.high_cut, 10.0f, 2000.0f), low_cut = std::clamp(mic_.low_cut, 1000.0f, 23000.0f);
     const float high_a = 1 / (1 + 2 * pi * high_cut / rate);
     const float low_a = 1 - std::exp(-2 * pi * low_cut / rate);
     // The level control: it hears a level smoothed over a few milliseconds, ducks a slam over 10 ms
     // and brings the room back up over 400 ms; the gain it sets moves smoothly too. (Following each
     // sample, as it once did, rode the gain within the waveform: pops came out as crunchy clicks.)
-    const float detect = coefficient(0.003f), attack = coefficient(0.01f), release = coefficient(0.4f);
+    const float detect = coefficient(0.003f), attack = coefficient(mic_.attack), release = coefficient(mic_.release);
     const float glide = coefficient(0.015f);
-    constexpr float target = 0.25f, most_gain = 3.0f, drive = 1.2f;
+    const float target = mic_.target, most_gain = std::max(mic_.most_gain, 0.0f), drive = std::max(mic_.drive, 0.05f);
     for (std::size_t i = 0; i < frames; ++i) {
         float x[audio_channels];
         float loudest = 0;

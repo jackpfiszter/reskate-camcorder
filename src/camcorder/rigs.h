@@ -14,6 +14,7 @@
 #include "camera_math.h"
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace dingosdk::camcorder {
@@ -47,6 +48,12 @@ struct Shot {
     Matrix camera{};
 };
 
+// How much of each kind of hand shake (1 as built; a data mod's handling.json sets them).
+struct ShakeAmounts {
+    float hands{1}, wheels{1}, footsteps{1};
+    bool operator==(const ShakeAmounts &) const = default;
+};
+
 // Smooth, repeatable hand shake: a person breathing and holding a 1.5 kg camera, the board's
 // wheels on the ground, footsteps. Small angles; at tele they fill the frame, as they did.
 class HandShake {
@@ -55,28 +62,43 @@ public:
         float yaw{}, pitch{}, roll{}; // radians
         Vec3 position{};              // metres
     };
+    using Amounts = ShakeAmounts;
     explicit HandShake(std::uint32_t seed = 1) noexcept;
     // `steadiness` 0 is a nervous first-timer, 1 a seasoned filmer.
-    Offset step(float dt, float speed, bool on_board, float steadiness) noexcept;
+    Offset step(float dt, float speed, bool on_board, float steadiness, const Amounts & = {}) noexcept;
 
 private:
     float time_{}, step_phase_{};
     float phases_[12]{};
 };
 
-enum class Grip : std::uint8_t {
-    long_grip, // low, held out on a long handle: the fisheye follow shot
-    hip,       // waist height, the camera hanging from the hand
-    eye_level, // through the viewfinder: the long-lens shot
+// A way of holding the camera. The built-in three are below; mods add more (profiles.h:
+// <id>.grip.json), a pole cam, a skate-mounted follow cam.
+struct GripProfile {
+    std::string id{"long"};
+    std::string name{"Long grip"};
+    float height{0.45f}; // the lens above the feet, standing (metres)
+    float side{0.35f};   // out to the right hand
+    float ahead{0.55f};  // in front of the body
+    float pitch{5};      // degrees the camera starts tilted up (down is negative)
+    float crouch{0.92f}; // on a board the filmer crouches: heights times this
+    float shake{1};      // the hand shake times this (a pole wobbles more)
+    std::string source;  // the mod it came from; empty when built in
+    bool operator==(const GripProfile &) const = default;
+    float height_on(bool on_board) const { return on_board ? height * crouch : height; }
 };
-std::string_view grip_name(Grip) noexcept;
-// The lens's height above the feet for a grip, standing (on a board the filmer crouches a little).
-float grip_height(Grip, bool on_board) noexcept;
+// Low on a long handle: the fisheye follow shot.
+const GripProfile &long_grip();
+// Waist height, the camera hanging from the hand.
+const GripProfile &hip_grip();
+// Through the viewfinder: the long-lens shot. Clear in front of the face: the filmer is the
+// player's own skater, whose head is drawn (from inside it the view would be the inside of the head).
+const GripProfile &eye_grip();
 
 class HandheldRig {
 public:
     struct Settings {
-        Grip grip = Grip::long_grip;
+        GripProfile grip = long_grip();
         bool lock_on = true;          // keep the subject framed; the stick nudges
         float operator_reaction = 1.6f; // Hz: how fast the filmer swings onto the subject
         float look_speed = 2.2f;      // radians a second at full stick, at wide
@@ -84,6 +106,9 @@ public:
         float lead = 0.12f;           // seconds: aim where the subject is going
         float steadiness = 0.5f;      // HandShake
         float max_nudge = 25 * degrees;
+        float raise_speed = 0.8f;     // metres a second the camera rises and drops (LB / RB)
+        float lowest = 0.12f, highest = 2.3f; // the lens above the feet: a skate's height to overhead
+        HandShake::Amounts shake;
     };
     HandheldRig() = default;
     explicit HandheldRig(Settings settings) : settings_(settings) {}
@@ -93,8 +118,7 @@ public:
     // Where the camera is held, for a filmer standing at `filmer`.
     Vec3 grip_position(const Filmer &) const;
     // Raising or lowering the camera from its grip's height (LB / RB, `camcorder height`), in
-    // metres; the lens stays between `lowest` and `highest` above the feet.
-    static constexpr float lowest = 0.12f, highest = 2.3f;
+    // metres; the lens stays between the settings' lowest and highest above the feet.
     void set_lift(float metres) { lift_ = std::isfinite(metres) ? std::clamp(metres, -3.0f, 3.0f) : 0.0f; }
     float lift() const { return lift_; }
     // The lens's height above the feet now (the grip's, plus the lift, within lowest to highest).

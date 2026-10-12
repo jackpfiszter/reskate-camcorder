@@ -82,11 +82,25 @@ private:
 // Floats (full scale 1) to 16-bit samples, rounded and kept in range.
 void to_pcm16(const float *samples, std::size_t count, std::int16_t *out) noexcept;
 
-// The VX1000's own microphone, roughly: the stereo mic on top of the camera, its automatic level
-// control pumping up the room and squashing the board's slams, the low end thin and the top rolled
-// off, and loud hits breaking up. Filters and the level control keep their state across packets.
+// A camera's own microphone (a camera profile's "mic": profiles.h). The defaults are the VX1000's:
+// the stereo mic on top of the camera, little below 120 Hz, rolled off above 9 kHz, its automatic
+// level control pumping up the room and squashing the board's slams.
+struct MicProfile {
+    float high_cut{120};    // Hz: little below this (a small capsule)
+    float low_cut{9000};    // Hz: rolled off above this
+    float target{0.25f};    // the level the level control aims for (of full scale)
+    float most_gain{3};     // the most it turns a quiet room up
+    float attack{0.01f};    // seconds to duck a slam
+    float release{0.4f};    // seconds to bring the room back up
+    float drive{1.2f};      // how hard it pushes into the converter (loud hits round off)
+    bool operator==(const MicProfile &) const = default;
+};
+
+// The camera's mic: its filters and level control. Filters and the level control keep their state
+// across packets.
 class VxMic {
 public:
+    explicit VxMic(MicProfile mic = {}) : mic_(mic) {}
     // Interleaved stereo floats (full scale 1), in place.
     void process(float *interleaved, std::size_t frames) noexcept;
     void process(std::int16_t *interleaved, std::size_t frames) noexcept;
@@ -96,6 +110,7 @@ private:
         float high_in{}, high_out{}; // high-pass
         float low1{}, low2{};        // two-pole low-pass
     };
+    MicProfile mic_;
     Channel channels_[audio_channels];
     float level_{};    // the level control's envelope (of a smoothed level, not each sample)
     float detect_{};   // that smoothed level

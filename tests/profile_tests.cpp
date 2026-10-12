@@ -178,10 +178,14 @@ TEST(the_example_mod_loads_without_a_note) {
             for (const auto &note : reading.notes) std::printf("  %s: %s\n", entry.path().filename().string().c_str(), note.c_str());
             ++profiles;
         };
-        if (kind->first == ProfileKind::camera) check_one(read_camera(text.str(), kind->second));
-        else check_one(read_adapter(text.str(), kind->second));
+        switch (kind->first) {
+        case ProfileKind::camera: check_one(read_camera(text.str(), kind->second)); break;
+        case ProfileKind::lens: check_one(read_adapter(text.str(), kind->second)); break;
+        case ProfileKind::grip: check_one(read_grip(text.str(), kind->second)); break;
+        case ProfileKind::handling: check_one(read_handling(text.str(), Handling{})); break;
+        }
     }
-    CHECK(profiles == 4);
+    CHECK(profiles == 6);
     // Super 8 runs at 18 frames, with no fields to switch.
     std::ifstream in(std::filesystem::path(CAMCORDER_EXAMPLE_MODS) / "Camcorder Extras" / "camcorders" / "super8.camera.json");
     std::stringstream text;
@@ -193,3 +197,68 @@ TEST(the_example_mod_loads_without_a_note) {
     CHECK(clip_rate(finish) == (FrameRate{18, 1}));
 }
 #endif
+
+TEST(grips_are_data) {
+    const auto pole = read_grip(R"({"name": "Pole cam", "height": 2.6, "ahead": 1.2, "pitch": -25, "shake": 1.8})", "pole");
+    CHECK(pole.profile && pole.notes.empty());
+    CHECK(pole.profile->name == "Pole cam" && pole.profile->height == 2.6f);
+    CHECK_NEAR(pole.profile->side, long_grip().side, 1e-6); // the rest is the long grip's
+    for (const auto *grip : {&long_grip(), &hip_grip(), &eye_grip()}) {
+        const auto again = read_grip(write_grip(*grip), grip->id);
+        CHECK(again.profile && *again.profile == *grip);
+    }
+    CHECK(read_grip(R"({"height": 9})", "tall").profile->height == 3.0f);
+    CHECK(profile_file("pole.grip.json")->first == ProfileKind::grip);
+    CHECK(profile_file("handling.json")->first == ProfileKind::handling);
+    // Chosen by id, with mods' grips beside the built-in three.
+    Catalogue catalogue;
+    catalogue.add(*pole.profile);
+    Camcorder cam;
+    CommandContext context;
+    context.catalogue = &catalogue;
+    CHECK(run_command(cam, "grip", {"pole"}, context) == "Pole cam.");
+    CHECK(cam.status().grip_id == "pole");
+    CHECK(run_command(cam, "grip", {"next"}, context) == "Long grip."); // round to the first
+    CHECK(run_command(cam, "grip", {"list"}, context).find("pole  Pole cam") != std::string::npos);
+}
+
+TEST(handling_files_layer_over_each_other) {
+    Handling built_in;
+    const auto first = read_handling(R"({"filmer": {"look_speed": 3}, "shake": {"wheels": 2}})", built_in);
+    CHECK(first.profile && first.notes.empty());
+    const auto second = read_handling(R"({"filmer": {"lead": 0.3}, "controls": {"mouse": 0.004}})", *first.profile);
+    CHECK(second.profile.has_value());
+    const auto &h = *second.profile;
+    CHECK(h.look_speed == 3.0f && h.shake.wheels == 2.0f && h.lead == 0.3f && h.mouse == 0.004f); // both kept
+    CHECK(h.reaction == built_in.reaction);                                                      // untouched
+    const auto again = read_handling(write_handling(h), Handling{});
+    CHECK(again.profile && *again.profile == h);
+    const auto odd = read_handling(R"({"filmer": {"lowest": 1.4, "highest": 0.6}, "turbo": 1})", built_in);
+    CHECK(odd.profile && odd.profile->highest >= odd.profile->lowest);
+    CHECK(odd.notes.size() >= 2);
+}
+
+TEST(handling_reaches_the_rigs_and_standing_tripods) {
+    Camcorder cam;
+    Filmer filmer;
+    filmer.valid = true;
+    cam.place_tripod(filmer);
+    Handling h;
+    h.tripod_drag = 1.5f;
+    h.tripod_height = 0.4f;
+    h.look_speed = 4;
+    h.height_step = 0.5f;
+    cam.set_handling(h);
+    CHECK(cam.tripod(0)->settings().drag == 1.5f);           // a standing tripod takes the new feel
+    CHECK(cam.tripod(0)->settings().height != 0.4f);         // but keeps its height
+    CHECK(cam.handheld().settings().look_speed == 4.0f);
+    cam.set_mode(Mode::handheld);
+    CHECK(run_command(cam, "height", {"up"}).find("0.91") != std::string::npos); // 0.41 + a half-metre step
+}
+
+TEST(a_camera_has_its_own_mic) {
+    const auto read = read_camera(R"({"mic": {"low_cut": 5000, "most_gain": 6}})", "lofi");
+    CHECK(read.profile && read.notes.empty());
+    CHECK(read.profile->mic.low_cut == 5000.0f && read.profile->mic.most_gain == 6.0f);
+    CHECK(read.profile->mic.high_cut == MicProfile{}.high_cut);
+}

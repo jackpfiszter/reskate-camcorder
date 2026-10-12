@@ -1,0 +1,9 @@
+{
+  "name": "Board cam",
+  "height": 0.15,
+  "side": 0,
+  "ahead": 0.45,
+  "pitch": 8,
+  "crouch": 1,
+  "shake": 0.6
+}

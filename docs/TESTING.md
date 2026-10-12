@@ -200,6 +200,12 @@ folder, and make sure it is enabled in the mod list.
       grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
       about 3 minutes 20.
 - [ ] The 0.5x wide converter: about twice as wide, no bend, slightly dark corners at full wide.
+- [ ] Grips: Pole cam (high overhead, looking down, wobblier) and Board cam (just off the ground,
+      looking slightly up) appear beside the three built-in grips.
+- [ ] Put a `handling.json` in the mod (`{"controls": {"mouse": 0.006}}`), `camcorder mods reload`:
+      the mouse aims faster, and `camcorder mods` says the handling comes from that mod.
+- [ ] Sound CAMERA MIC on the Hi8 and on the VX1000: the same mic settings unless a camera's
+      profile gives its own.
 - [ ] Break a file on purpose (delete a comma, misspell a field), `camcorder mods reload`: the
       problem is named with its file and line, and the rest still load.
 - [ ] `camcorder export`: `Mods/My Camcorder` appears with the camera and lens in use as files.

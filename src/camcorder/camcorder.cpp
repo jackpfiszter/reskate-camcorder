@@ -17,6 +17,31 @@ Camcorder::Camcorder(Settings settings)
     deck_.settings().tape_seconds = settings_.camera.tape_minutes * 60;
 }
 
+void Camcorder::set_handling(const Handling &h) {
+    handling_ = h;
+    auto &rig = handheld_.settings();
+    rig.operator_reaction = h.reaction;
+    rig.look_speed = h.look_speed;
+    rig.aim_height = h.aim_height;
+    rig.lead = h.lead;
+    rig.steadiness = h.steadiness;
+    rig.max_nudge = h.max_nudge * degrees;
+    rig.raise_speed = h.raise_speed;
+    rig.lowest = h.lowest;
+    rig.highest = h.highest;
+    rig.shake = h.shake;
+    const auto tripod = [&](TripodRig::Settings &t) {
+        t.drag = h.tripod_drag;
+        t.pan_speed = h.tripod_pan_speed;
+        t.follow_reaction = h.tripod_follow;
+        t.aim_height = h.aim_height;
+    };
+    tripod(settings_.tripod);
+    settings_.tripod.height = h.tripod_height;
+    for (auto &t : tripods_)
+        if (t) tripod(t->settings());
+}
+
 void Camcorder::set_camera(const CameraProfile &camera) {
     settings_.camera = camera;
     deck_.settings().tape_seconds = camera.tape_minutes * 60;
@@ -148,7 +173,7 @@ std::string Camcorder::shot_label() const {
     if (mode_ == Mode::tripod && active_tripod_ >= 0 && tripods_[active_tripod_])
         return "Tripod " + std::to_string(active_tripod_ + 1) + ", " +
                std::string(head_name(tripods_[active_tripod_]->settings().head)) + ", " + lens;
-    return "Handheld, " + std::string(grip_name(handheld_.settings().grip)) + ", " + lens;
+    return "Handheld, " + handheld_.settings().grip.name + ", " + lens;
 }
 
 Frame Camcorder::tick(const TickInput &in) {
@@ -206,7 +231,8 @@ Status Camcorder::status() const {
     s.lens_id = settings_.adapter ? settings_.adapter->id : std::string();
     s.lens_name = settings_.adapter ? settings_.adapter->name : "stock lens";
     s.fisheye = settings_.adapter && settings_.adapter->fisheye;
-    s.grip = handheld_.settings().grip;
+    s.grip_id = handheld_.settings().grip.id;
+    s.grip_name = handheld_.settings().grip.name;
     s.handheld_height = handheld_.lens_height(true);
     s.lock_on = handheld_.settings().lock_on;
     s.head = active_tripod_ >= 0 && tripods_[active_tripod_] ? tripods_[active_tripod_]->settings().head

@@ -71,14 +71,14 @@ TEST(spring_settles_without_overshoot_and_takes_the_short_way_round) {
 TEST(handheld_grips_hold_the_camera_at_their_heights) {
     HandheldRig rig;
     const auto f = standing({0, 10, 0});
-    rig.settings().grip = Grip::long_grip;
+    rig.settings().grip = long_grip();
     CHECK_NEAR(rig.grip_position(f)[1], 10.45, 1e-4);
-    rig.settings().grip = Grip::eye_level;
+    rig.settings().grip = eye_grip();
     CHECK_NEAR(rig.grip_position(f)[1], 11.6, 1e-4);
     // Clear of the filmer's own head (about 0.15 m from its centre to the face).
     CHECK(rig.grip_position(f)[2] >= 0.25f);
     // Held in the right hand: facing +Z, right is -X.
-    rig.settings().grip = Grip::hip;
+    rig.settings().grip = hip_grip();
     CHECK(rig.grip_position(f)[0] < 0);
 }
 
@@ -287,7 +287,7 @@ TEST(handheld_heights_are_from_the_feet_whatever_the_root) {
         Shot shot;
         for (int i = 0; i < 30; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
         CHECK_NEAR(shot.camera[13], 0.45, 0.06); // the long grip: low, whatever the root
-        rig.settings().grip = Grip::eye_level;
+        rig.settings().grip = eye_grip();
         shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
         CHECK_NEAR(shot.camera[13], 1.6, 0.08);
     }
@@ -315,9 +315,9 @@ TEST(the_handheld_camera_raises_and_lowers) {
     for (int i = 0; i < 30; ++i) rig.step(f, nullptr, up, 1.0f / 30, 1);
     CHECK_NEAR(rig.lens_height(false), 0.45 + 0.8, 0.05); // about 0.8 m in a second
     for (int i = 0; i < 300; ++i) rig.step(f, nullptr, up, 1.0f / 30, 1);
-    CHECK_NEAR(rig.lens_height(false), HandheldRig::highest, 1e-4); // held overhead, no higher
+    CHECK_NEAR(rig.lens_height(false), rig.settings().highest, 1e-4); // held overhead, no higher
     OperatorInput down;
     down.raise = -1;
     for (int i = 0; i < 300; ++i) rig.step(f, nullptr, down, 1.0f / 30, 1);
-    CHECK_NEAR(rig.lens_height(false), HandheldRig::lowest, 1e-4); // a skate's height off the ground
+    CHECK_NEAR(rig.lens_height(false), rig.settings().lowest, 1e-4); // a skate's height off the ground
 }

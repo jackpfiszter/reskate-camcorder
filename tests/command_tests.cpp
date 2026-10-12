@@ -84,6 +84,6 @@ TEST(height_steps_the_handheld_camera_and_a_grip_resets_it) {
     CHECK(starts(run_command(cam, "height", {"0.2"}), "Camera held 0.20 m up"));
     CHECK(starts(run_command(cam, "height", {"down"}), "Camera held 0.12 m up")); // the lowest
     run_command(cam, "grip", {"hip"});
-    CHECK_NEAR(cam.status().handheld_height, grip_height(Grip::hip, true), 1e-5);
+    CHECK_NEAR(cam.status().handheld_height, hip_grip().height_on(true), 1e-5);
     CHECK(starts(run_command(cam, "height", {"sideways"}), "Usage"));
 }

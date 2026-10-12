@@ -133,7 +133,7 @@ Preferences current_preferences(const State &s) {
         {"camera", status.camera_id},
         {"lens", status.lens_id.empty() ? std::string("stock") : status.lens_id},
         {"warp", on_off(s.warp)},
-        {"grip", status.grip == Grip::long_grip ? "long" : status.grip == Grip::hip ? "hip" : "eye"},
+        {"grip", status.grip_id},
         {"lockon", on_off(status.lock_on)},
         {"head", status.head == TripodRig::Head::locked ? "locked" : status.head == TripodRig::Head::manual ? "manual" : "follow"},
         {"aim", on_off(s.aiming)},
@@ -205,8 +205,24 @@ void scan_profiles(State &s) {
                 catalogue.add(std::move(*reading.profile));
                 ++found;
             };
-            if (kind->first == ProfileKind::camera) take(read_camera(text.str(), kind->second));
-            else take(read_adapter(text.str(), kind->second));
+            switch (kind->first) {
+            case ProfileKind::camera: take(read_camera(text.str(), kind->second)); break;
+            case ProfileKind::lens: take(read_adapter(text.str(), kind->second)); break;
+            case ProfileKind::grip: take(read_grip(text.str(), kind->second)); break;
+            case ProfileKind::handling: {
+                // Layered: this mod's numbers over the lower mods'.
+                auto reading = read_handling(text.str(), catalogue.handling);
+                for (const auto &note : reading.notes) notes.push_back(where + note);
+                if (!reading.profile) {
+                    notes.push_back(where + reading.error + " Left out.");
+                    break;
+                }
+                catalogue.handling = *reading.profile;
+                catalogue.handling_sources.push_back(source);
+                ++found;
+                break;
+            }
+            }
         }
     }
     s.catalogue = std::move(catalogue);
@@ -217,7 +233,10 @@ void scan_profiles(State &s) {
         s.camcorder.set_camera(*camera);
     if (settings.adapter)
         if (const auto *lens = s.catalogue.adapter(settings.adapter->id)) s.camcorder.set_adapter(*lens);
-    logging::printf(logging::Level::info, logging::Channel::ui, "Camcorder: %zu camera and lens profiles from mods%s.",
+    if (const auto *grip = s.catalogue.grip(s.camcorder.handheld().settings().grip.id))
+        if (!(*grip == s.camcorder.handheld().settings().grip)) s.camcorder.set_grip(*grip);
+    s.camcorder.set_handling(s.catalogue.handling);
+    logging::printf(logging::Level::info, logging::Channel::ui, "Camcorder: %zu profiles from mods%s.",
                     found, s.mod_notes.empty() ? "" : " (camcorder mods lists what was wrong with some)");
     for (const auto &note : s.mod_notes) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder mods: " + note);
 }
@@ -248,6 +267,9 @@ std::string export_profiles(const State &s) {
     const auto &settings = s.camcorder.settings();
     write(settings.camera.id + ".camera.json", write_camera(settings.camera));
     if (settings.adapter) write(settings.adapter->id + ".lens.json", write_adapter(*settings.adapter));
+    const auto &grip = s.camcorder.handheld().settings().grip;
+    write(grip.id + ".grip.json", write_grip(grip));
+    write("handling.json", write_handling(s.camcorder.handling()));
     return "In " + shown + ":" + written +
            " Change the id (the file name) and the numbers, then camcorder mods reload. docs/MODDING.md has every field.";
 }
@@ -270,7 +292,8 @@ float wheel_rocker(State &s, float dt) {
     DingoSDKOverlayReadMouseWheel(&notches); // drained every tick, so old turns never zoom later
     if (std::isfinite(notches) && notches != 0) {
         if ((notches > 0) != (s.wheel_zoom > 0)) s.wheel_zoom = 0; // turning back stops at once
-        s.wheel_zoom = std::clamp(s.wheel_zoom + notches * .15f, -.6f, .6f);
+        const float notch = s.camcorder.handling().wheel_notch;
+        s.wheel_zoom = std::clamp(s.wheel_zoom + notches * notch, -4 * notch, 4 * notch);
     }
     if (s.wheel_zoom == 0) return 0;
     const float sign = s.wheel_zoom > 0 ? 1.0f : -1.0f;
@@ -304,8 +327,9 @@ OperatorInput read_controls(State &s, float dt) {
         return in;
     }
     const float turn = std::max(s.camcorder.handheld().settings().look_speed * std::max(dt, 1e-3f), 1e-4f);
-    in.look_x = std::clamp(pad.look_x / 25.0f + mouse_x * .0025f / turn, -1.0f, 1.0f);
-    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse_y * .0025f / turn), -1.0f, 1.0f);
+    const float mouse = s.camcorder.handling().mouse; // radians a pixel
+    in.look_x = std::clamp(pad.look_x / 25.0f + mouse_x * mouse / turn, -1.0f, 1.0f);
+    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse_y * mouse / turn), -1.0f, 1.0f);
     if (aim) {
         in.zoom = std::clamp(pad.pad_up + wheel, -1.0f, 1.0f); // Q / E are the skater's here
         in.raise = pad.pad_raise;                              // and R / F too: LB / RB only
@@ -350,6 +374,7 @@ void publish(State &s, const Frame &frame) {
         finish.motion = camera.motion;
         finish.look = camera.look;
         finish.stamp = camera.stamp;
+        finish.mic = camera.mic;
         s.published.finish = finish;
         s.published.own_lines = camera.lines;
     }
@@ -358,6 +383,8 @@ void publish(State &s, const Frame &frame) {
     for (const auto &c : s.catalogue.cameras()) s.published.cameras.push_back({c.id, c.name, c.source});
     s.published.lenses.clear();
     for (const auto &a : s.catalogue.adapters()) s.published.lenses.push_back({a.id, a.name, a.source});
+    s.published.grips.clear();
+    for (const auto &g : s.catalogue.grips()) s.published.grips.push_back({g.id, g.name, g.source});
     s.published.mod_notes = s.mod_notes.size();
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
@@ -600,12 +627,12 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         const auto word = words.empty() ? std::string() : words[0];
         if (word == "off") s.sound = Sound::off;
         else if (word == "game" || word == "on") s.sound = Sound::game;
-        else if (word == "vx" || word == "mic") s.sound = Sound::vx_mic;
+        else if (word == "vx" || word == "mic" || word == "camera") s.sound = Sound::vx_mic;
         else if (!word.empty()) return "Usage: camcorder sound off|game|vx";
         save();
         return s.sound == Sound::off    ? "Clips without sound."
                : s.sound == Sound::game ? "Clips with the game's sound."
-                                        : "Clips with the game's sound through the VX mic.";
+                                        : "Clips with the game's sound through the camera's own mic.";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";
@@ -618,6 +645,12 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         for (const auto &c : s.catalogue.cameras()) text += " " + c.id + (c.source.empty() ? "" : " (" + c.source + ")");
         text += ". Lenses: stock";
         for (const auto &a : s.catalogue.adapters()) text += ", " + a.id + (a.source.empty() ? "" : " (" + a.source + ")");
+        text += ". Grips:";
+        for (const auto &g : s.catalogue.grips()) text += " " + g.id + (g.source.empty() ? "" : " (" + g.source + ")");
+        text += ". Handling: ";
+        if (s.catalogue.handling_sources.empty()) text += "as built";
+        for (std::size_t i = 0; i < s.catalogue.handling_sources.size(); ++i)
+            text += (i ? ", then " : "from ") + s.catalogue.handling_sources[i];
         text += ".";
         if (s.mod_notes.empty()) return text + " Nothing wrong in the mods' profiles.";
         for (const auto &note : s.mod_notes) text += "\n" + note;

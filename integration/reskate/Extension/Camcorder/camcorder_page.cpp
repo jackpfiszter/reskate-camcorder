@@ -69,10 +69,8 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
         if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
             run(menu, callbacks, bend ? "warp on" : "warp off");
     }
-    field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, or at your eye. LB / RB or R / F move it up and down.");
-    int grip = static_cast<int>(s.grip);
-    if (choice(menu, "camcorder-grip", grip, {"LONG GRIP", "HIP", "EYE LEVEL"}))
-        run(menu, callbacks, grip == 0 ? "grip long" : grip == 1 ? "grip hip" : "grip eye");
+    field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, at your eye, or a mod's. LB / RB or R / F move it up and down.");
+    pick("camcorder-grips", published.grips, s.grip_id, "grip", nullptr);
     bool operate = published.operating;
     if (toggle_row(menu, "Camera controls", "Mouse aims, Q / E zoom; your skater stands still while it is on.", operate))
         run(menu, callbacks, operate ? "operate on" : "operate off");
@@ -164,9 +162,9 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     const std::string own = "OWN " + std::to_string(published.own_lines * 4 / 3) + " x " + std::to_string(published.own_lines);
     if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", own.c_str()}))
         run(menu, callbacks, quality ? "quality dv" : "quality hd");
-    field(menu, "Sound", "The game's own sound (nothing else on your PC), or as the VX1000's mic heard it.");
+    field(menu, "Sound", "The game's own sound (nothing else on your PC), or as the camera's own mic heard it.");
     int sound = static_cast<int>(published.sound);
-    if (choice(menu, "camcorder-sound", sound, {"OFF", "GAME", "VX MIC"}))
+    if (choice(menu, "camcorder-sound", sound, {"OFF", "GAME", "CAMERA MIC"}))
         run(menu, callbacks, sound == 0 ? "sound off" : sound == 1 ? "sound game" : "sound vx");
     if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
     ImGui::SameLine();

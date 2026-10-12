@@ -18,6 +18,7 @@
 //
 // Order, as in the camera: fields (the sensor), grain, tone and white balance and sharpening (the
 // camera's processing), the date stamp (its character generator), then softness and chroma (the tape).
+#include "audio.h"
 #include "recorder.h"
 #include <array>
 #include <ctime>
@@ -90,10 +91,11 @@ struct Finish {
     DvLook dv;
     bool date_stamp{};
     int stamp_year{}; // 0: the real year; otherwise the year the stamp says (1996, say)
-    // The camera's: how it records motion, its look and its stamp (profiles.h).
+    // The camera's: how it records motion, its look, its stamp and its mic (profiles.h).
     Motion motion{Motion::ntsc_60i};
     LookProfile look;
     StampProfile stamp;
+    MicProfile mic;
     bool operator==(const Finish &) const = default;
     // A clip's frames are fields: the look's fields on an interlaced camera.
     bool fields() const { return dv.on && dv.fields && interlaced(motion); }

@@ -194,8 +194,94 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
         }
         s.unknown();
     }
+    if (const auto *mic = f.get("mic", Kind::object, "an object, { ... }")) {
+        Fields m{*mic, "mic.", reading.notes};
+        auto &p = camera.mic;
+        m.number("high_cut", p.high_cut, 10, 2000);
+        m.number("low_cut", p.low_cut, 1000, 23000);
+        m.number("target", p.target, 0.02, 0.9);
+        m.number("most_gain", p.most_gain, 0, 10);
+        m.number("attack", p.attack, 0.001, 0.5);
+        m.number("release", p.release, 0.02, 5);
+        m.number("drive", p.drive, 0.1, 5);
+        m.unknown();
+    }
     f.unknown();
     reading.profile = std::move(camera);
+    return reading;
+}
+
+Reading<GripProfile> read_grip(std::string_view text, std::string id) {
+    Reading<GripProfile> reading;
+    if (!valid_id(id)) {
+        reading.error = "\"" + id + "\" cannot be an id: use 1 to 32 of a-z, 0-9, - and _.";
+        return reading;
+    }
+    const auto value = root(text, reading);
+    if (!value) return reading;
+    GripProfile grip = long_grip();
+    grip.id = std::move(id);
+    grip.name = grip.id;
+    Fields f{*value, "", reading.notes};
+    f.text("name", grip.name, 48);
+    f.number("height", grip.height, 0.05, 3);
+    f.number("side", grip.side, -1, 1);
+    f.number("ahead", grip.ahead, -1, 2);
+    f.number("pitch", grip.pitch, -60, 60);
+    f.number("crouch", grip.crouch, 0.5, 1.2);
+    f.number("shake", grip.shake, 0, 4);
+    f.unknown();
+    reading.profile = std::move(grip);
+    return reading;
+}
+
+Reading<Handling> read_handling(std::string_view text, const Handling &base) {
+    Reading<Handling> reading;
+    const auto value = root(text, reading);
+    if (!value) return reading;
+    Handling h = base;
+    Fields f{*value, "", reading.notes};
+    if (const auto *filmer = f.get("filmer", Kind::object, "an object, { ... }")) {
+        Fields o{*filmer, "filmer.", reading.notes};
+        o.number("reaction", h.reaction, 0.2, 10);
+        o.number("look_speed", h.look_speed, 0.2, 10);
+        o.number("aim_height", h.aim_height, 0, 2);
+        o.number("lead", h.lead, 0, 1);
+        o.number("steadiness", h.steadiness, 0, 1);
+        o.number("max_nudge", h.max_nudge, 0, 60);
+        o.number("raise_speed", h.raise_speed, 0.05, 5);
+        o.number("lowest", h.lowest, 0.02, 1.5);
+        o.number("highest", h.highest, 0.5, 4);
+        o.number("height_step", h.height_step, 0.01, 1);
+        o.unknown();
+        if (h.highest < h.lowest) {
+            reading.notes.emplace_back("filmer.highest is under filmer.lowest; it is raised to it.");
+            h.highest = h.lowest;
+        }
+    }
+    if (const auto *shake = f.get("shake", Kind::object, "an object, { ... }")) {
+        Fields s{*shake, "shake.", reading.notes};
+        s.number("hands", h.shake.hands, 0, 5);
+        s.number("wheels", h.shake.wheels, 0, 5);
+        s.number("footsteps", h.shake.footsteps, 0, 5);
+        s.unknown();
+    }
+    if (const auto *tripod = f.get("tripod", Kind::object, "an object, { ... }")) {
+        Fields t{*tripod, "tripod.", reading.notes};
+        t.number("height", h.tripod_height, TripodRig::lowest, TripodRig::highest);
+        t.number("drag", h.tripod_drag, 0.02, 3);
+        t.number("pan_speed", h.tripod_pan_speed, 0.1, 10);
+        t.number("follow", h.tripod_follow, 0.1, 10);
+        t.unknown();
+    }
+    if (const auto *controls = f.get("controls", Kind::object, "an object, { ... }")) {
+        Fields c{*controls, "controls.", reading.notes};
+        c.number("mouse", h.mouse, 0.0002, 0.02);
+        c.number("wheel_notch", h.wheel_notch, 0.02, 1);
+        c.unknown();
+    }
+    f.unknown();
+    reading.profile = h;
     return reading;
 }
 
@@ -252,6 +338,48 @@ std::string write_camera(const CameraProfile &c) {
     out += "    \"lines\": \"" + std::string(lines_word(s.lines)) + "\",\n";
     out += "    \"date\": \"" + std::string(date_word(s.date)) + "\",\n";
     out += "    \"colour\": [" + std::to_string(s.colour[0]) + ", " + std::to_string(s.colour[1]) + ", " + std::to_string(s.colour[2]) + "]\n";
+    out += "  },\n";
+    const auto &m = c.mic;
+    out += "  \"mic\": {\n";
+    out += "    \"high_cut\": " + number_text(m.high_cut) + ",\n";
+    out += "    \"low_cut\": " + number_text(m.low_cut) + ",\n";
+    out += "    \"target\": " + number_text(m.target) + ",\n";
+    out += "    \"most_gain\": " + number_text(m.most_gain) + ",\n";
+    out += "    \"attack\": " + number_text(m.attack) + ",\n";
+    out += "    \"release\": " + number_text(m.release) + ",\n";
+    out += "    \"drive\": " + number_text(m.drive) + "\n";
+    out += "  }\n}\n";
+    return out;
+}
+
+std::string write_grip(const GripProfile &g) {
+    std::string out = "{\n";
+    out += "  \"name\": " + quoted(g.name) + ",\n";
+    out += "  \"height\": " + number_text(g.height) + ",\n";
+    out += "  \"side\": " + number_text(g.side) + ",\n";
+    out += "  \"ahead\": " + number_text(g.ahead) + ",\n";
+    out += "  \"pitch\": " + number_text(g.pitch) + ",\n";
+    out += "  \"crouch\": " + number_text(g.crouch) + ",\n";
+    out += "  \"shake\": " + number_text(g.shake) + "\n}\n";
+    return out;
+}
+
+std::string write_handling(const Handling &h) {
+    const auto line = [](const char *key, double v, bool last = false) {
+        return std::string("    \"") + key + "\": " + number_text(v) + (last ? "\n" : ",\n");
+    };
+    std::string out = "{\n  \"filmer\": {\n";
+    out += line("reaction", h.reaction) + line("look_speed", h.look_speed) + line("aim_height", h.aim_height) +
+           line("lead", h.lead) + line("steadiness", h.steadiness) + line("max_nudge", h.max_nudge) +
+           line("raise_speed", h.raise_speed) + line("lowest", h.lowest) + line("highest", h.highest) +
+           line("height_step", h.height_step, true);
+    out += "  },\n  \"shake\": {\n";
+    out += line("hands", h.shake.hands) + line("wheels", h.shake.wheels) + line("footsteps", h.shake.footsteps, true);
+    out += "  },\n  \"tripod\": {\n";
+    out += line("height", h.tripod_height) + line("drag", h.tripod_drag) + line("pan_speed", h.tripod_pan_speed) +
+           line("follow", h.tripod_follow, true);
+    out += "  },\n  \"controls\": {\n";
+    out += line("mouse", h.mouse) + line("wheel_notch", h.wheel_notch, true);
     out += "  }\n}\n";
     return out;
 }
@@ -272,8 +400,10 @@ bool valid_id(std::string_view id) {
 }
 
 std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view name) {
+    if (name == "handling.json") return std::pair{ProfileKind::handling, std::string("handling")};
     for (const auto &[suffix, kind] : {std::pair{std::string_view(".camera.json"), ProfileKind::camera},
-                                      std::pair{std::string_view(".lens.json"), ProfileKind::lens}}) {
+                                      std::pair{std::string_view(".lens.json"), ProfileKind::lens},
+                                      std::pair{std::string_view(".grip.json"), ProfileKind::grip}}) {
         if (name.size() <= suffix.size() || name.substr(name.size() - suffix.size()) != suffix) continue;
         std::string id(name.substr(0, name.size() - suffix.size()));
         if (!valid_id(id)) return std::nullopt;
@@ -282,7 +412,28 @@ std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view
     return std::nullopt;
 }
 
-Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()} {}
+Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()}, grips_{long_grip(), hip_grip(), eye_grip()} {}
+
+void Catalogue::add(GripProfile profile) {
+    for (auto &g : grips_)
+        if (g.id == profile.id) {
+            g = std::move(profile);
+            return;
+        }
+    grips_.push_back(std::move(profile));
+}
+
+const GripProfile *Catalogue::grip(std::string_view id) const {
+    for (const auto &g : grips_)
+        if (g.id == id) return &g;
+    return nullptr;
+}
+
+const GripProfile &Catalogue::next_grip(std::string_view id) const {
+    for (std::size_t i = 0; i < grips_.size(); ++i)
+        if (grips_[i].id == id) return grips_[(i + 1) % grips_.size()];
+    return grips_.front();
+}
 
 void Catalogue::add(CameraProfile profile) {
     for (auto &c : cameras_)
