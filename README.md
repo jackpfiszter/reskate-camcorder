@@ -1,85 +1,113 @@
 # ReSkate Camcorder
 
-A camcorder for [ReSkate](https://github.com/Dingo-Shenanigans/ReSkate) (skate.): film yourself
-and your friends the way 90s skate videos were shot, without the replay editor. Hold a Sony
-VX1000 with a Century fisheye and chase the skater, or set up tripods at the spot, press REC,
-and skate the line.
+**Film your own 90s skate part in skate.** A Sony VX1000 with a fisheye, right in the game: chase
+your friends with the camera, set up tripods at the spot, press REC, and get MP4 clips that look
+like they came off a MiniDV tape.
 
 https://github.com/user-attachments/assets/0f3513a0-e78b-4346-97ff-7b38b3346e1e
 
-The demo edit, filmed in game with the camcorder (an earlier version: the look and the camera
-light have come on since).
+<sub>Filmed in game with the camcorder (an earlier version: the on-screen look and the camera light
+have come on since).</sub>
 
-> **Status: early, in testing.** Filming, recording to MP4 and sound work in game. The
-> camcorder's model (camera, lens, zoom, tape, rigs, viewfinder, commands) is unit-tested, and
-> CI builds ReSkate with the camcorder on Windows (MSVC, warnings as errors); tagged versions
-> are on the Releases page. [docs/TESTING.md](docs/TESTING.md) has how to try it and a checklist. See
-> [docs/DESIGN.md](docs/DESIGN.md) for the design and
-> [integration/reskate/README.md](integration/reskate/README.md) for how it plugs in.
+> **Early days.** It works and it's being tested. Expect rough edges, and please
+> [tell us](https://github.com/jackpfiszter/reskate-camcorder/issues) what you find.
 
-## What it does
+## What you get
 
-- **The VX1000, by the numbers.** A 10:1 zoom (5.9-59 mm on a 1/3" sensor, about 44 to 4.7
-  degrees across), the servo's real speeds (4.1 s end to end flat out, 20 s creeping), a 4:3
-  picture, and the Century Optics 0.3x fisheye: about 125 degrees, straight lines bending as
-  through the real glass, with round black corners at full wide that clear with a touch of zoom.
-- **Handheld.** You are the filmer; the camera rides with your skater, low on a long grip (the
-  fisheye follow shot), at the hip or at eye level, raised and lowered on the fly. Lock on to a
-  friend (or whoever is closest) and the camera keeps them framed by itself, a little late like a
-  real operator, so you can keep both hands on skating, or aim while filming: skate on the keys
-  or left stick, aim with the mouse or right stick. Hand shake wanders like real hands (no loop
-  to it), with the board's wheels and, on foot, footsteps.
-- **Tripods.** Set up to four at a spot: carry each over the ground (it stands on what's under
-  it), set the height (ground pod
-  to 2 m) and aim, then lock it off, pan it by hand against a fluid head's drag, or let it follow
-  the skater. Cut between them live.
-- **The viewfinder.** STBY / red REC, the tape counter, minutes of tape left, battery, the W-T
-  zoom bar; 4:3 bars either side. A clean feed keeps the frame and lens for screen capture.
-- **Clips to MP4.** REC to STBY writes the 4:3 picture (fisheye corners and all, readouts not) to
-  Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480, with
-  the game's own sound (nothing else on the PC), clean or through the VX mic. Stills go to
-  Videos\ReSkate Camcorder\Stills as JPEGs.
-- **The tape look.** On screen, in clips and in stills: the camera's 480 lines, 60 fields of
-  video motion, a CCD's hard white, drifting colour, sharpened edges, smeared colour, a little
-  noise, and the camcorder's date stamp (any year you like). A camera light for night sessions.
-- **Sound from where the camera is.** On a tripod across the spot, the skater gets quieter and
-  duller further off, and sounds from their side of the picture.
-- **Everything about a camera is data, from mods.** Cameras, lenses and rigs are small JSON files
-  in an ordinary ReSkate mod: zoom, sensor, frame rate (60i, 50i, 30p, 25p, 24p, Super 8's 18),
-  tape length, the look, the date stamp, the mic; a rig's height and reach; and a `handling.json`
-  for how it all feels (aim speed, operator lag, shake, tripods, mouse). ReSkate.dll keeps only
-  the workings, so the camcorder can change through the mod browser with no ReSkate update.
-  `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8 film, a wide converter,
-  a pole cam and a board cam; [docs/MODDING.md](docs/MODDING.md) has every field.
-- **Easy to use.** One click binds the keys (F5 to F10); a quick menu over the viewfinder changes
-  the camera, lens, look, light and height or records without opening the ReSkate menu; a short guide the first
-  time; aim speed and invert; and review: the last clip plays back in the viewfinder, so you know
-  you got the trick.
-- **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
-  numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
-  back to back in one MP4, ready to edit.
+- 📼 **The VX1000 and the Century fisheye.** Real zoom, the round black corners at full wide, and
+  straight lines bending like through the real glass.
+- 🛹 **Film handheld while you skate.** Low on a long grip for the classic follow shot, at the hip,
+  or at eye level. It keeps your friend in frame for you, a beat late like a real filmer.
+- 🎥 **Tripods.** Set up to four at a spot, aim them, and cut between angles.
+- 🌈 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, a date stamp set to any
+  day you like, and a camera light for night sessions.
+- 🔊 **The game's sound in your clips,** heard from where the camera stands. Nothing else from your
+  PC gets in.
+- 💾 **Clips straight to your Videos folder** as MP4s, ready to edit. Or join a whole "tape" into
+  one file.
+- 🧩 **Make your own cameras.** Hi8, Super 8, a VX2000, a pole cam: every camera is a small mod
+  anyone can make. A few come with it.
 
-## Why it is a ReSkate feature, not a drop-in mod
+## Try it
 
-ReSkate mods (`Mods/`) can only change game data, and custom Lua is switched off. Moving the
-camera every frame takes native code inside `ReSkate.dll`, the way the Trainer and Hall of Meat
-are built. So this is meant to go into ReSkate as a pull request (or a fork). It reuses
-ReSkate's party-Spectate camera lease, Freecam's input capture, the session's player poses and
-the overlay.
+You need skate. on Steam and
+[ReSkate](https://github.com/Dingo-Shenanigans/ReSkate) already working.
 
-## Layout
+1. **Download** the newest `ReSkate-camcorder-…zip` from
+   [Releases](https://github.com/jackpfiszter/reskate-camcorder/releases/latest).
+2. **Swap two files.** Close the game. In your skate. folder (beside `Skate.exe`), back up
+   `ReSkate.dll` and `ReSkateLauncher.exe`, then put the two from the zip there.
+3. **Play.** Start the game with that `ReSkateLauncher.exe` (if it says an update is available,
+   ignore it). Load a map, press **Insert** for the ReSkate menu, open **CAMCORDER**
+   and click **SET UP KEYS**.
+
+Now **F5** turns the camera on and **F6** records. To go back to normal ReSkate, put your two
+backed-up files back.
+
+The extra cameras are a normal ReSkate mod: unzip `Camcorder-Extras-mod-…zip` from the same
+release into your `Mods` folder.
+
+## Controls
+
+| | Keyboard and mouse | Controller |
+|---|---|---|
+| Camera on / off | F5 | *bind it in Settings > Controls* |
+| Record / stop | F6 | |
+| Quick menu (camera, lens, look, light, height, tripod) | F7 | |
+| Take a still | F8 | |
+| Aim while filming (you keep skating) | F9 | |
+| Set up a tripod, then done | F10, F10 again | |
+| Aim | Mouse | Right stick |
+| Zoom | Mouse wheel (Q / E with camera controls) | Triggers |
+| Camera higher / lower | R / F (with camera controls) | Bumpers |
+| Back out of a menu or camera controls | Esc | Start |
+
+The F keys are what **SET UP KEYS** gives you. Change any of them in ReSkate's Settings > Controls.
+
+## Your clips
+
+Everything lands in **Videos\ReSkate Camcorder** (stills in its **Stills** folder). **OPEN MY CLIPS**
+on the CAMCORDER page takes you there.
+
+## Make your own camera
+
+A camera is a few lines of JSON in an ordinary ReSkate mod: zoom, frame rate, how its picture
+looks, its date stamp, its mic. [docs/MODDING.md](docs/MODDING.md) explains every setting, and
+[examples/mods/Camcorder Extras](examples/mods/Camcorder%20Extras) is one to copy.
+
+## Help and feedback
+
+- Something broken or weird? Open an [issue](https://github.com/jackpfiszter/reskate-camcorder/issues)
+  with what you did and, if you can, `logs\ReSkate.log` from beside `Skate.exe`.
+- [docs/TESTING.md](docs/TESTING.md) has the full checklist of what should work, and what's known
+  not to yet.
+- Playing online: your friends don't need the camcorder to be filmed. Friends on the same build
+  see a little camcorder by your name, with a red light while you're recording.
+
+<details>
+<summary><b>For developers</b></summary>
+
+### Why it's part of ReSkate, not a mod
+
+ReSkate mods can only change game data. Moving the camera every frame takes native code inside
+`ReSkate.dll`, the way ReSkate's Trainer and Hall of Meat are built. So the camcorder is a change to
+ReSkate (`integration/reskate/reskate.patch`, plus its own files), meant to be offered to ReSkate
+itself. Everything about a particular camera is data, so cameras can still change through mods
+with no ReSkate update.
+
+### Layout
 
 | Path | What |
 |---|---|
-| `src/camcorder/` | the model: no game types, builds anywhere |
+| `src/camcorder/` | the model: cameras, lenses, rigs, tape, look, sound. No game types; builds anywhere |
 | `tests/` | its unit tests |
-| `integration/reskate/` | the ReSkate side: its files, the patch to ReSkate and `install.ps1` |
-| `docs/DESIGN.md` | the design: shooting modes, recording, the look, controls, milestones |
-| `docs/TESTING.md` | how to test: unit tests, getting a build, an in-game checklist |
-| `docs/MODDING.md` | making cameras and lenses |
-| `examples/mods/` | an example camera mod |
+| `integration/reskate/` | the ReSkate side: its files, the patch, and `install.ps1` |
+| `docs/DESIGN.md` | the design |
+| `docs/TESTING.md` | testing: unit tests, builds, the in-game checklist |
+| `docs/MODDING.md` | camera, lens, rig and handling files |
+| `examples/mods/` | the example camera mod |
 
-## Build and test the model
+### Build and test the model
 
 ```sh
 cmake -S . -B build
@@ -87,26 +115,26 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-C++20; builds warning-free with `-Wall -Wextra -Wpedantic -Werror` (GCC and Clang) and `/W4 /WX`
-is set for MSVC, as ReSkate uses.
+C++20, warning-free with `-Wall -Wextra -Wpedantic -Werror` (GCC, Clang) and `/W4 /WX` (MSVC, as
+ReSkate builds). CI builds ReSkate with the camcorder on Windows for every push, and compiles the
+picture shader with fxc. Building ReSkate yourself is in [docs/TESTING.md](docs/TESTING.md).
 
-## Console commands
+### Console commands
 
-Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|still|review|quick|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|rig|sensitivity|invert|guide|open|mods|export|status`.
-Settings are kept between games in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
-See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
+Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|warp|rig|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|sensitivity|invert|guide|open|review|mods|export|status`.
+Settings are kept in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 
-## Releases
+### Releases
 
-Every version is on the [Releases page](https://github.com/jackpfiszter/reskate-camcorder/releases):
-a zip with `ReSkate.dll` and `ReSkateLauncher.exe`, and from v0.7.0 the example camera mod beside
-it. To publish the newest green build: Actions > **release** > Run workflow, with a version like
-`v0.7.0` (pushing a tag like that works too). The zip holds a modified `ReSkate.dll`, so under the
-GPL its source is this repository at that version plus ReSkate at the commit in
-`integration/reskate/reskate.commit`.
+Each version on the [Releases page](https://github.com/jackpfiszter/reskate-camcorder/releases) is a
+zip with `ReSkate.dll` and `ReSkateLauncher.exe`, plus the example camera mod. To publish the newest
+green build: Actions > **release** > Run workflow, with a version like `v0.12.0`. The zip holds a
+modified `ReSkate.dll`, so under the GPL its source is this repository at that version plus
+ReSkate at the commit in `integration/reskate/reskate.commit`.
+
+</details>
 
 ## License
 
-GPL-3.0, the same as ReSkate. Not affiliated with or endorsed by Electronic Arts, Full Circle,
-Sony or Century Optics.
+GPL-3.0, the same as ReSkate. A fan project: not affiliated with or endorsed by Electronic Arts,
+Full Circle, Sony or Century Optics.
