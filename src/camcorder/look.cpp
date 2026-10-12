@@ -423,7 +423,7 @@ std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view
     int ymd[3]{}, hm[2]{};
     if (!numbers(date, '-', ymd, 3)) return std::nullopt;
     const int year = ymd[0], month = ymd[1], day = ymd[2];
-    if (year < 1970 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return std::nullopt;
+    if (year < 1971 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return std::nullopt;
     if (!time.empty() && (!numbers(time, ':', hm, 2) || hm[0] < 0 || hm[0] > 23 || hm[1] < 0 || hm[1] > 59)) return std::nullopt;
     const int hour = hm[0], minute = hm[1];
     std::tm local{};

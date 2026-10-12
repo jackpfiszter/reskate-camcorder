@@ -152,7 +152,7 @@ void save_still(StillJob &job, camcorder_video::RawFrame frame, Finish finish) {
             std::tm when{};
             localtime_s(&when, &camera_clock);
             finish_frame(image, finish, DvClip{0.5f}, 0, clip_rate(finish).fps(), when); // what the screen left
-            const auto path = folder + L"\\" + camcorder_media::widen(photo_file_name(local_now()));
+            const auto path = camcorder_media::unique_path(folder + L"\\" + camcorder_media::widen(photo_file_name(local_now())));
             std::string error;
             result = camcorder_media::save_jpeg(image, path, error) ? std::pair{true, narrow(path)} : std::pair{false, error};
         }
@@ -222,7 +222,9 @@ Slot *copy_picture(Capture &c, ID3D12Device *device, ID3D12GraphicsCommandList *
         heap.Type = D3D12_HEAP_TYPE_READBACK;
         D3D12_RESOURCE_DESC buffer{};
         buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        buffer.Width = total;
+        // Room for every row at its full pitch: GetCopyableFootprints' total leaves the last row's
+        // padding off, and the copy out reads whole rows.
+        buffer.Width = std::max(total, slot->footprint.Offset + UINT64{slot->footprint.Footprint.RowPitch} * crop.Height);
         buffer.Height = 1;
         buffer.DepthOrArraySize = 1;
         buffer.MipLevels = 1;
@@ -234,7 +236,7 @@ Slot *copy_picture(Capture &c, ID3D12Device *device, ID3D12GraphicsCommandList *
             slot->buffer.Reset();
             return nullptr;
         }
-        slot->bytes = total;
+        slot->bytes = buffer.Width;
         slot->width = box.width;
         slot->height = box.height;
         slot->format = desc.Format;
@@ -370,8 +372,8 @@ bool camcorder_capture_poll() {
             say(NoticeLevel::warning, "Already capturing a tape.", "");
         } else {
             const auto folder = camcorder_media::folder(FOLDERID_Videos);
-            const auto path = folder + L"\\" +
-                              camcorder_media::widen(tape_file_name(c.tape_log.number(), c.tape_log.clips().size(), local_now()));
+            const auto path = camcorder_media::unique_path(
+                folder + L"\\" + camcorder_media::widen(tape_file_name(c.tape_log.number(), c.tape_log.clips().size(), local_now())));
             if (folder.empty() || !c.tape.start(c.tape_log.clips(), path))
                 say(NoticeLevel::warning, "The tape cannot be captured.", "");
             else
@@ -398,7 +400,10 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
     c.armed.reset(); // nor did last frame's draw reach the camcorder's (it was not on screen)
     if (!device || !commands || !back_buffer) return;
     const auto published = camcorder_runtime::published();
-    const bool still = on_screen(published) && published.still != c.still_served && !c.still.busy;
+    // One still at a time: the next waits until this one's copy is back and saved.
+    bool still_waiting = false;
+    for (const auto &slot : c.slots) still_waiting = still_waiting || (slot.still && slot.stage != Slot::Stage::free);
+    const bool still = on_screen(published) && published.still != c.still_served && !c.still.busy && !still_waiting;
     const bool video = wanted(published) && !c.stopping;
     if (!still && !video) return;
     const auto &status = published.frame.status;
@@ -423,7 +428,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
                 // The picture's pacer and the sound share this start, so they stay together.
                 const double origin = now_seconds();
                 if (!folder.empty()) {
-                    const auto path = folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now()));
+                    const auto path = camcorder_media::unique_path(folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now())));
                     started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box, published.own_lines),
                                              published.sound, origin, published.finish, stamp_clock(std::time(nullptr), published.finish), error);
                 }

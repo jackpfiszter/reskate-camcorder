@@ -437,3 +437,15 @@ TEST(handheld_tilts_for_a_dutch_angle_and_comes_back_level) {
     for (int i = 0; i < 240; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 60, 1);
     CHECK(std::abs(roll_of(shot)) < 2 * degrees);
 }
+
+TEST(a_tick_with_no_time_keeps_the_velocity) {
+    VelocityEstimate v;
+    Vec3 at{};
+    for (int i = 0; i < 60; ++i) {
+        at[0] += 8.0f / 60;
+        v.update(at, 1.0f / 60);
+    }
+    CHECK(v.velocity[0] > 7);
+    v.update(at, 0); // a second call in the same instant
+    CHECK(v.velocity[0] > 7);
+}

@@ -32,6 +32,8 @@ struct Warp {
     ComPtr<ID3D12Fence> fence;
     UINT64 last_use{}; // the newest frame that drew from (or copied into) the texture
     bool working{}, failure_said{};
+    ComPtr<ID3DBlob> vertex_code, pixel_code; // kept across swap chains
+    bool compile_failed{}, pass_failure_said{};
     std::string why_not; // why the screen has no picture pass this frame, for the notice
 };
 Warp &warp() {
@@ -54,7 +56,8 @@ bool idle(const Warp &w) { return !w.fence || w.fence->GetCompletedValue() >= w.
 constexpr char picture_shader[] = R"hlsl(
 // The camcorder's picture: the game's frame (a copy, t0) bent through the fisheye and given the
 // camera's look, drawn over the 4:3 picture. camcorder_warp.cpp fills the constants.
-cbuffer Pass : register(b0) {
+// (Named Constants: "pass" is a keyword to the D3DCompile compiler, which takes "Pass" for it too.)
+cbuffer Constants : register(b0) {
     float4 rect;    // the picture on screen: left, top, width, height (pixels)
     float4 screen;  // the copy: width, height, 1 / width, 1 / height
     float4 lens;    // warped (0 / 1), half the picture's width in radians, tan(half the render's height), render aspect
@@ -67,7 +70,7 @@ cbuffer Pass : register(b0) {
 Texture2D picture : register(t0);
 SamplerState linear_clamp : register(s0);
 
-float4 vs(uint id : SV_VertexID) : SV_Position {
+float4 picture_vs(uint id : SV_VertexID) : SV_Position {
     // One triangle over the whole screen; the scissor keeps it to the picture.
     float2 uv = float2((id << 1) & 2, id & 2);
     return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
@@ -160,11 +163,24 @@ float grain_noise(float2 cell, float frame) {
     return ((float)(h & 255u) + (float)((h >> 8) & 255u) - 255.0) / 255.0;
 }
 
-float4 ps(float4 position : SV_Position) : SV_Target {
+// A gain for the camera light alone (the look off), in the output's own light: no detour through
+// an SDR camera's range, which would clip an HDR picture's highlights everywhere.
+float3 light_gain(float2 pixel) {
+    float r = length(picture_point(pixel)) / max(camera.z, 0.05);
+    return 1 + camera.y * exp(-r * r * 1.6) * float3(1.0, 0.96, 0.88);
+}
+
+float4 picture_ps(float4 position : SV_Position) : SV_Target {
     float2 pixel = position.xy;
     if (tone.x < 0.5) {
-        if (camera.y <= 0) return float4(picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb, 1);
-        return float4(out_of_look(camera_light(game_at(pixel), pixel)), 1);
+        float3 raw = picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb;
+        if (camera.y <= 0) return float4(raw, 1);
+        if (output.x < 0.5) return float4(camera_light(raw, pixel), 1); // SDR: through linear light and back
+        if (output.x < 1.5) return float4(raw * light_gain(pixel), 1);  // scRGB is linear already
+        float3 p = pow(saturate(raw), 1 / pq_m2);                       // HDR10: to nits, lit, and back
+        float3 nits = 10000 * pow(max(p - pq_c1, 0) / (pq_c2 - pq_c3 * p), 1 / pq_m1) * light_gain(pixel);
+        float3 y = pow(saturate(nits / 10000), pq_m1);
+        return float4(pow((pq_c1 + pq_c2 * y) / (1 + pq_c3 * y), pq_m2), 1);
     }
     float step_px = tape.z; // screen pixels in one pixel of a 720-wide picture
     float3 centre = sample_at(pixel, 0);
@@ -213,8 +229,16 @@ ComPtr<ID3DBlob> compile(const char *entry, const char *target) {
 // The root signature (the numbers as root constants, the copy as one SRV, a linear clamped sampler)
 // and the pipeline, writing straight to the back buffer.
 bool build_pass(Warp &w) {
-    const auto vertex = compile("vs", "vs_5_0"), pixel = compile("ps", "ps_5_0");
-    if (!vertex || !pixel) return false;
+    // Compiled once a game (a slow compile, on the render thread): a new swap chain needs only a new
+    // pipeline. A shader that would not compile won't the next time either.
+    if (w.compile_failed) return false;
+    if (!w.vertex_code) w.vertex_code = compile("picture_vs", "vs_5_0");
+    if (!w.pixel_code) w.pixel_code = compile("picture_ps", "ps_5_0");
+    if (!w.vertex_code || !w.pixel_code) {
+        w.compile_failed = true;
+        return false;
+    }
+    const auto &vertex = w.vertex_code, &pixel = w.pixel_code;
     D3D12_DESCRIPTOR_RANGE range{};
     range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     range.NumDescriptors = 1;
@@ -342,7 +366,7 @@ bool camcorder_picture_pass_ready() {
         logging::write(w.pass_ready ? logging::Level::info : logging::Level::warning, logging::Channel::graphics,
                        w.pass_ready ? "Camcorder: picture pass ready (the look shows on screen)."
                                     : "Camcorder: no picture pass; the fisheye is drawn as a mesh and the look is left to clips.");
-        if (!w.pass_ready)
+        if (!w.pass_ready && !std::exchange(w.pass_failure_said, true))
             notify(NoticeLevel::warning, "The camcorder's look can't be shown on screen here.",
                    "Clips and stills still get it; the camera light needs it. logs\\ReSkate.log says why.");
     }

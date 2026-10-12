@@ -105,9 +105,10 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (small_button("CLOSEST", published.closest)) run(menu, callbacks, "subject closest");
     if (ImGui::IsItemHovered() && published.closest && !published.subject.empty())
         ImGui::SetTooltip("Filming %s now.", published.subject.c_str());
-    for (const auto &name : published.players) {
+    for (std::size_t i = 0; i < published.players.size(); ++i) {
+        const auto &name = published.players[i];
         ImGui::SameLine();
-        ImGui::PushID(name.c_str());
+        ImGui::PushID(static_cast<int>(i)); // two players can share a name
         if (small_button(name.c_str(), !published.closest && name == published.subject)) run(menu, callbacks, "subject " + name);
         ImGui::PopID();
     }
@@ -131,9 +132,20 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (any) {
         ImGui::SameLine();
         if (small_button("HANDHELD", s.mode == Mode::handheld)) run(menu, callbacks, "mode handheld");
-        if (small_button("MOVE IT", s.tripod_setup)) run(menu, callbacks, s.tripod_setup ? "tripod done" : "tripod setup on");
+        // The tripod these act on: the one in use, or else the first standing.
+        int which = s.active_tripod;
+        for (int i = 0; which < 0 && i < static_cast<int>(tripod_slots); ++i)
+            if (s.tripods[static_cast<std::size_t>(i)]) which = i;
+        const auto number = std::to_string(which + 1);
+        if (small_button("MOVE IT", s.tripod_setup)) {
+            if (s.tripod_setup) run(menu, callbacks, "tripod done");
+            else {
+                run(menu, callbacks, "tripod " + number);
+                run(menu, callbacks, "tripod setup on");
+            }
+        }
         ImGui::SameLine();
-        if (small_button("TAKE IT DOWN")) run(menu, callbacks, "tripod remove");
+        if (small_button("TAKE IT DOWN")) run(menu, callbacks, "tripod remove " + number);
         field(menu, "Head", "Follow: it pans after who it films. Locked off: nothing moves. Manual: you pan it with camera controls.");
         int head = static_cast<int>(s.head);
         if (choice(menu, "camcorder-head", head, {"LOCKED OFF", "MANUAL", "FOLLOW"}))

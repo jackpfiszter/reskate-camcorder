@@ -86,8 +86,21 @@ struct Writer::Impl {
                     last = true;
                 }
             }
-            if (sound && !failed)
-                if (const HRESULT hr = write_audio(audio.take()); FAILED(hr)) fail("Encoding the sound", hr);
+            if (sound) {
+                // Taken even after a failure, or it piles up until STBY.
+                auto pcm = audio.take();
+                if (!failed)
+                    if (const HRESULT hr = write_audio(pcm); FAILED(hr)) fail("Encoding the sound", hr);
+                // No sound coming at all (its capture failed): silence alongside the picture, or the
+                // writer would wait for sound for good.
+                if (!failed && !audio.error().empty()) {
+                    const auto end = frame_time(video_frames, clip_rate(finish)) * audio_rate / 10'000'000LL;
+                    if (end > audio_frames)
+                        if (const HRESULT hr = write_audio(std::vector<std::int16_t>(static_cast<std::size_t>(end - audio_frames) * audio_channels, 0));
+                            FAILED(hr))
+                            fail("Encoding the sound", hr);
+                }
+            }
             if (last) break;
             if (!frame || failed) continue;
             convert_to_bgra(frame->bytes.data(), frame->pitch, frame->width, frame->height, frame->format, picture,

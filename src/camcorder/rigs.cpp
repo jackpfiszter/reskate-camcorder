@@ -295,6 +295,7 @@ Shot TripodRig::step(const Subject *subject, const OperatorInput &input, float d
     return shot;
 }
 int closest_skater(const Vec3 &camera, const std::vector<Vec3> &skaters, int current, float margin) {
+    if (!finite(camera)) return current; // nowhere to measure from: no change
     int best = -1;
     float best_distance = 0;
     for (std::size_t i = 0; i < skaters.size(); ++i) {

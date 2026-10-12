@@ -218,7 +218,9 @@ struct Capture::Impl {
                             break;
                         }
                         end = std::max(end, time + span);
-                        if (sound && !clip_sound && !silence_to(time + span)) broken = true;
+                        // Silence alongside the picture once the clip's own sound is over (or it had none),
+                        // so the writer always has sound up to the picture.
+                        if (sound && (!clip_sound || audio_done) && !silence_to(std::min(time + span, length > 0 ? std::max(length, time + span) : time + span))) broken = true;
                         continue;
                     }
                     // Sound: packets follow on from each other. Their times are rounded (a packet's start

@@ -215,8 +215,12 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         // The next of the three heights up from where the camera is now (round to low).
         std::string_view word = first;
         if (same(first, "next") && cam.status().mode != Mode::tripod) {
+            // Compared with where each height really puts it (a mod's handling can cap them).
+            const auto &held = cam.handheld().settings();
+            const float lowest = held.lowest, highest = std::max(held.highest, held.lowest);
+            const auto at = [&](const GripProfile &g) { return std::clamp(g.height_on(true), lowest, highest); };
             const float now = cam.handheld().lens_height(true);
-            word = now < hip_grip().height_on(true) - 0.05f ? "hip" : now < eye_grip().height_on(true) - 0.05f ? "eye" : "low";
+            word = now < at(hip_grip()) - 0.05f ? "hip" : now < at(eye_grip()) - 0.05f ? "eye" : "low";
         }
         if (const auto *preset = hand_height(word); preset && cam.status().mode != Mode::tripod) {
             hold_at(*preset);
@@ -235,15 +239,16 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
             const int slot = status.active_tripod;
             if (slot < 0 || !cam.tripod(slot)) return "No tripod set up.";
             const float now = cam.tripod(slot)->settings().height;
-            cam.set_tripod_height(slot, up ? now + step : down ? now - step : reset ? 1.1f : metres);
+            cam.set_tripod_height(slot, up ? now + step : down ? now - step : reset ? cam.handling().tripod_height : metres);
             std::snprintf(text, sizeof(text), "Tripod height %.2f m.", static_cast<double>(cam.tripod(slot)->settings().height));
             return text;
         }
+        // From where the lens really is (a tall rig can sit above the highest), a step at a time.
         const auto &rig = cam.handheld();
-        const float base = rig.settings().grip.height_on(true);
-        const float lift = up ? rig.lift() + step : down ? rig.lift() - step : reset ? 0.0f : metres - base;
+        const float base = rig.settings().grip.height_on(true), now = rig.lens_height(true);
+        const float target = up ? now + step : down ? now - step : reset ? base : metres;
         const float low = rig.settings().lowest, high = std::max(rig.settings().highest, low);
-        cam.set_handheld_lift(std::clamp(base + lift, low, high) - base);
+        cam.set_handheld_lift(std::clamp(target, low, high) - base);
         std::snprintf(text, sizeof(text), "Camera held %.2f m up.", static_cast<double>(cam.handheld().lens_height(true)));
         return text;
     }

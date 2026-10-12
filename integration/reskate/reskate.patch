@@ -216,8 +216,21 @@ index 4130fa7..829ab35 100644
          if (capture_pose && local.ready) {
              s.last_skater_bones = local.pose.skater.size();
              s.last_board_bones = local.pose.board.empty() ? 0 : local.pose.board.size() - 1;
+diff --git a/Extension/Multiplayer/Voice/voice_chat.cpp b/Extension/Multiplayer/Voice/voice_chat.cpp
+index 0bd11ee..2f9b889 100644
+--- a/Extension/Multiplayer/Voice/voice_chat.cpp
++++ b/Extension/Multiplayer/Voice/voice_chat.cpp
+@@ -221,7 +221,7 @@ struct VoiceChat::Impl {
+             if (can_transmit && !settings.open_mic && settings.controller_combo)
+                 DingoSDKOverlayReadControllerInput(&controller);
+             const bool held = push_to_talk.update(settings,
+-                can_transmit && settings.push_to_talk && (GetAsyncKeyState(settings.push_to_talk) & 0x8000) != 0,
++                can_transmit && settings.push_to_talk && DingoSDKOverlayKeyHeld(static_cast<int>(settings.push_to_talk)),
+                 controller, !can_transmit || settings.open_mic);
+             const bool wanted = can_transmit && (settings.open_mic || held) && settings.microphone > 0.f;
+             const auto player_gain = [&](std::uint64_t id) {
 diff --git a/Extension/UI/Overlay/input_capture.cpp b/Extension/UI/Overlay/input_capture.cpp
-index a3e4896..11d36b1 100644
+index a3e4896..df919fb 100644
 --- a/Extension/UI/Overlay/input_capture.cpp
 +++ b/Extension/UI/Overlay/input_capture.cpp
 @@ -36,6 +36,17 @@ bool block_polled_input() {
@@ -395,7 +408,16 @@ index a3e4896..11d36b1 100644
      }
      return result;
  }
-@@ -768,6 +815,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -758,6 +805,8 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+     if (relative) {
+         s.raw_mouse_x.fetch_add(mouse.lLastX);
+         s.raw_mouse_y.fetch_add(mouse.lLastY);
++        s.raw_look_x.fetch_add(mouse.lLastX);
++        s.raw_look_y.fetch_add(mouse.lLastY);
+     }
+     auto buttons = s.raw_mouse_buttons.load();
+     const auto flags = mouse.usButtonFlags;
+@@ -768,6 +817,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) buttons |= 4u;
      if (flags & RI_MOUSE_MIDDLE_BUTTON_UP) buttons &= ~4u;
      s.raw_mouse_buttons.store(buttons);
@@ -446,7 +468,7 @@ index 4cd0123..be9eef0 100644
              }
          }
 diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
-index 5b30bf9..22a067b 100644
+index 5b30bf9..1e1c11e 100644
 --- a/Extension/UI/Overlay/overlay.h
 +++ b/Extension/UI/Overlay/overlay.h
 @@ -91,6 +91,9 @@ struct FlightInput {
@@ -481,8 +503,19 @@ index 5b30bf9..22a067b 100644
  extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active);
  // The same hold on the game's input while a card asks something of the player and a
  // controller answers it (the map download's): the buttons that answer must not also skate.
+@@ -487,6 +498,10 @@ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active);
+ // The keyboard keys such a card answers to, read past that hold: bit 0 left, 1 right, 2 Enter,
+ // 3 Esc. Nothing while the game is not in front or the menu, console or chat has the keys.
+ extern "C" unsigned DingoSDKOverlayReadPromptKeys();
++// One key (a virtual-key code, mouse buttons too) as the player holds it, read past the holds that
++// keep keys from the game (Freecam's, the camcorder's): voice chat's push-to-talk. Never while a
++// menu, the console or chat has the keys, or the game is not in front.
++extern "C" bool DingoSDKOverlayKeyHeld(int key);
+ // allow_menu is used only by the Binds page while recording. Focus and lifetime
+ // gates still apply. Gameplay callers leave it false.
+ extern "C" void DingoSDKOverlayReadControllerInput(dingosdk::ControllerInput* input, bool allow_menu = false);
 diff --git a/Extension/UI/Overlay/overlay_input.cpp b/Extension/UI/Overlay/overlay_input.cpp
-index ff84664..0430f13 100644
+index ff84664..2222cbf 100644
 --- a/Extension/UI/Overlay/overlay_input.cpp
 +++ b/Extension/UI/Overlay/overlay_input.cpp
 @@ -289,6 +289,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
@@ -523,7 +556,24 @@ index ff84664..0430f13 100644
  extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active) {
      const bool before = state().prompt_input_active.exchange(active, std::memory_order_relaxed);
      if (before == active) return;
-@@ -560,11 +577,14 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+@@ -497,6 +514,16 @@ extern "C" unsigned DingoSDKOverlayReadPromptKeys() {
+     return keys;
+ }
+ 
++extern "C" bool DingoSDKOverlayKeyHeld(int key) {
++    struct PreserveError { DWORD value = GetLastError(); ~PreserveError() { SetLastError(value); } } preserve_error;
++    const auto& s = state();
++    const HWND window = s.window.load();
++    const bool typing = s.visible.load() || s.console_visible.load() || s.editor_visible.load() || s.chat_visible.load() || s.hub_typing.load();
++    if (!key || !window || s.stop.load() || s.failed.load() || typing || !game_window_foreground(window)) return false;
++    OverlayInputAccess access;
++    return (GetAsyncKeyState(key) & 0x8000) != 0;
++}
++
+ extern "C" void DingoSDKOverlayReadControllerInput(dingosdk::ControllerInput* output, bool allow_menu) {
+     if (!output) return;
+     struct PreserveError { DWORD value = GetLastError(); ~PreserveError() { SetLastError(value); } } preserve_error;
+@@ -560,11 +587,14 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
      output->up = static_cast<float>(held('E')) - static_cast<float>(held('Q'));
      output->forward = static_cast<float>(held('W')) - static_cast<float>(held('S'));
      output->boost = held(VK_SHIFT);
@@ -538,7 +588,7 @@ index ff84664..0430f13 100644
          output->boost = output->boost || controller.boost;
          output->look_x = controller.look_x;
          output->look_y = controller.look_y;
-@@ -589,3 +609,39 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+@@ -589,3 +619,44 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
          }
      } else looking = false;
  }
@@ -560,7 +610,12 @@ index ff84664..0430f13 100644
 +    }
 +    OverlayInputAccess access;
 +    const bool raw = raw_mouse_live(s);
-+    const long raw_x = state().raw_mouse_x.exchange(0), raw_y = state().raw_mouse_y.exchange(0);
++    const long raw_x = state().raw_look_x.exchange(0), raw_y = state().raw_look_y.exchange(0);
++    // Movement from while the camera wasn't reading (the camcorder off, a menu up) is not a look.
++    thread_local ULONGLONG last_read = 0;
++    const auto now = GetTickCount64();
++    if (now - last_read > 250) looking = false;
++    last_read = now;
 +    POINT current{};
 +    if (!GetCursorPos(&current)) {
 +        looking = false;
@@ -579,18 +634,21 @@ index ff84664..0430f13 100644
 +    }
 +}
 diff --git a/Extension/UI/Overlay/overlay_internal.h b/Extension/UI/Overlay/overlay_internal.h
-index c0ce6f9..ba9a578 100644
+index c0ce6f9..9acfda3 100644
 --- a/Extension/UI/Overlay/overlay_internal.h
 +++ b/Extension/UI/Overlay/overlay_internal.h
-@@ -113,6 +113,7 @@ struct State {
+@@ -113,6 +113,10 @@ struct State {
      // buttons use it because Skate's controller mode stops the legacy cursor
      // and button state from updating until the game is paused.
      std::atomic<long> raw_mouse_x{0}, raw_mouse_y{0};
++    // The same movement for the camcorder's look alone: the flight input's reader empties the
++    // one above every tick the free camera is up (the camcorder's lease is that camera too).
++    std::atomic<long> raw_look_x{0}, raw_look_y{0};
 +    std::atomic<long> raw_mouse_wheel{0}; // wheel notches x 120 (WHEEL_DELTA), for the camcorder's zoom
      std::atomic<unsigned> raw_mouse_buttons{0}; // physical: 1 left, 2 right, 4 middle
      std::atomic<ULONGLONG> raw_mouse_time{0};
      // The mouse registration in effect has RIDEV_NOLEGACY: Windows does not
-@@ -151,6 +152,9 @@ struct State {
+@@ -151,6 +155,9 @@ struct State {
      bool win32_ready = false;
      bool dx12_ready = false;
      std::atomic<bool> freecam_controller_active{false};

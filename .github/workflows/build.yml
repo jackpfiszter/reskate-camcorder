@@ -35,6 +35,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: camcorder
+      # The picture shader is compiled in the game by D3DCompile (fxc's compiler), which is stricter
+      # than dxc: compile it here with fxc so a shader error fails the build, not the player's screen.
+      - name: Compile the picture shader with fxc
+        shell: pwsh
+        run: |
+          $fxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" | Sort-Object FullName | Select-Object -Last 1
+          $source = Get-Content camcorder/integration/reskate/Extension/Camcorder/camcorder_warp.cpp -Raw
+          $start = $source.IndexOf('R"hlsl(') + 7
+          $hlsl = $source.Substring($start, $source.IndexOf(')hlsl"') - $start)
+          Set-Content picture.hlsl $hlsl -NoNewline
+          & $fxc.FullName /nologo /T vs_5_0 /E picture_vs /O3 /Fo picture_vs.cso picture.hlsl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $fxc.FullName /nologo /T ps_5_0 /E picture_ps /O3 /Fo picture_ps.cso picture.hlsl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Once, to settle why the look never showed on screen: the old constant block's name.
+          Set-Content old.hlsl ($hlsl -replace 'cbuffer Constants', 'cbuffer Pass') -NoNewline
+          & $fxc.FullName /nologo /T ps_5_0 /E picture_ps /Fo old.cso old.hlsl
+          Write-Host "cbuffer named Pass: fxc exit code $LASTEXITCODE"
+          exit 0
       - name: Check out ReSkate at the pinned commit
         shell: pwsh
         run: |

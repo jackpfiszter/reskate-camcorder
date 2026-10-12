@@ -117,8 +117,8 @@ struct VelocityEstimate {
         if (started_ && dt > 1e-4f && length(sub(position, last_)) < jump) {
             const auto raw = mul(sub(position, last_), 1.0f / dt);
             for (std::size_t i = 0; i < 3; ++i) velocity[i] = damp(velocity[i], raw[i], time_constant, dt);
-        } else if (started_) {
-            velocity = {};
+        } else if (started_ && dt > 1e-4f) {
+            velocity = {}; // a teleport (a tick with no time between keeps the estimate)
         }
         if (dt > 1e-4f || !started_) last_ = position;
         started_ = true;

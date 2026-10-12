@@ -76,6 +76,10 @@ struct State {
     std::uint32_t review{}, review_stop{}; // requests for the overlay's clip review
     bool back_held{};          // Esc or Start, while the camera has the controls
     bool pad_was_held{};       // the camera had the controls last tick
+    bool back_armed{};         // Esc / Start seen up since then: the next press backs out
+    bool left_play{};          // `ready` dropped (loading): the tripods go with the old world
+    bool in_play{};            // this tick: in play, no game menu up (the pad is never held otherwise)
+    double place_until{};      // a tripod asked for with the camera off: placed once the skater is known (until then)
     PresenceBeacon beacon;               // telling the others we film (the REC light by our name)
     std::mutex presence_mutex;
     PresenceBook presence;               // what the others said
@@ -343,7 +347,7 @@ std::string export_profiles(const State &s) {
 
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
 bool wants_pad(State &s) {
-    return s.camcorder.powered() && s.owned && (s.operating || s.camcorder.tripod_setup() || s.quick || s.back_held);
+    return s.camcorder.powered() && s.owned && s.in_play && (s.operating || s.camcorder.tripod_setup() || s.quick || s.back_held);
 }
 double wall_seconds() { return std::chrono::duration<double>(Clock::now().time_since_epoch()).count(); }
 
@@ -408,10 +412,15 @@ void quick_controls(State &s, float dt) {
         const auto item = quick_items(s)[static_cast<std::size_t>(std::clamp(s.quick_index, 0, count - 1))];
         if (item.closes) s.quick = false;
         if (!item.verb.empty()) command(item.verb, item.words);
+        // The list can change length (a tripod standing, handheld or not): stay on the same line.
+        const auto now = quick_items(s);
+        for (std::size_t i = 0; i < now.size(); ++i)
+            if (now[i].label == item.label || (now[i].verb == item.verb && now[i].words == item.words)) s.quick_index = static_cast<int>(i);
+        s.quick_index = std::clamp(s.quick_index, 0, static_cast<int>(now.size()) - 1);
     }
 }
 // Aiming while skating: the camera takes only what a skater can spare.
-bool wants_aim(State &s) { return s.camcorder.powered() && s.owned && s.aiming && !wants_pad(s); }
+bool wants_aim(State &s) { return s.camcorder.powered() && s.owned && s.in_play && s.aiming && !wants_pad(s); }
 
 void set_capture(State &s, bool pad, bool aim) {
     if (pad || s.captured) DingoSDKOverlaySetFreecamInputCapture(pad); // every tick while held (client_tick.cpp too)
@@ -455,11 +464,17 @@ OperatorInput read_controls(State &s, float dt) {
         DingoSDKOverlayReadControllerInput(&pressed);
         constexpr std::uint32_t start_button = 0x0010; // XINPUT_GAMEPAD_START (Options on a PlayStation pad)
         const bool back = (DingoSDKOverlayReadPromptKeys() & 8u) != 0 || (pressed.buttons & start_button) != 0;
-        // A press already down when the camera took the controls (Esc closing the ReSkate menu
-        // straight after SET UP A TRIPOD) is not a press to back out with.
-        if (!s.pad_was_held) s.back_held = back;
+        // A press counts only once the key was seen up while the camera had the controls: one
+        // already down when it took them, or begun while the ReSkate menu or console had the keys
+        // (Esc closing the menu straight after SET UP A TRIPOD), is not a press to back out with.
+        overlay::FlightInput probe;
+        DingoSDKOverlayReadFlightInput(&probe, true, true);
+        const bool readable = probe.active; // false while the menu, the console or chat has the keys
+        if (!s.pad_was_held || !readable) s.back_armed = false;
+        else if (!back) s.back_armed = true;
         s.pad_was_held = true;
-        if (back && !s.back_held) {
+        if (back && s.back_armed) {
+            s.back_armed = false;
             if (s.quick) s.quick = false;
             else if (s.camcorder.tripod_setup()) s.camcorder.set_tripod_setup(false);
             else s.operating = false;
@@ -472,6 +487,7 @@ OperatorInput read_controls(State &s, float dt) {
     } else {
         s.back_held = false;
         s.pad_was_held = false;
+        s.back_armed = false;
     }
     if (s.quick) {
         // The quick menu has the controls; nothing moves the camera meanwhile.
@@ -571,6 +587,7 @@ void publish(State &s, const Frame &frame) {
     s.published.quick_index = -1;
     if (s.quick) {
         for (const auto &item : quick_items(s)) s.published.quick.push_back({item.label, item.value});
+        s.quick_index = std::clamp(s.quick_index, 0, static_cast<int>(s.published.quick.size()) - 1);
         s.published.quick_index = s.quick_index;
     }
     s.published.guide = wall_seconds() < s.guide_until;
@@ -673,9 +690,17 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
                          : std::clamp(std::chrono::duration<float>(now - s.last_tick).count(), 0.0f, 0.1f);
         s.last_tick = now;
         // The party's Spectate holds the same native camera lease: never both at once.
-        if (s.camcorder.powered() && multiplayer::spectating_party_member()) {
-            s.camcorder.power(false);
-            logging::write(logging::Level::info, logging::Channel::ui, "Camcorder off: stop spectating to film.");
+        if (multiplayer::spectating_party_member()) {
+            if (s.camcorder.powered()) {
+                s.camcorder.power(false);
+                logging::write(logging::Level::info, logging::Channel::ui, "Camcorder off: stop spectating to film.");
+            }
+            // Spectate drives the one camera lease now: let go of it without handing the game its
+            // camera back (that would undo Spectate's for a frame).
+            if (s.owned) {
+                s.owned = false;
+                set_capture(s, false, false);
+            }
         }
         if (s.camcorder.powered() != s.was_powered) {
             s.was_powered = s.camcorder.powered();
@@ -694,7 +719,16 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
                 s.operating = false; // a fresh start next time: the pad is the skater's
                 s.quick = false;
                 s.guide_until = 0;
+                ++s.review_stop; // a review ends with the camera
             }
+        }
+        // Out of play and back (a new map, a reload): the tripods stood in the world that was. (Not
+        // for the game's menus below: a pause leaves them standing.)
+        if (!ready) {
+            s.left_play = true;
+        } else if (std::exchange(s.left_play, false)) {
+            for (int slot = 0; slot < static_cast<int>(tripod_slots); ++slot) s.camcorder.remove_tripod(slot);
+            s.place_until = 0;
         }
         // The game's pause menu (or any of its menus) gets the screen, the camera and the controls:
         // the camcorder steps aside, as for loading, and comes back when it closes.
@@ -702,6 +736,7 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
             ready = false;
             s.quick = false;
         }
+        s.in_play = ready;
         if (!s.camcorder.powered() || !ready) {
             if (!ready && s.camcorder.deck().recording()) s.camcorder.deck().stop();
             release(s, base, client, ready, camera_phase);
@@ -718,6 +753,15 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
             // The ground under the filmer, so the handheld camera's heights are from the feet.
             const auto &p = in.filmer.position;
             in.filmer.ground = local_ground_height(p[0], p[2], p[1] + 0.5f, p[1] - 3.0f);
+        }
+        if (s.place_until > 0) {
+            if (in.filmer.valid) {
+                s.place_until = 0;
+                s.camcorder.place_tripod(in.filmer);
+            } else if (wall_seconds() > s.place_until) {
+                s.place_until = 0;
+                overlay::notify(overlay::NoticeLevel::warning, "No tripod set up.", "Nowhere to stand it: load into a map and stand on the ground.");
+            }
         }
         in.subject = subject_from(s, in.filmer, dt);
         in.controls = read_controls(s, dt);
@@ -760,6 +804,7 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         if (!s.loading) save_preferences(s);
     };
     if (verb == "subject") {
+        s.subject_velocity.reset(); // a new subject: its speed starts afresh, not as one leap across
         if (words.empty() || words[0] == "none") {
             s.subject = 0;
             s.closest = false;
@@ -938,7 +983,10 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         const bool open = word == "open" || (word == "toggle" && !s.quick);
         if (open && !s.camcorder.powered()) return "Turn the camcorder on first.";
         s.quick = open;
-        if (open) s.quick_used = wall_seconds();
+        if (open) {
+            s.quick_used = wall_seconds();
+            s.quick_index = 0; // from the top each time
+        }
         s.quick_last = 0;
         return open ? "Quick menu: W/S or the wheel choose, D does it, A closes." : "Quick menu closed.";
     }
@@ -997,6 +1045,13 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
     context.catalogue = &s.catalogue;
+    // With the camera off the game isn't asked where the skater is: turn it on, and the tripod goes
+    // down on the first tick that knows (a moment later).
+    if (verb == "tripod" && !words.empty() && words[0] == "place" && !s.camcorder.tripod_setup() && !context.filmer.valid) {
+        s.camcorder.power(true);
+        s.place_until = wall_seconds() + 3;
+        return "Setting up a tripod where you stand...";
+    }
     auto answer = run_command(s.camcorder, verb, words, context);
     if (verb == "camera" || verb == "lens" || verb == "grip" || verb == "rig" || verb == "lockon" || verb == "head") save();
     if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.operating)

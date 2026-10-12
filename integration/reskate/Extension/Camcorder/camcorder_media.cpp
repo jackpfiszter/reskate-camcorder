@@ -159,6 +159,18 @@ std::wstring folder(const KNOWNFOLDERID &known) {
 
 std::wstring widen(const std::string &ascii) { return std::wstring(ascii.begin(), ascii.end()); }
 
+std::wstring unique_path(const std::wstring &path) {
+    if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) return path;
+    const auto slash = path.find_last_of(L"\\/");
+    auto dot = path.find_last_of(L'.');
+    if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash)) dot = path.size();
+    for (int n = 2; n < 1000; ++n) {
+        auto candidate = path.substr(0, dot) + L" (" + std::to_wstring(n) + L")" + path.substr(dot);
+        if (GetFileAttributesW(candidate.c_str()) == INVALID_FILE_ATTRIBUTES) return candidate;
+    }
+    return path;
+}
+
 std::string narrow(const std::wstring &text) {
     if (text.empty()) return {};
     const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);

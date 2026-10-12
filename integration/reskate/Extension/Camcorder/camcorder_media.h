@@ -37,5 +37,8 @@ bool save_jpeg(const camcorder::Image &image, const std::wstring &path, std::str
 // "<known folder>\ReSkate Camcorder", created when missing; empty when Windows will not say where.
 std::wstring folder(const KNOWNFOLDERID &known);
 std::wstring widen(const std::string &ascii);
+// `path`, or with " (2)", " (3)"... before its extension when a file of that name is already there
+// (two stills in the same second must not overwrite each other).
+std::wstring unique_path(const std::wstring &path);
 std::string narrow(const std::wstring &text);
 } // namespace dingosdk::camcorder_media

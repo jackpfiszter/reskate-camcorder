@@ -129,7 +129,11 @@ struct StampMarks {
 StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile & = {});
 
 // The camera's clock at real time `now`: the real time, or what the player set it to, running on.
-inline std::time_t stamp_clock(std::time_t now, const Finish &finish) { return now + static_cast<std::time_t>(finish.stamp_offset); }
+// (An offset beyond 200 years either way, a hand-edited settings file's, counts as none.)
+inline std::time_t stamp_clock(std::time_t now, const Finish &finish) {
+    constexpr std::int64_t most = 200LL * 366 * 24 * 3600;
+    return finish.stamp_offset > most || finish.stamp_offset < -most ? now : now + static_cast<std::time_t>(finish.stamp_offset);
+}
 // Setting the camera's clock to `date` (YYYY-MM-DD) and `time` (HH:MM; empty keeps the time of day):
 // the offset from the real clock at `now`, in local time. Nothing when the date or time is not one.
 std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view time, std::time_t now);

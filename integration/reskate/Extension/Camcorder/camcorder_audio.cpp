@@ -156,6 +156,18 @@ struct Capture::Impl {
                     track.add(at, packet.data(), frames, pending);
                 }
                 if (woke == WAIT_OBJECT_0) break;
+                if (woke == WAIT_TIMEOUT) {
+                    // Nothing for 200 ms (the game silent, or the loopback paused): silence up to a
+                    // tenth of a second ago, so the clip's sound keeps pace with its picture (the
+                    // file writer waits for sound before it takes more picture).
+                    const double behind = now_seconds() - 0.1 - static_cast<double>(Limiter::lookahead) / audio_rate;
+                    std::lock_guard lock(mutex);
+                    const auto gap = static_cast<std::int64_t>((behind - origin) * audio_rate) - track.written();
+                    if (gap > audio_rate / 20) {
+                        const std::vector<std::int16_t> quiet(static_cast<std::size_t>(gap) * audio_channels, 0);
+                        track.add(origin + static_cast<double>(track.written()) / audio_rate, quiet.data(), gap, pending);
+                    }
+                }
             }
             client->Stop();
             return;

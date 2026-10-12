@@ -132,8 +132,9 @@ public:
     // Where the camera is held, for a filmer standing at `filmer`.
     Vec3 grip_position(const Filmer &) const;
     // Raising or lowering the camera from its grip's height (LB / RB, `camcorder height`), in
-    // metres; the lens stays between the settings' lowest and highest above the feet.
-    void set_lift(float metres) { lift_ = std::isfinite(metres) ? std::clamp(metres, -3.0f, 3.0f) : 0.0f; }
+    // metres; the lens stays between the settings' lowest and highest above the feet. Up to 4 m
+    // either way: a 3 m rig crouched down to a skate's height.
+    void set_lift(float metres) { lift_ = std::isfinite(metres) ? std::clamp(metres, -4.0f, 4.0f) : 0.0f; }
     float lift() const { return lift_; }
     // The lens's height above the feet now (the grip's, plus the lift, within lowest to highest).
     float lens_height(bool on_board) const;

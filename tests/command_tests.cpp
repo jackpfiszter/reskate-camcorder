@@ -102,3 +102,17 @@ TEST(height_steps_the_handheld_camera_and_a_grip_resets_it) {
     CHECK(starts(run_command(cam, "height", {"next"}), "Camera held 0.41 m up")); // round to low
     CHECK(starts(run_command(cam, "height", {"sideways"}), "Usage"));
 }
+
+TEST(height_next_goes_round_even_when_the_handling_caps_the_height) {
+    Camcorder cam;
+    auto handling = cam.handling();
+    handling.highest = 1.0f;
+    cam.set_handling(handling);
+    std::string last;
+    bool low_again = false;
+    for (int i = 0; i < 6; ++i) {
+        last = run_command(cam, "height", {"next"});
+        if (i > 0 && cam.status().handheld_height < 0.5f) low_again = true;
+    }
+    CHECK(low_again);
+}
