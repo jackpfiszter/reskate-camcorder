@@ -10,6 +10,7 @@
 #include "Extension/UI/Overlay/overlay.h"
 #include "camcorder/commands.h"
 #include "camcorder/preferences.h"
+#include "camcorder/presence.h"
 #include "camcorder/profiles.h"
 #include <atomic>
 #include <chrono>
@@ -50,6 +51,9 @@ struct State {
     bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
     std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
     bool preferences_loaded{}, loading{};
+    PresenceBeacon beacon;               // telling the others we film (the REC light by our name)
+    std::mutex presence_mutex;
+    PresenceBook presence;               // what the others said
     Catalogue catalogue;                 // the built-in cameras and lenses, and the mods'
     std::vector<std::string> mod_notes;  // what reading the mods' profiles found wrong
     bool was_powered{};
@@ -421,6 +425,37 @@ bool wants_controller() noexcept { return wants_pad(state()); }
 bool powered() noexcept { return state().camcorder.powered(); }
 
 void note_warp_failed() noexcept { state().warp_failed.store(true); }
+
+namespace {
+double presence_clock() { return std::chrono::duration<double>(Clock::now().time_since_epoch()).count(); }
+} // namespace
+
+bool receive_presence(std::uint64_t sender, std::span<const std::uint8_t> message) noexcept {
+    const auto presence = decode_presence(message);
+    if (!presence) return false;
+    auto &s = state();
+    std::lock_guard lock(s.presence_mutex);
+    s.presence.heard(sender, *presence, presence_clock());
+    return true;
+}
+
+std::optional<std::vector<std::uint8_t>> presence_to_send() noexcept {
+    auto &s = state();
+    try {
+        const auto now = !s.camcorder.powered()          ? Presence::off
+                         : s.camcorder.deck().recording() ? Presence::recording
+                                                          : Presence::standby;
+        return s.beacon.tick(now, presence_clock());
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::uint8_t presence_of(std::uint64_t player) noexcept {
+    auto &s = state();
+    std::lock_guard lock(s.presence_mutex);
+    return static_cast<std::uint8_t>(s.presence.of(player, presence_clock()));
+}
 
 void note_render_aspect(float aspect) noexcept {
     if (std::isfinite(aspect) && aspect > 0.2f && aspect < 10) state().render_aspect.store(aspect, std::memory_order_relaxed);

@@ -94,9 +94,16 @@ The camera rides on your skater, held in your right hand.
 
 ### Filming friends
 
-Everything is local: your camera shows on your screen only and sends nothing. Filming a
-friend needs only their position, which the session already has. Ideas for later: a REC light
-by a filming player's nametag, and a camcorder prop in the filmer's hands for everyone else.
+Your camera shows on your screen only. Filming a friend needs only their position, which the
+session already has. The one thing sent is whether you are filming (`presence.h`): a small
+camcorder after a filmer's nametag, with a blinking tally light and REC while they record.
+ReSkate's packets cannot grow a field without shutting out players on other builds, so it rides
+in the Throwdowns channel (hosts and servers pass it on unread) with a first byte no throwdown
+has; official builds drop it with a log line. In ReSkate itself it would be a proper field.
+
+A camcorder in the filmer's hands needs a model attached to the hand bone, on every player's
+screen: ReSkate has no way to attach a model to a skater, and the game has no camcorder model.
+That is work for the ReSkate developers (and the strongest reason to bring the camcorder to them).
 
 ## Recording
 

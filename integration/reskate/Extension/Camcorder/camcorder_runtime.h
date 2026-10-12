@@ -12,6 +12,8 @@
 #include "camcorder/camcorder.h"
 #include "camcorder/look.h"
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,6 +40,13 @@ bool owns_camera() noexcept;
 // Whether the camcorder wants the pad kept from the skater (operating, or setting up a tripod).
 // The client tick ORs it into the freecam's input capture, which it sets every tick.
 bool wants_controller() noexcept;
+
+// Session, client thread: the REC light (camcorder/presence.h). True when a throwdown message was
+// the camcorder's word from `sender` (then it is not a throwdown); what to send the others now, if
+// anything; and what `player` last said: 0 no camcorder, 1 on, 2 recording.
+bool receive_presence(std::uint64_t sender, std::span<const std::uint8_t> message) noexcept;
+std::optional<std::vector<std::uint8_t>> presence_to_send() noexcept;
+std::uint8_t presence_of(std::uint64_t player) noexcept;
 
 // Console, client thread: one `camcorder` command; the line to print.
 std::string command(std::string_view verb, const std::vector<std::string> &words);
