@@ -13,8 +13,11 @@ layout and the console commands. CI runs it on every push.
 
 ## 2. Get a ReSkate build with the camcorder
 
+Tagged versions are on the repository's **Releases** page: a zip with `ReSkate.dll`,
+`ReSkateLauncher.exe` and this file (pushing a tag like `v0.3.0` makes one).
+
 Every push builds ReSkate with the camcorder on a Windows runner (`.github/workflows/build.yml`).
-Open the repository's **Actions** tab, pick the latest green **build** run, and download the
+For the newest build, open the repository's **Actions** tab, pick the latest green **build** run, and download the
 **ReSkate-camcorder** artifact: `ReSkate.dll` and `ReSkateLauncher.exe`. Crash uploads are switched
 off in these builds, because a crash in them is ours, not the ReSkate developers'.
 
@@ -70,6 +73,18 @@ mouse, keys and pad to the camera; the skater stands still until you turn them o
 
 The viewfinder shows a line of these hints while they apply.
 
+**Steer while filming** (the menu's toggle, `camcorder aim on`, or a bound key) splits the controls,
+for following a friend's line: you keep skating, the camera takes only the look and the zoom.
+
+| | Mouse and keyboard | Pad |
+|---|---|---|
+| Skate | the keyboard, as always | left stick and buttons |
+| Aim | move the mouse | right stick |
+| Zoom (wide / tele) | mouse wheel | left / right trigger |
+
+While it is on, skate.'s own mouse and right-stick controls (and the triggers) don't reach the
+game; turn it off for those.
+
 ### Checklist
 
 Solo:
@@ -86,7 +101,7 @@ Solo:
       `camcorder tape clips` lists the clip.
 - [ ] `camcorder tripod place`: the view jumps to a tripod just ahead of you, in SETUP with a faint
       frame. Left stick moves it, right stick aims, triggers raise and lower it. Does it stand on
-      the ground? (Known gap: it doesn't follow the ground yet; see below.)
+      the ground? Carry it onto a ledge and off again: it steps up and drops down with the ground.
 - [ ] `camcorder rec`: setup ends. Skate away: the tripod pans after you.
       `camcorder head locked`: it stops panning. `camcorder head manual` + `camcorder operate on`:
       pan by hand, with drag.
@@ -95,8 +110,17 @@ Solo:
       game kept its camera. Freecam off: the camcorder takes over.
 - [ ] `camcorder power off`: your normal camera comes back. Open and close the menu, load another
       map, bail: nothing sticks or crashes.
+- [ ] Handheld at eye level, get off the board and walk: the shake changes from a fine wheel buzz
+      to a slower footstep bob. Back on the board: the buzz again.
+- [ ] Steer while filming on (menu or `camcorder aim on`): WASD / the keyboard still skates; the
+      mouse aims without moving the skater's view of anything else; the wheel zooms a step per
+      notch. With a friend as subject the mouse nudges the framing; solo it aims freely and the
+      aim turns with you. Open the ReSkate menu: the mouse works in it. Off again: all as before.
+- [ ] `camcorder still` (or TAKE A STILL, or a bound key): "Still saved." and a JPEG in
+      **Pictures\ReSkate Camcorder** of the 4:3 picture, no readouts.
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",
-      "Camcorder: pad to camera", "Camcorder: set up a tripod" and "Camcorder: next tripod".
+      "Camcorder: pad to camera", "Camcorder: steer while filming", "Camcorder: set up a tripod",
+      "Camcorder: next tripod" and "Camcorder: take a still".
 
 With a friend:
 
@@ -129,11 +153,16 @@ through the VX mic: thin low end, rolled-off top, the level control pumping, sla
 - [ ] Skate into a quiet moment and out again: the sound stays in sync after it.
 - [ ] VX mic: the same line sounds thinner, more compressed, and breaks up on a hard landing.
 - [ ] If the notice says "No sound: ...", send that text.
+- [ ] Three short clips, then `camcorder tape capture` (or CAPTURE THE TAPE): "Tape captured." and
+      one file, "ReSkate ... tape 1 (3 clips).mp4", with the clips back to back, sound in step at
+      every cut. Mix a DV clip in: it is scaled to the first clip's size.
+- [ ] `camcorder tape new`, one more clip, capture again: only that clip, as tape 2.
 
 ### Known gaps (expected)
 
-- Tripods keep the height they were placed at; they don't follow the ground yet.
-- Hand shake always uses the on-board kind (wheel buzz), even on foot.
+- A tripod is invisible to the other players and in your own shots of it: there is no tripod
+  model in the game to stand there yet.
+- No second picture: the camcorder's view replaces the game's while it is on.
 - The fisheye is the wide angle plus round corners; straight lines don't bend yet.
 - The recording is of what is on screen: it records the camcorder's picture only while you look
   through it.

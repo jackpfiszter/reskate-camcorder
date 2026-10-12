@@ -33,6 +33,7 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
         run(menu, callbacks, s.powered ? "power off" : "power on");
     if (s.powered && primary_button(menu, s.transport == Transport::recording ? "STOP  (STBY)" : "REC"))
         run(menu, callbacks, "rec");
+    if (s.powered && small_button("TAKE A STILL")) run(menu, callbacks, "still");
     end_card();
 
     begin_card(menu, "camcorder-shooting", "SHOOTING");
@@ -51,6 +52,10 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     bool operate = published.operating;
     if (toggle_row(menu, "Camera controls", "Mouse aims, Q / E zoom; your skater stands still while it is on.", operate))
         run(menu, callbacks, operate ? "operate on" : "operate off");
+    bool aim = published.aiming;
+    if (toggle_row(menu, "Steer while filming",
+                   "You skate (keys, left stick); the mouse or right stick aims, the wheel or triggers zoom.", aim))
+        run(menu, callbacks, aim ? "aim on" : "aim off");
     bool lock_on = s.lock_on;
     if (toggle_row(menu, "Lock on", "Keep the subject framed by yourself while you skate.", lock_on))
         run(menu, callbacks, lock_on ? "lockon on" : "lockon off");
@@ -107,7 +112,10 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
         run(menu, callbacks, sound == 0 ? "sound off" : sound == 1 ? "sound game" : "sound vx");
     if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
     ImGui::SameLine();
+    if (small_button("CAPTURE THE TAPE")) run(menu, callbacks, "tape capture");
+    ImGui::SameLine();
     if (small_button("NEW TAPE")) run(menu, callbacks, "tape new");
+    note("Capture the tape joins this tape's clips into one file, the way a MiniDV tape went into the computer.");
     if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last clip", last);
     note("Turn the game's music down in its audio settings for clean session sound.");
     end_card();
@@ -116,8 +124,10 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     note("With camera controls on or a tripod being set up: the mouse aims (no button needed), Q / E zoom, "
          "W A S D move a tripod, Q / E raise and lower it, Shift + Q / E zoom while setting up. "
          "On a pad: right stick, triggers, left stick, L3.");
+    note("Steer while filming: you keep skating on the keyboard or left stick and buttons; the mouse (or right "
+         "stick) aims and the wheel (or triggers) zooms. Mouse or right-stick tricks wait until you turn it off.");
     note("Put the camcorder on keys or buttons in SETTINGS > CONTROLS: Camcorder on / off, REC, camera controls, "
-         "set up a tripod, next tripod. Every action is also a console command: camcorder status.");
+         "steer while filming, set up a tripod, next tripod, take a still. Every action is also a console command: camcorder status.");
     end_card();
 
     ImGui::EndChild();

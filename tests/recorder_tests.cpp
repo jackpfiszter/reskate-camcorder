@@ -150,4 +150,20 @@ TEST(clip_file_names_sort_by_time) {
     t.tm_min = 3;
     t.tm_sec = 22;
     CHECK(clip_file_name(3, t) == "ReSkate 2026-10-12 14-03-22 clip 03.mp4");
+    CHECK(photo_file_name(t) == "ReSkate 2026-10-12 14-03-22 still.jpg");
+    CHECK(tape_file_name(2, 5, t) == "ReSkate 2026-10-12 14-03-22 tape 2 (5 clips).mp4");
+    CHECK(tape_file_name(1, 1, t) == "ReSkate 2026-10-12 14-03-22 tape 1 (1 clip).mp4");
+}
+
+TEST(tape_log_lists_the_clips_of_the_tape_in_the_camcorder) {
+    TapeLog log;
+    log.saved(L"a.mp4");
+    log.saved(L"b.mp4");
+    log.tape(1); // the same tape
+    CHECK(log.clips().size() == 2);
+    log.tape(2); // a new tape
+    CHECK(log.clips().empty());
+    CHECK(log.number() == 2);
+    log.saved(L"c.mp4");
+    CHECK(log.clips().front() == L"c.mp4");
 }

@@ -1,10 +1,10 @@
 # Wiring the camcorder into ReSkate
 
-> **Status: compiles, not yet run in the game.** `install.ps1` puts the files in
+> **Status: runs in the game.** `install.ps1` puts the files in
 > `Extension/Camcorder/` into a ReSkate checkout and applies `reskate.patch` (the patch points
 > below) against the ReSkate commit in `reskate.commit` (Steam build `25414733`, the `20260929`
-> address table). CI builds the result with MSVC on every push (`.github/workflows/build.yml`).
-> Nobody has played with it yet; see `docs/TESTING.md`.
+> address table). CI builds the result with MSVC on every push (`.github/workflows/build.yml`);
+> see `docs/TESTING.md` for how to try it.
 
 ## Why this lives inside ReSkate.dll
 
@@ -64,17 +64,29 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
    `{"camcorder_tripod", "tripod", "Camcorder: set up a tripod", "camcorder tripod place"}`,
    `{"camcorder_cut", "cut", "Camcorder: next tripod", "camcorder tripod next"}`.
 
-8. **Menu** (later): a CAMCORDER page in Mod Options that only sends `camcorder ...` commands,
-   as the Trainer page does.
+   (The patch has the full list: steer while filming and take a still too.)
+
+8. **Menu** (`Extension/UI/Overlay/skate_menu.cpp`): a CAMCORDER page that only sends
+   `camcorder ...` commands, as the Trainer page does.
+
+9. **Recording** (`overlay_render.cpp`): the back buffer is copied for clips and stills in the
+   present path, before the readouts are drawn (`camcorder_capture.cpp`); Media Foundation and
+   process-loopback audio are linked in `cmake/UI.cmake`.
+
+10. **Steer while filming** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
+    partial hold beside Freecam's full one. `DingoSDKOverlaySetCameraAimCapture` keeps the right
+    stick, the triggers and the mouse from the game (XInput, PlayStation HID reports, raw mouse
+    records, mouse messages, the cursor) and leaves it the keyboard, the left stick and the
+    buttons; `DingoSDKOverlayReadMouseWheel` gives the camera the wheel.
 
 ## To confirm in play
 
 - **Look units.** `read_controls` assumes the freecam's look deltas are .0025 rad each, as
   `step_free_flight` uses them. Check a controller and a mouse both feel right.
-- **On board or on foot.** `filmer_from` assumes on board; the physics state
-  (`first_person_on_foot`) should decide, so the shake switches from wheels to footsteps.
-- **Ground under a tripod.** `ground_under_tripod` is not filled yet: factor the Trainer's
-  downward ray (`land_at`, `trainer_landing.h`) into a shared helper and query the tripod's x, z.
+- **On board or on foot.** `on_board` reads No Bail's physics-state watch (500 to 599 on
+  foot); check the shake switches from wheels to footsteps when walking.
+- **Ground under a tripod.** `ground_under_tripod` asks `local_ground_height` from 2.5 m above
+  the feet down 40 m while it is being set up; check ledges, stairs and rails.
 - **FOV range.** The lease writes the FOV into the free camera (`first_person_write_fov`,
   accepted between 1 and 175 degrees). The fisheye asks for about 94 degrees vertical and full
   tele about 3.5; check the game draws both cleanly (LOD and culling at tele, near-plane at wide).

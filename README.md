@@ -5,10 +5,10 @@ and your friends the way 90s skate videos were shot, without the replay editor. 
 VX1000 with a Century fisheye and chase the skater, or set up tripods at the spot, press REC,
 and skate the line.
 
-> **Status: early, untested in game.** The camcorder's model (camera, lens, zoom, tape, rigs,
-> viewfinder, commands) is unit-tested, and CI builds ReSkate with the camcorder on Windows
-> (MSVC, warnings as errors) and uploads the DLL. Nobody has played with it yet:
-> [docs/TESTING.md](docs/TESTING.md) has how to try it and a checklist. See
+> **Status: early, in testing.** Filming, recording to MP4 and sound work in game. The
+> camcorder's model (camera, lens, zoom, tape, rigs, viewfinder, commands) is unit-tested, and
+> CI builds ReSkate with the camcorder on Windows (MSVC, warnings as errors); tagged versions
+> are on the Releases page. [docs/TESTING.md](docs/TESTING.md) has how to try it and a checklist. See
 > [docs/DESIGN.md](docs/DESIGN.md) for the design and
 > [integration/reskate/README.md](integration/reskate/README.md) for how it plugs in.
 
@@ -21,17 +21,21 @@ and skate the line.
 - **Handheld.** You are the filmer; the camera rides with your skater on a long grip (low, the
   fisheye follow shot), at the hip or at eye level. Lock on to a friend and the camera keeps
   them framed by itself, a little late like a real operator, so you can keep both hands on
-  skating. Hand shake comes from breathing, the board's wheels and footsteps.
-- **Tripods.** Set up to four at a spot: carry each over the ground, set the height (ground pod
+  skating, or steer while filming: skate on the keys or left stick, aim with the mouse or right
+  stick. Hand shake comes from breathing, the board's wheels and, on foot, footsteps.
+- **Tripods.** Set up to four at a spot: carry each over the ground (it stands on what's under
+  it), set the height (ground pod
   to 2 m) and aim, then lock it off, pan it by hand against a fluid head's drag, or let it follow
   the skater. Cut between them live.
 - **The viewfinder.** STBY / red REC, the tape counter, minutes of tape left, battery, the W-T
   zoom bar; 4:3 bars either side. A clean feed keeps the frame and lens for screen capture.
 - **Clips to MP4.** REC to STBY writes the 4:3 picture (fisheye corners and all, readouts not) to
   Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480, with
-  the game's own sound (nothing else on the PC), clean or through the VX mic.
+  the game's own sound (nothing else on the PC), clean or through the VX mic. Stills go to
+  Pictures\ReSkate Camcorder as JPEGs.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
-  numbered clip list per tape (`camcorder tape clips`).
+  numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
+  back to back in one MP4, ready to edit.
 
 ## Why it is a ReSkate feature, not a drop-in mod
 
@@ -65,8 +69,14 @@ is set for MSVC, as ReSkate uses.
 ## Console commands
 
 Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|mode|lens|grip|lockon|subject|operate|tripod|head|height|tape|clean|status`.
+`camcorder power|rec|stop|still|mode|lens|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|status`.
 See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
+
+## Releases
+
+Push a tag (`git tag v0.3.0 && git push origin v0.3.0`) and CI publishes a zip of the build on
+the Releases page. The zip holds a modified `ReSkate.dll`, so under the GPL its source is this
+repository at that tag plus ReSkate at the commit in `integration/reskate/reskate.commit`.
 
 ## License
 

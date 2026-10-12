@@ -1,5 +1,5 @@
 diff --git a/Engine/Game/Input/controller_bindings.h b/Engine/Game/Input/controller_bindings.h
-index 639ed1e..9831235 100644
+index 639ed1e..73a6ff7 100644
 --- a/Engine/Game/Input/controller_bindings.h
 +++ b/Engine/Game/Input/controller_bindings.h
 @@ -89,7 +89,7 @@ struct ControllerInput {
@@ -7,19 +7,21 @@ index 639ed1e..9831235 100644
      std::string_view key, name, label, command;
  };
 -inline constexpr std::array<ActionBind, 8> action_binds{{
-+inline constexpr std::array<ActionBind, 13> action_binds{{
++inline constexpr std::array<ActionBind, 15> action_binds{{
      {"first_person", "firstperson", "First person", "firstperson toggle"},
      {"hide_hud", "hidehud", "Hide HUD", "hideui toggle"},
      {"voice_chat", "voicechat", "Voice chat on / off", "mp voice-chat toggle"},
-@@ -98,6 +98,11 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
+@@ -98,6 +98,13 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
      {"challenges", "challenges", "Show / hide challenges", "challenges toggle"},
      {"nametags", "nametags", "Player nametags", "mp nametags toggle"},
      {"nametag_dots", "nametagdots", "Player dots", "mp nametag-dots toggle"},
 +    {"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"},
 +    {"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"},
 +    {"camcorder_operate", "camoperate", "Camcorder: pad to camera", "camcorder operate toggle"},
++    {"camcorder_aim", "camaim", "Camcorder: steer while filming", "camcorder aim toggle"},
 +    {"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"},
 +    {"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"},
++    {"camcorder_still", "camstill", "Camcorder: take a still", "camcorder still"},
  }};
  struct ControllerBindingsModel {
      bool available{};
@@ -165,24 +167,242 @@ index 4130fa7..5d39fb2 100644
          if (capture_pose && local.ready) {
              s.last_skater_bones = local.pose.skater.size();
              s.last_board_bones = local.pose.board.empty() ? 0 : local.pose.board.size() - 1;
+diff --git a/Extension/UI/Overlay/input_capture.cpp b/Extension/UI/Overlay/input_capture.cpp
+index a3e4896..98b5c51 100644
+--- a/Extension/UI/Overlay/input_capture.cpp
++++ b/Extension/UI/Overlay/input_capture.cpp
+@@ -36,6 +36,16 @@ bool block_polled_input() {
+     return capture;
+ }
+ 
++// The camcorder's aim (State::camera_aim_active), when nothing holds the whole input.
++bool block_camera_aim() {
++    return !overlay_input_access && state().camera_aim_active.load(std::memory_order_relaxed) && !block_polled_input();
++}
++// Takes the camera's part of a pad's state: the right stick and the triggers.
++void aim_gamepad(XINPUT_GAMEPAD& pad) {
++    pad.sThumbRX = pad.sThumbRY = 0;
++    pad.bLeftTrigger = pad.bRightTrigger = 0;
++}
++
+ void note_input_record(const RAWINPUT& record) noexcept;
+ HeldInput& held_input() { static auto* value = new HeldInput; return *value; }
+ 
+@@ -78,7 +88,8 @@ BOOLEAN __stdcall captured_hid_attributes(HANDLE file, PHIDD_ATTRIBUTES attribut
+     return result;
+ }
+ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+-    if (!block_polled_input() || !read.buffer || size > read.capacity) return;
++    const bool full = block_polled_input(), aim = !full && block_camera_aim();
++    if (!(full || aim) || !read.buffer || size > read.capacity) return;
+     auto* bytes = static_cast<std::uint8_t*>(read.buffer);
+     // USB or Bluetooth decides where the buttons are in a report with id 1. It is the device's
+     // report length that tells them apart, and Windows pads every read to that length, so it
+@@ -92,6 +103,18 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+         (bytes[0] == 0x31 || (bytes[0] == 1 && !bluetooth));
+     const unsigned offset = bytes[0] == 0x31 ? 2 : bytes[0] == 0x11 ? 3 : 1;
+     auto* data = bytes + offset;
++    if (aim) {
++        // The camcorder's aim: the right stick centred and the triggers (analog and L2 / R2) up;
++        // the left stick and the buttons stay the game's.
++        data[2] = data[3] = 128;
++        if (sense_full) {
++            data[4] = data[5] = 0;
++            data[8] &= static_cast<std::uint8_t>(~0x0cu);
++        } else {
++            data[7] = data[8] = 0;
++            data[5] &= static_cast<std::uint8_t>(~0x0cu);
++        }
++    } else {
+     std::fill_n(data, 4, std::uint8_t{128});
+     if (sense_full) {
+         data[4] = data[5] = 0; // triggers; retain report sequence at +6
+@@ -100,6 +123,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+         data[4] = 8; data[5] = 0; data[6] &= 0xfc; // retain DS4 sequence bits
+         data[7] = data[8] = 0;
+     }
++    }
+     // Full Bluetooth reports have a CRC over the 0xA1 input prefix and payload.
+     // A stale checksum makes the native reader discard the neutral report.
+     if (size == 78 && (bytes[0] == 0x31 || bytes[0] == 0x11)) {
+@@ -114,7 +138,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+         std::memcpy(bytes + size - 4, &crc, sizeof(crc));
+     }
+     static std::atomic<bool> reported{};
+-    if (!reported.exchange(true)) logging::printf(logging::Level::info, logging::Channel::input,
++    if (!aim && !reported.exchange(true)) logging::printf(logging::Level::info, logging::Channel::input,
+         "Native PlayStation HID report neutralized; overlay retains its independent input stream. (%s over %s, report 0x%02x of %lu bytes, "
+         "the game's buffer %lu.)", read.kind == PlayStationPad::dualsense ? "DualSense" : "DualShock 4",
+         bluetooth ? "Bluetooth" : "USB", bytes[0], size, read.capacity);
+@@ -283,6 +307,8 @@ DWORD WINAPI captured_front(DWORD user, XINPUT_STATE* output) {
+     if (result == ERROR_SUCCESS && output && capture) {
+         output->Gamepad = {};
+         output->dwPacketNumber ^= 0x80000000u;
++    } else if (result == ERROR_SUCCESS && output && block_camera_aim()) {
++        aim_gamepad(output->Gamepad);
+     }
+     return result;
+ }
+@@ -311,9 +337,10 @@ void keep_xinput_capture_first() {
+     };
+     for (std::size_t i = 0; i < h.xinput_state.size(); ++i) guard(h.xinput_state[i].target), guard(h.xinput_extended[i].target);
+ }
++bool mouse_key(int key) { return key == VK_LBUTTON || key == VK_RBUTTON || key == VK_MBUTTON || key == VK_XBUTTON1 || key == VK_XBUTTON2; }
+ SHORT WINAPI captured_async_key(int key) {
+     const auto value = original<SHORT(WINAPI*)(int)>(input_hooks().async_key)(key);
+-    return block_polled_input() ? 0 : value;
++    return block_polled_input() || (mouse_key(key) && block_camera_aim()) ? 0 : value;
+ }
+ SHORT WINAPI captured_key(int key) {
+     const auto value = original<SHORT(WINAPI*)(int)>(input_hooks().key)(key);
+@@ -339,7 +366,10 @@ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT
+         const bool mouse = raw->header.dwType == RIM_TYPEMOUSE && result >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
+         const bool keyboard =
+             raw->header.dwType == RIM_TYPEKEYBOARD && result >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
+-        if (!block_polled_input()) {
++        if (!block_polled_input() && mouse && block_camera_aim()) {
++            // The camcorder aims with the mouse: the game gets only the releases of buttons it holds.
++            if (!held_input().release_only(*raw)) raw->data.mouse = {};
++        } else if (!block_polled_input()) {
+             if ((mouse || keyboard) && !overlay_input_access) held_input().seen(*raw);
+         } else if ((mouse || keyboard) && held_input().release_only(*raw)) {
+             // A key or button the game holds still comes up; presses stay blocked.
+@@ -428,6 +458,8 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+     const auto result = original<UINT(WINAPI*)(PRAWINPUT, PUINT, UINT)>(
+         input_hooks().raw_buffer)(data, size, header_size);
+     const bool capture = result != UINT(-1) && data && block_polled_input();
++    // The camcorder's aim: mouse records go (but the releases of buttons the game holds).
++    const bool aim = result != UINT(-1) && data && !capture && block_camera_aim();
+     note_prompt_read(prompt_raw);
+     if (result != UINT(-1) && data && header_size == sizeof(RAWINPUTHEADER)) {
+         // Skate drains its mouse here; read the packets on the way past.
+@@ -444,18 +476,28 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+             const bool mouse = record->header.dwType == RIM_TYPEMOUSE && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
+             const bool keyboard =
+                 record->header.dwType == RIM_TYPEKEYBOARD && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
+-            if (!capture) {
+-                if ((mouse || keyboard) && !overlay_input_access) held_input().seen(*record);
+-            } else if ((mouse || keyboard) && held_input().release_only(*record)) {
++            const auto keep = [&] {
+                 // Kept records move forward over the dropped ones, in the same layout.
+                 if (write != reinterpret_cast<std::uintptr_t>(record))
+                     std::memmove(reinterpret_cast<void*>(write), record, bytes);
+                 write = align(write + bytes);
+                 ++kept;
++            };
++            if (aim) {
++                if (!mouse) {
++                    if (keyboard && !overlay_input_access) held_input().seen(*record);
++                    keep();
++                } else if (held_input().release_only(*record)) {
++                    keep();
++                }
++            } else if (!capture) {
++                if ((mouse || keyboard) && !overlay_input_access) held_input().seen(*record);
++            } else if ((mouse || keyboard) && held_input().release_only(*record)) {
++                keep();
+             }
+             record = reinterpret_cast<RAWINPUT*>(next);
+         }
+-        if (capture) return kept;
++        if (capture || aim) return kept;
+     }
+     return capture ? 0 : result;
+ }
+@@ -564,7 +606,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
+ BOOL WINAPI captured_cursor_position(LPPOINT output) {
+     thread_local POINT last{};
+     thread_local bool sampled = false;
+-    if (output && block_polled_input() && sampled) { *output = last; return TRUE; }
++    if (output && (block_polled_input() || block_camera_aim()) && sampled) { *output = last; return TRUE; }
+     const auto result = original<BOOL(WINAPI*)(LPPOINT)>(input_hooks().cursor_position)(output);
+     if (result && output && !overlay_input_access) { last = *output; sampled = true; }
+     return result;
+@@ -584,6 +626,8 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
+         // The game must notice a neutral state even if the physical packet did
+         // not change between opening the menu and its next controller poll.
+         output->dwPacketNumber ^= 0x80000000u;
++    } else if (result == ERROR_SUCCESS && output && block_camera_aim()) {
++        aim_gamepad(output->Gamepad);
+     }
+     return result;
+ }
+@@ -768,6 +812,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+     if (flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) buttons |= 4u;
+     if (flags & RI_MOUSE_MIDDLE_BUTTON_UP) buttons &= ~4u;
+     s.raw_mouse_buttons.store(buttons);
++    if (flags & RI_MOUSE_WHEEL) s.raw_mouse_wheel.fetch_add(static_cast<SHORT>(mouse.usButtonData));
+     s.raw_mouse_time.store(GetTickCount64());
+     // Windows is not moving the cursor (RIDEV_NOLEGACY): move it for the
+     // overlay so its pointer and the editor's hover keep working.
 diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
-index 5b30bf9..228bae3 100644
+index 5b30bf9..b77a27d 100644
 --- a/Extension/UI/Overlay/overlay.h
 +++ b/Extension/UI/Overlay/overlay.h
-@@ -480,6 +480,8 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
+@@ -91,6 +91,7 @@ struct FlightInput {
+     bool boost = false;
+     float right = 0, up = 0, forward = 0;
+     float look_x = 0, look_y = 0;
++    float pad_up = 0; // the controller's triggers alone (player flight), without Q / E
+ };
+ 
+ struct DebugModel {
+@@ -480,6 +481,13 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
  // Poll only on the client update thread. Returns no input while either overlay
  // surface is open, the game is unfocused, or the overlay has stopped.
  extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* input, bool flight_active, bool player_flight = false);
 +// The camcorder: mouse movement since the last call, no button needed (look units, as above).
 +extern "C" void DingoSDKOverlayReadMouseLook(float* x, float* y);
++// The camcorder's aim while skating: the game keeps the pad's left stick and buttons and the
++// keyboard; the right stick, the triggers and the mouse are the camera's.
++extern "C" void DingoSDKOverlaySetCameraAimCapture(bool active);
++// Mouse wheel notches since the last call (up positive).
++extern "C" void DingoSDKOverlayReadMouseWheel(float* notches);
  extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active);
  // The same hold on the game's input while a card asks something of the player and a
  // controller answers it (the map download's): the buttons that answer must not also skate.
 diff --git a/Extension/UI/Overlay/overlay_input.cpp b/Extension/UI/Overlay/overlay_input.cpp
-index ff84664..1803138 100644
+index ff84664..c3d1c9c 100644
 --- a/Extension/UI/Overlay/overlay_input.cpp
 +++ b/Extension/UI/Overlay/overlay_input.cpp
-@@ -589,3 +589,39 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+@@ -289,6 +289,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+             // Foreground raw-input packets still need DefWindowProc cleanup.
+             return message == WM_INPUT ? DefWindowProcW(window, message, wp, lp) : 0;
+         }
++        // The camcorder aims with the mouse while the skater keeps the keyboard and the pad.
++        if (s.camera_aim_active.load(std::memory_order_relaxed) && message >= WM_MOUSEFIRST && message <= WM_MOUSELAST)
++            return 0;
+         if (capture && message == WM_SETCURSOR && LOWORD(lp) == HTCLIENT) {
+             OverlayInputAccess access;
+             SetCursor(nullptr); // The software cursor is independent of the game's ShowCursor counter.
+@@ -456,6 +459,18 @@ extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active) {
+             "Freecam controller input capture %s.", active ? "enabled" : "disabled");
+ }
+ 
++extern "C" void DingoSDKOverlaySetCameraAimCapture(bool active) {
++    const bool previous = state().camera_aim_active.exchange(active, std::memory_order_relaxed);
++    if (previous != active)
++        dingosdk::logging::printf(dingosdk::logging::Level::info, dingosdk::logging::Channel::input,
++            "Camcorder aim capture %s (right stick, triggers and mouse to the camera).", active ? "enabled" : "disabled");
++}
++
++extern "C" void DingoSDKOverlayReadMouseWheel(float* notches) {
++    if (!notches) return;
++    *notches = static_cast<float>(state().raw_mouse_wheel.exchange(0)) / WHEEL_DELTA;
++}
++
+ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active) {
+     const bool before = state().prompt_input_active.exchange(active, std::memory_order_relaxed);
+     if (before == active) return;
+@@ -565,6 +580,7 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+         output->right = std::clamp(output->right + controller.right, -1.0f, 1.0f);
+         output->forward = std::clamp(output->forward + controller.forward, -1.0f, 1.0f);
+         output->up = std::clamp(output->up + controller.up, -1.0f, 1.0f);
++        output->pad_up = controller.up;
+         output->boost = output->boost || controller.boost;
+         output->look_x = controller.look_x;
+         output->look_y = controller.look_y;
+@@ -589,3 +605,39 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
          }
      } else looking = false;
  }
@@ -222,6 +442,28 @@ index ff84664..1803138 100644
 +        if (ClientToScreen(window, &center) && SetCursorPos(center.x, center.y)) previous = center;
 +    }
 +}
+diff --git a/Extension/UI/Overlay/overlay_internal.h b/Extension/UI/Overlay/overlay_internal.h
+index c0ce6f9..ba9a578 100644
+--- a/Extension/UI/Overlay/overlay_internal.h
++++ b/Extension/UI/Overlay/overlay_internal.h
+@@ -113,6 +113,7 @@ struct State {
+     // buttons use it because Skate's controller mode stops the legacy cursor
+     // and button state from updating until the game is paused.
+     std::atomic<long> raw_mouse_x{0}, raw_mouse_y{0};
++    std::atomic<long> raw_mouse_wheel{0}; // wheel notches x 120 (WHEEL_DELTA), for the camcorder's zoom
+     std::atomic<unsigned> raw_mouse_buttons{0}; // physical: 1 left, 2 right, 4 middle
+     std::atomic<ULONGLONG> raw_mouse_time{0};
+     // The mouse registration in effect has RIDEV_NOLEGACY: Windows does not
+@@ -151,6 +152,9 @@ struct State {
+     bool win32_ready = false;
+     bool dx12_ready = false;
+     std::atomic<bool> freecam_controller_active{false};
++    // The camcorder's aim: the game keeps the controller's left stick and buttons and the keyboard,
++    // the camera takes the right stick, the triggers and the mouse (input_capture.cpp).
++    std::atomic<bool> camera_aim_active{false};
+     std::atomic<bool> prompt_input_active{false}; // DingoSDKOverlaySetPromptInputCapture
+     bool show_on_ready = false;
+     bool force_windowed = false;
 diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
 index 7169615..1f7d4aa 100644
 --- a/Extension/UI/Overlay/overlay_render.cpp
@@ -410,7 +652,7 @@ index eb18b43..4e700cc 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..936c988 100644
+index 34634f2..72274d7 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
 @@ -2,6 +2,18 @@
@@ -432,7 +674,7 @@ index 34634f2..936c988 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +53,13 @@ add_library(dingosdk_overlay STATIC
+@@ -41,8 +53,15 @@ add_library(dingosdk_overlay STATIC
      Extension/Trainer/trainer_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp
@@ -441,6 +683,8 @@ index 34634f2..936c988 100644
 +    Extension/Camcorder/camcorder_capture.cpp
 +    Extension/Camcorder/camcorder_video.cpp
 +    Extension/Camcorder/camcorder_audio.cpp
++    Extension/Camcorder/camcorder_media.cpp
++    Extension/Camcorder/camcorder_tape.cpp
  )
 -target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
 +target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model mfplat mfreadwrite mfuuid mmdevapi dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)

@@ -335,6 +335,26 @@ int FramePacer::due(double seconds) noexcept {
     return count;
 }
 
+void TapeLog::tape(std::uint32_t number) {
+    if (number == number_) return;
+    number_ = number;
+    clips_.clear();
+}
+
+std::string photo_file_name(const std::tm &t) {
+    char name[96];
+    std::snprintf(name, sizeof(name), "ReSkate %04d-%02d-%02d %02d-%02d-%02d still.jpg", t.tm_year + 1900, t.tm_mon + 1,
+                  t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+    return name;
+}
+
+std::string tape_file_name(std::uint32_t tape, std::size_t clips, const std::tm &t) {
+    char name[128];
+    std::snprintf(name, sizeof(name), "ReSkate %04d-%02d-%02d %02d-%02d-%02d tape %u (%zu clip%s).mp4", t.tm_year + 1900,
+                  t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, tape, clips, clips == 1 ? "" : "s");
+    return name;
+}
+
 std::string clip_file_name(std::uint32_t clip, const std::tm &t) {
     char name[96];
     std::snprintf(name, sizeof(name), "ReSkate %04d-%02d-%02d %02d-%02d-%02d clip %02u.mp4", t.tm_year + 1900,

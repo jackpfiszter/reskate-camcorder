@@ -84,4 +84,23 @@ private:
 
 // "ReSkate 2026-10-12 14-03-22 clip 03.mp4": sorts by when it was shot, says which clip on the tape.
 std::string clip_file_name(std::uint32_t clip, const std::tm &local_time);
+// "ReSkate 2026-10-12 14-03-22 still.jpg".
+std::string photo_file_name(const std::tm &local_time);
+// "ReSkate 2026-10-12 14-03-22 tape 2 (5 clips).mp4": every clip on a tape, one after another.
+std::string tape_file_name(std::uint32_t tape, std::size_t clips, const std::tm &local_time);
+
+// The clips written to the tape in the camcorder now, for "capture the tape" (joining them into
+// one file, as a MiniDV tape was captured into the computer). A new tape starts a new list.
+class TapeLog {
+public:
+    // The tape in the camcorder (a number that changes with each new tape).
+    void tape(std::uint32_t number);
+    void saved(std::wstring path) { clips_.push_back(std::move(path)); }
+    std::uint32_t number() const noexcept { return number_; }
+    const std::vector<std::wstring> &clips() const noexcept { return clips_; }
+
+private:
+    std::uint32_t number_{1};
+    std::vector<std::wstring> clips_;
+};
 } // namespace dingosdk::camcorder

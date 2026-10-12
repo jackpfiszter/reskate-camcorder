@@ -46,12 +46,16 @@ struct Published {
     camcorder::Frame frame;
     bool clean_feed{};
     bool operating{};     // `camcorder operate`: the pad works the camera
+    bool aiming{};        // `camcorder aim`: the camera aims while the player skates
     float blink{};        // seconds, for blinking readouts
     std::string hint;     // the viewfinder's control hints, empty for none
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
     std::string subject;  // who is, empty for nobody
     bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
     camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`
+    std::uint32_t still{};        // counts `camcorder still` requests: each new number takes one
+    std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
+    std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

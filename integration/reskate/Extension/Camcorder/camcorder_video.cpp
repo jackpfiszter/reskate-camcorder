@@ -1,17 +1,10 @@
 #include "camcorder_video.h"
 #include "camcorder_audio.h"
-#include <Windows.h>
-#include <ShlObj.h>
-#include <mfapi.h>
-#include <mfidl.h>
-#include <mfreadwrite.h>
-#include <wrl/client.h>
+#include "camcorder_media.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <cstdio>
-#include <cstring>
 #include <deque>
 #include <mutex>
 #include <thread>
@@ -21,19 +14,9 @@ namespace dingosdk::camcorder_video {
 namespace {
 using Microsoft::WRL::ComPtr;
 using namespace dingosdk::camcorder;
+using camcorder_media::frame_duration;
 constexpr std::size_t queue_limit = 8; // about a quarter of a second of pictures
-// 29.97 frames a second, in Media Foundation's 100-nanosecond units.
-constexpr LONGLONG frame_duration = 10'000'000LL * 1001 / 30000;
-
-bool media_foundation() {
-    static const bool started = SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_LITE));
-    return started;
-}
-std::string hresult(const char *what, HRESULT result) {
-    char text[160];
-    std::snprintf(text, sizeof(text), "%s failed (0x%08lx).", what, static_cast<unsigned long>(result));
-    return text;
-}
+std::string hresult(const char *what, HRESULT result) { return camcorder_media::failed(what, result); }
 } // namespace
 
 struct Writer::Impl {
@@ -57,22 +40,10 @@ struct Writer::Impl {
     HRESULT write_audio(const std::vector<std::int16_t> &pcm) {
         if (pcm.empty()) return S_OK;
         const auto frames = static_cast<std::int64_t>(pcm.size() / audio_channels);
-        const auto bytes = static_cast<DWORD>(pcm.size() * sizeof(std::int16_t));
-        ComPtr<IMFMediaBuffer> buffer;
-        ComPtr<IMFSample> sample;
-        BYTE *data{};
-        HRESULT hr = MFCreateMemoryBuffer(bytes, &buffer);
-        if (SUCCEEDED(hr)) hr = buffer->Lock(&data, nullptr, nullptr);
-        if (SUCCEEDED(hr)) {
-            std::memcpy(data, pcm.data(), bytes);
-            buffer->Unlock();
-            hr = buffer->SetCurrentLength(bytes);
-        }
-        if (SUCCEEDED(hr)) hr = MFCreateSample(&sample);
-        if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer.Get());
-        if (SUCCEEDED(hr)) hr = sample->SetSampleTime(audio_frames * 10'000'000LL / audio_rate);
-        if (SUCCEEDED(hr)) hr = sample->SetSampleDuration(frames * 10'000'000LL / audio_rate);
-        if (SUCCEEDED(hr)) hr = writer->WriteSample(audio_stream, sample.Get());
+        const HRESULT hr = camcorder_media::write_sample(writer.Get(), audio_stream, pcm.data(),
+                                                         pcm.size() * sizeof(std::int16_t),
+                                                         audio_frames * 10'000'000LL / audio_rate,
+                                                         frames * 10'000'000LL / audio_rate);
         if (SUCCEEDED(hr)) audio_frames += frames;
         return hr;
     }
@@ -113,23 +84,10 @@ struct Writer::Impl {
             apply_vignette(scaled, frame->vignette);
             bgra_to_nv12(scaled, nv12);
             for (int i = 0; i < frame->repeats && !failed; ++i) {
-                ComPtr<IMFMediaBuffer> buffer;
-                ComPtr<IMFSample> sample;
-                BYTE *data{};
-                HRESULT hr = MFCreateMemoryBuffer(static_cast<DWORD>(nv12.size()), &buffer);
-                if (SUCCEEDED(hr)) hr = buffer->Lock(&data, nullptr, nullptr);
-                if (SUCCEEDED(hr)) {
-                    std::memcpy(data, nv12.data(), nv12.size());
-                    buffer->Unlock();
-                    hr = buffer->SetCurrentLength(static_cast<DWORD>(nv12.size()));
-                }
                 // On the clip's clock: after a stall the picture skips ahead with the sound.
                 const auto index = frame->index + i;
-                if (SUCCEEDED(hr)) hr = MFCreateSample(&sample);
-                if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer.Get());
-                if (SUCCEEDED(hr)) hr = sample->SetSampleTime(index * frame_duration);
-                if (SUCCEEDED(hr)) hr = sample->SetSampleDuration(frame_duration);
-                if (SUCCEEDED(hr)) hr = writer->WriteSample(stream, sample.Get());
+                const HRESULT hr = camcorder_media::write_sample(writer.Get(), stream, nv12.data(), nv12.size(),
+                                                                 index * frame_duration, frame_duration);
                 if (FAILED(hr)) {
                     fail("Encoding a frame", hr);
                 } else {
@@ -180,64 +138,14 @@ bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double
         return false;
     }
     if (s.thread.joinable()) s.thread.join();
-    if (!media_foundation()) {
+    if (!camcorder_media::available()) {
         error = "Windows' video encoder (Media Foundation) is unavailable. On Windows N, install the Media Feature Pack.";
         return false;
     }
-    ComPtr<IMFAttributes> attributes;
-    ComPtr<IMFSinkWriter> writer;
-    ComPtr<IMFMediaType> out, in;
-    HRESULT hr = MFCreateAttributes(&attributes, 1);
-    if (SUCCEEDED(hr)) hr = attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
-    if (SUCCEEDED(hr)) hr = MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.Get(), &writer);
-    if (FAILED(hr)) {
-        error = hresult("Creating the video file", hr);
-        return false;
-    }
-    const auto describe = [&](IMFMediaType *type, const GUID &subtype) {
-        HRESULT r = type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        if (SUCCEEDED(r)) r = type->SetGUID(MF_MT_SUBTYPE, subtype);
-        if (SUCCEEDED(r)) r = type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        if (SUCCEEDED(r)) r = MFSetAttributeSize(type, MF_MT_FRAME_SIZE, static_cast<UINT32>(size.width), static_cast<UINT32>(size.height));
-        if (SUCCEEDED(r)) r = MFSetAttributeRatio(type, MF_MT_FRAME_RATE, 30000, 1001);
-        if (SUCCEEDED(r)) r = MFSetAttributeRatio(type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        return r;
-    };
-    hr = MFCreateMediaType(&out);
-    if (SUCCEEDED(hr)) hr = describe(out.Get(), MFVideoFormat_H264);
-    if (SUCCEEDED(hr)) hr = out->SetUINT32(MF_MT_AVG_BITRATE, video_bitrate(size));
-    if (SUCCEEDED(hr)) hr = writer->AddStream(out.Get(), &s.stream);
-    if (SUCCEEDED(hr)) hr = MFCreateMediaType(&in);
-    if (SUCCEEDED(hr)) hr = describe(in.Get(), MFVideoFormat_NV12);
-    if (SUCCEEDED(hr)) hr = in->SetUINT32(MF_MT_DEFAULT_STRIDE, static_cast<UINT32>(size.width));
-    if (SUCCEEDED(hr)) hr = writer->SetInputMediaType(s.stream, in.Get(), nullptr);
-    // The sound: AAC at 192 kbit/s from 48 kHz 16-bit stereo.
     const bool with_sound = sound != Sound::off;
-    if (SUCCEEDED(hr) && with_sound) {
-        ComPtr<IMFMediaType> audio_out, audio_in;
-        hr = MFCreateMediaType(&audio_out);
-        if (SUCCEEDED(hr)) hr = audio_out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-        if (SUCCEEDED(hr)) hr = audio_out->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
-        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, audio_rate);
-        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, audio_channels);
-        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 24000);
-        if (SUCCEEDED(hr)) hr = writer->AddStream(audio_out.Get(), &s.audio_stream);
-        if (SUCCEEDED(hr)) hr = MFCreateMediaType(&audio_in);
-        if (SUCCEEDED(hr)) hr = audio_in->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-        if (SUCCEEDED(hr)) hr = audio_in->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
-        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, audio_rate);
-        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, audio_channels);
-        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, audio_channels * 2);
-        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, audio_rate * audio_channels * 2);
-        if (SUCCEEDED(hr)) hr = writer->SetInputMediaType(s.audio_stream, audio_in.Get(), nullptr);
-    }
-    if (SUCCEEDED(hr)) hr = writer->BeginWriting();
-    if (FAILED(hr)) {
+    ComPtr<IMFSinkWriter> writer;
+    if (const HRESULT hr = camcorder_media::open_mp4(path, size, with_sound, writer, s.stream, s.audio_stream); FAILED(hr)) {
         error = hresult("Setting up the H.264 encoder", hr);
-        writer.Reset();
-        DeleteFileW(path.c_str());
         return false;
     }
     {
@@ -294,15 +202,5 @@ std::optional<Result> Writer::take_result() {
 
 std::uint64_t Writer::dropped() const { return impl_->dropped.load(); }
 
-std::wstring clip_folder() {
-    PWSTR videos{};
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_Videos, KF_FLAG_CREATE, nullptr, &videos)) || !videos) {
-        if (videos) CoTaskMemFree(videos);
-        return {};
-    }
-    std::wstring folder = std::wstring(videos) + L"\\ReSkate Camcorder";
-    CoTaskMemFree(videos);
-    CreateDirectoryW(folder.c_str(), nullptr); // already there is fine
-    return folder;
-}
+std::wstring clip_folder() { return camcorder_media::folder(FOLDERID_Videos); }
 } // namespace dingosdk::camcorder_video
