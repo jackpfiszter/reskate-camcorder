@@ -49,11 +49,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           & $fxc.FullName /nologo /T ps_5_0 /E picture_ps /O3 /Fo picture_ps.cso picture.hlsl
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          # Once, to settle why the look never showed on screen: the old constant block's name.
-          Set-Content old.hlsl ($hlsl -replace 'cbuffer Constants', 'cbuffer Pass') -NoNewline
-          & $fxc.FullName /nologo /T ps_5_0 /E picture_ps /Fo old.cso old.hlsl
-          Write-Host "cbuffer named Pass: fxc exit code $LASTEXITCODE"
-          exit 0
       - name: Check out ReSkate at the pinned commit
         shell: pwsh
         run: |

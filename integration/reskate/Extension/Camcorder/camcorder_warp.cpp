@@ -131,14 +131,19 @@ float3 game_at(float2 pixel) { return into_look(picture.SampleLevel(linear_clamp
 // line is 2 to 3 screen rows on a 1080p or 1440p screen: the camera's softness and its stair-steps).
 float3 sample_at(float2 pixel, float along) {
     pixel.x += along;
-    if (camera.x < 1) return game_at(pixel);
-    float cell = rect.w / camera.x;
-    float row = (pixel.y - rect.y) / cell - 0.5;
-    float first = floor(row);
-    float y0 = rect.y + (first + 0.5) * cell, y1 = y0 + cell;
-    float3 a = 0.5 * (game_at(float2(pixel.x, y0 - cell * 0.25)) + game_at(float2(pixel.x, y0 + cell * 0.25)));
-    float3 b = 0.5 * (game_at(float2(pixel.x, y1 - cell * 0.25)) + game_at(float2(pixel.x, y1 + cell * 0.25)));
-    return lerp(a, b, row - first);
+    float3 seen;
+    if (camera.x < 1) {
+        seen = game_at(pixel);
+    } else {
+        float cell = rect.w / camera.x;
+        float row = (pixel.y - rect.y) / cell - 0.5;
+        float first = floor(row);
+        float y0 = rect.y + (first + 0.5) * cell, y1 = y0 + cell;
+        float3 a = 0.5 * (game_at(float2(pixel.x, y0 - cell * 0.25)) + game_at(float2(pixel.x, y0 + cell * 0.25)));
+        float3 b = 0.5 * (game_at(float2(pixel.x, y1 - cell * 0.25)) + game_at(float2(pixel.x, y1 + cell * 0.25)));
+        seen = lerp(a, b, row - first);
+    }
+    return seen;
 }
 // A light on the camera, pointing where it points: what is in the middle of the frame is lit most,
 // falling off to the edges. Without the scene's depth it can only scale the light already there
