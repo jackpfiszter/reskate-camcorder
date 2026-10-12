@@ -36,6 +36,10 @@ and skate the line.
 - **The tape look.** Optionally, clips and stills look like MiniDV: 60 fields of video motion,
   a CCD's hard white, drifting colour, sharpened edges, smeared colour, and the camcorder's date
   stamp (any year you like).
+- **More cameras and lenses, from mods.** Cameras and lenses are small JSON files in an ordinary
+  ReSkate mod: zoom, sensor, frame rate (60i, 50i, 30p, 25p, 24p, Super 8's 18), tape length, the
+  look and the date stamp. `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8
+  film and a wide converter; [docs/MODDING.md](docs/MODDING.md) has every field.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
   numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
   back to back in one MP4, ready to edit.
@@ -57,6 +61,8 @@ the overlay.
 | `integration/reskate/` | the ReSkate side: its files, the patch to ReSkate and `install.ps1` |
 | `docs/DESIGN.md` | the design: shooting modes, recording, the look, controls, milestones |
 | `docs/TESTING.md` | how to test: unit tests, getting a build, an in-game checklist |
+| `docs/MODDING.md` | making cameras and lenses |
+| `examples/mods/` | an example camera mod |
 
 ## Build and test the model
 
@@ -72,15 +78,18 @@ is set for MSVC, as ReSkate uses.
 ## Console commands
 
 Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|still|mode|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|status`.
+`camcorder power|rec|stop|still|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|mods|export|status`.
 Settings are kept between games in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
 
 ## Releases
 
-Push a tag (`git tag v0.3.0 && git push origin v0.3.0`) and CI publishes a zip of the build on
-the Releases page. The zip holds a modified `ReSkate.dll`, so under the GPL its source is this
-repository at that tag plus ReSkate at the commit in `integration/reskate/reskate.commit`.
+Every version is on the [Releases page](https://github.com/jackpfiszter/reskate-camcorder/releases):
+a zip with `ReSkate.dll` and `ReSkateLauncher.exe`, and from v0.7.0 the example camera mod beside
+it. To publish the newest green build: Actions > **release** > Run workflow, with a version like
+`v0.7.0` (pushing a tag like that works too). The zip holds a modified `ReSkate.dll`, so under the
+GPL its source is this repository at that version plus ReSkate at the commit in
+`integration/reskate/reskate.commit`.
 
 ## License
 

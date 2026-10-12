@@ -1,0 +1,62 @@
+name: release
+
+# Publishes the build of the newest commit on main as a version on the Releases page: Actions >
+# release > Run workflow, and give it a version (v0.7.0). The zip is the files that commit's green
+# build run kept, so it holds exactly what was tested; the example camera mod goes beside it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, like v0.7.0
+        required: true
+      title:
+        description: A few words on what it brings
+        required: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the version
+        run: |
+          [[ "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versions look like v0.7.0."; exit 1; }
+      - uses: actions/checkout@v4
+      - name: Find this commit's build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh api "repos/${{ github.repository }}/actions/workflows/build.yml/runs?head_sha=${{ github.sha }}&status=success" --jq '.workflow_runs[0].id // empty')
+          [ -n "$run" ] || { echo "::error::No green build of ${{ github.sha }} yet: wait for it, or fix it."; exit 1; }
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ReSkate-camcorder
+          path: package
+          run-id: ${{ steps.build.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Zip the build and the example mod
+        run: |
+          cp LICENSE README.md docs/TESTING.md package/
+          (cd package && zip -r "../ReSkate-camcorder-${{ inputs.version }}.zip" .)
+          (cd examples/mods && zip -r "../../Camcorder-Extras-mod-${{ inputs.version }}.zip" "Camcorder Extras")
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.version }}${{ inputs.title && format(' - {0}', inputs.title) || '' }}
+          generate_release_notes: true
+          make_latest: true
+          body: |
+            **Install:** back up `ReSkate.dll` and `ReSkateLauncher.exe` beside `Skate.exe`, put the two from the ReSkate-camcorder zip there, and start the game with this `ReSkateLauncher.exe`. `TESTING.md` in the zip has the details. To go back, restore the two files.
+
+            **Camcorder Extras** is an example camera mod (a VX2000, a Hi8 handycam, Super 8 film, a 0.5x wide converter): put its folder in the game's `Mods` folder. `docs/MODDING.md` explains making your own.
+
+            This zip holds a modified `ReSkate.dll` (GPL-3.0). Its source is this repository at `${{ inputs.version }}` plus ReSkate at the commit in `integration/reskate/reskate.commit`.
+          files: |
+            ReSkate-camcorder-${{ inputs.version }}.zip
+            Camcorder-Extras-mod-${{ inputs.version }}.zip
