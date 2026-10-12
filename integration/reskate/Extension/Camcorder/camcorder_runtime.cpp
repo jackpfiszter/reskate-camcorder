@@ -79,11 +79,11 @@ std::optional<Subject> subject_from(State &s, float dt) {
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
 bool wants_pad(State &s) { return s.camcorder.powered() && s.owned && (s.operating || s.camcorder.tripod_setup()); }
 
-// The pad, keyboard and mouse, while the camera has them, read through the freecam's flight input
-// (Extension/UI/Overlay/overlay_input.cpp). Read twice: once for the keyboard and the mouse (look
-// while the right button is held, in pixels of .0025 radians each, as free_flight.h turns them),
-// once for the pad (sticks; triggers as up = right - left; L3 or Shift as boost; look as stick
-// deflection times 25). Its look_y grows downward; the camcorder's grows upward.
+// The pad, keyboard and mouse, while the camera has them (Extension/UI/Overlay/overlay_input.cpp):
+// the freecam's flight input for the pad and keyboard (sticks and WASD; triggers or Q / E as
+// up = right - left; L3 or Shift as boost; look as stick deflection times 25), and the mouse with
+// no button held, in pixels of .0025 radians each as free_flight.h turns them. Look y grows
+// downward there; the camcorder's grows upward.
 OperatorInput read_controls(State &s, float dt) {
     OperatorInput in;
     if (!wants_pad(s)) {
@@ -96,13 +96,14 @@ OperatorInput read_controls(State &s, float dt) {
     // Every tick: the client tick sets the capture too (client_tick.cpp asks wants_controller()).
     DingoSDKOverlaySetFreecamInputCapture(true);
     s.captured = true;
-    overlay::FlightInput mouse, pad;
-    DingoSDKOverlayReadFlightInput(&mouse, true, false);
+    overlay::FlightInput pad;
     DingoSDKOverlayReadFlightInput(&pad, true, true);
-    if (!mouse.active && !pad.active) return in; // a menu or the console is open
+    float mouse_x{}, mouse_y{};
+    DingoSDKOverlayReadMouseLook(&mouse_x, &mouse_y);
+    if (!pad.active) return in; // a menu or the console is open
     const float turn = std::max(s.camcorder.handheld().settings().look_speed * std::max(dt, 1e-3f), 1e-4f);
-    in.look_x = std::clamp(pad.look_x / 25.0f + mouse.look_x * .0025f / turn, -1.0f, 1.0f);
-    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse.look_y * .0025f / turn), -1.0f, 1.0f);
+    in.look_x = std::clamp(pad.look_x / 25.0f + mouse_x * .0025f / turn, -1.0f, 1.0f);
+    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse_y * .0025f / turn), -1.0f, 1.0f);
     in.move_x = pad.right;   // the pad's reading includes the keyboard's WASD, Q and E
     in.move_y = pad.forward;
     if (s.camcorder.tripod_setup() && !pad.boost) {
@@ -128,7 +129,22 @@ void publish(State &s, const Frame &frame) {
     std::lock_guard lock(s.published_mutex);
     s.published.frame = frame;
     s.published.clean_feed = s.clean_feed;
+    s.published.operating = s.operating;
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
+    // What the viewfinder says to do with the controls the camera has right now.
+    const auto &status = frame.status;
+    if (status.tripod_setup)
+        s.published.hint = "Mouse aim   WASD move   Q/E height   Shift+Q/E zoom   REC to roll";
+    else if (s.operating && wants_pad(s))
+        s.published.hint = "Mouse aim   Q/E zoom   (operate off to skate)";
+    else
+        s.published.hint.clear();
+    s.published.players.clear();
+    s.published.subject.clear();
+    for (const auto &p : s.players) {
+        s.published.players.push_back(p.name);
+        if (p.id == s.subject) s.published.subject = p.name;
+    }
 }
 } // namespace
 
@@ -231,12 +247,15 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
             s.subject = s.players[at % s.players.size()].id;
             return "Filming " + s.players[at % s.players.size()].name + ".";
         }
+        // A name can have spaces: the words are the name.
+        std::string name;
+        for (const auto &word : words) name += (name.empty() ? "" : " ") + word;
         for (const auto &p : s.players)
-            if (p.name == words[0] || std::to_string(p.id) == words[0]) {
+            if (p.name == name || std::to_string(p.id) == name) {
                 s.subject = p.id;
                 return "Filming " + p.name + ".";
             }
-        return "No player called " + words[0] + ".";
+        return "No player called " + name + ".";
     }
     if (verb == "operate") {
         s.operating = words.empty() || words[0] == "toggle" ? !s.operating : words[0] == "on" || words[0] == "1";

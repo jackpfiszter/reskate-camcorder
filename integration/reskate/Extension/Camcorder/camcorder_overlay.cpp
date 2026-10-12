@@ -56,6 +56,7 @@ void draw_camcorder() {
     ViewfinderOptions options;
     options.clean_feed = p.clean_feed;
     options.blink_time = p.blink;
+    options.hint = p.hint;
     const auto v = layout_viewfinder(p.frame, io.DisplaySize.x, io.DisplaySize.y, options);
     if (!v.visible) return;
     auto *list = ImGui::GetBackgroundDrawList();
@@ -70,7 +71,8 @@ void draw_camcorder() {
     auto *font = ImGui::GetFont();
     for (const auto &label : v.labels) {
         const auto size = font->CalcTextSizeA(label.size, FLT_MAX, 0, label.text.c_str());
-        const float x = label.align == Align::right ? label.x - size.x : label.x;
+        const float x = label.align == Align::right ? label.x - size.x
+                      : label.align == Align::centre ? label.x - size.x * 0.5f : label.x;
         // A one-pixel shadow, as an EVF's white text sits over any picture.
         list->AddText(font, label.size, {x + 1, label.y + 1}, IM_COL32(0, 0, 0, 180), label.text.c_str());
         list->AddText(font, label.size, {x, label.y}, ink(label.ink), label.text.c_str());

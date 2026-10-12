@@ -77,3 +77,20 @@ TEST(viewfinder_hides_when_the_camera_is_off) {
     Frame off;
     CHECK(!layout_viewfinder(off, 1920, 1080).visible);
 }
+
+TEST(viewfinder_shows_control_hints_but_not_in_the_clean_feed) {
+    ViewfinderOptions options;
+    options.hint = "Mouse: aim   Q / E: zoom";
+    const auto v = layout_viewfinder(on_frame(), 1920, 1080, options);
+    bool found = false;
+    for (const auto &l : v.labels)
+        if (l.text == options.hint) {
+            found = true;
+            CHECK(l.align == Align::centre);
+            CHECK_NEAR(l.x, 960, 1e-3);
+            CHECK(l.y > v.picture.y + v.picture.height * 0.85f && l.y < v.picture.y + v.picture.height);
+        }
+    CHECK(found);
+    options.clean_feed = true;
+    CHECK(layout_viewfinder(on_frame(), 1920, 1080, options).labels.empty());
+}

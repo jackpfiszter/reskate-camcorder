@@ -22,10 +22,10 @@ struct Rect {
 Rect picture_rect(float screen_width, float screen_height, float aspect = 4.0f / 3.0f) noexcept;
 
 enum class Ink : std::uint8_t { white, red, amber };
-enum class Align : std::uint8_t { left, right };
+enum class Align : std::uint8_t { left, right, centre };
 struct Label {
     std::string text;
-    float x{}, y{};   // top-left (Align::left) or top-right (Align::right) corner, in pixels
+    float x{}, y{};   // top-left (Align::left), top-right (Align::right) or top-centre (Align::centre), in pixels
     float size{};     // text height, in pixels
     Ink ink{Ink::white};
     Align align{Align::left};
@@ -48,6 +48,9 @@ struct ViewfinderOptions {
     bool clean_feed{};   // the frame and the lens only
     bool pillarbox{true}; // paint outside the 4:3 picture black
     float blink_time{};  // seconds, for things that blink (the battery when it is low)
+    // A line of control hints along the bottom of the picture, outside the clean feed
+    // ("Mouse: aim   Q / E: zoom"). Empty: none.
+    std::string hint;
 };
 
 struct Viewfinder {

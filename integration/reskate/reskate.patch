@@ -165,6 +165,63 @@ index 4130fa7..5d39fb2 100644
          if (capture_pose && local.ready) {
              s.last_skater_bones = local.pose.skater.size();
              s.last_board_bones = local.pose.board.empty() ? 0 : local.pose.board.size() - 1;
+diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
+index 5b30bf9..228bae3 100644
+--- a/Extension/UI/Overlay/overlay.h
++++ b/Extension/UI/Overlay/overlay.h
+@@ -480,6 +480,8 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
+ // Poll only on the client update thread. Returns no input while either overlay
+ // surface is open, the game is unfocused, or the overlay has stopped.
+ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* input, bool flight_active, bool player_flight = false);
++// The camcorder: mouse movement since the last call, no button needed (look units, as above).
++extern "C" void DingoSDKOverlayReadMouseLook(float* x, float* y);
+ extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active);
+ // The same hold on the game's input while a card asks something of the player and a
+ // controller answers it (the map download's): the buttons that answer must not also skate.
+diff --git a/Extension/UI/Overlay/overlay_input.cpp b/Extension/UI/Overlay/overlay_input.cpp
+index ff84664..1803138 100644
+--- a/Extension/UI/Overlay/overlay_input.cpp
++++ b/Extension/UI/Overlay/overlay_input.cpp
+@@ -589,3 +589,39 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+         }
+     } else looking = false;
+ }
++
++// The camcorder's operate mode: the mouse aims with no button held, as a game's look does (the
++// camera already keeps polled input from the game while it has it). Pixels moved since the last
++// call, in the same units as the flight input's look; the cursor is held at the window's centre.
++extern "C" void DingoSDKOverlayReadMouseLook(float* x, float* y) {
++    if (!x || !y) return;
++    struct PreserveError { DWORD value = GetLastError(); ~PreserveError() { SetLastError(value); } } preserve_error;
++    *x = *y = 0;
++    thread_local POINT previous{};
++    thread_local bool looking = false;
++    const auto& s = state();
++    const HWND window = s.window.load();
++    if (!window || s.stop.load() || s.failed.load() || interactive_visible(s) || !game_window_foreground(window)) {
++        looking = false;
++        return;
++    }
++    OverlayInputAccess access;
++    const bool raw = raw_mouse_live(s);
++    const long raw_x = state().raw_mouse_x.exchange(0), raw_y = state().raw_mouse_y.exchange(0);
++    POINT current{};
++    if (!GetCursorPos(&current)) {
++        looking = false;
++        return;
++    }
++    if (looking) {
++        *x = static_cast<float>(raw ? raw_x : current.x - previous.x);
++        *y = static_cast<float>(raw ? raw_y : current.y - previous.y);
++    }
++    previous = current;
++    looking = true;
++    RECT bounds{};
++    if (GetClientRect(window, &bounds)) {
++        POINT center{(bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2};
++        if (ClientToScreen(window, &center) && SetCursorPos(center.x, center.y)) previous = center;
++    }
++}
 diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
 index 7169615..83c8921 100644
 --- a/Extension/UI/Overlay/overlay_render.cpp
@@ -194,8 +251,41 @@ index 7169615..83c8921 100644
      draw_hall_of_meat();
      draw_nametags();
      draw_game_text();
+diff --git a/Extension/UI/Overlay/skate_menu.cpp b/Extension/UI/Overlay/skate_menu.cpp
+index c03b0f4..9a038a1 100644
+--- a/Extension/UI/Overlay/skate_menu.cpp
++++ b/Extension/UI/Overlay/skate_menu.cpp
+@@ -1,4 +1,5 @@
+ #include "Engine/Core/Platform/launcher_support.h"
++#include "Extension/Camcorder/camcorder_page.h"
+ #include "skate_menu_internal.h"
+ #include "skate_menu.h"
+ #include "modding_menu.h"
+@@ -276,11 +277,12 @@ ImFont* embedded_font(const wchar_t* name, float size, const ImWchar* ranges) {
+         &config, ranges);
+ }
+ 
+-enum Page { map, world, build, skater, training, multiplayer, progress, mods, settings, special, developer, page_count };
++enum Page { map, world, build, skater, training, filming, multiplayer, progress, mods, settings, special, developer, page_count };
+ constexpr std::array<const char*, page_count> page_names{
+-    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "MULTIPLAYER", "PROGRESS", "MODS", "SETTINGS", "SPECIAL", "DEVELOPER"};
++    "MAP", "WORLD", "BUILD", "SKATER", "TRAINER", "CAMCORDER", "MULTIPLAYER", "PROGRESS", "MODS", "SETTINGS", "SPECIAL", "DEVELOPER"};
+ constexpr std::array<const char*, page_count> page_subtitles{
+     "Pick your spot.", "Set the vibe.", "Make the park yours.", "Ride it your way.", "Tune it. Drill it. Measure it.",
++    "Film the line.",
+     "Bring your crew.", "Pick up where you want.", "Bring your own.", "Your controls, your screen.", "Not everyone gets this page.",
+     "Under the hood."};
+ }
+@@ -427,6 +429,7 @@ void draw_skate_menu(SkateMenu& menu, const Model& model, const CallbacksV3& cal
+         case build: build_page(menu, model, callbacks); break;
+         case skater: skater_page(menu, model, callbacks); break;
+         case training: trainer_page(menu, model, callbacks); break;
++        case filming: camcorder_page(menu, model, callbacks); break;
+         case multiplayer: multiplayer_page(menu, model, callbacks); break;
+         case progress: progression_page(menu, model, callbacks); break;
+         case mods:
 diff --git a/Runtime/client_tick.cpp b/Runtime/client_tick.cpp
-index b5e52e4..db4c3c5 100644
+index b5e52e4..173305f 100644
 --- a/Runtime/client_tick.cpp
 +++ b/Runtime/client_tick.cpp
 @@ -34,6 +34,7 @@
@@ -236,7 +326,7 @@ index b5e52e4..db4c3c5 100644
          // A debug action, or a mode the tick ended by itself (host policy, lost
          // camera), can have replaced the native camera: validate it again.
          if (debug_request || debug.free_camera != r.debug_model.free_camera ||
-@@ -1270,6 +1274,12 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
+@@ -1270,6 +1274,25 @@ void tick(std::uintptr_t client, std::uintptr_t update) {
              dingosdk::multiplayer::tick_native_party_actions(r.base, client,
                  r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
          }
@@ -245,6 +335,19 @@ index b5e52e4..db4c3c5 100644
 +            // After Spectate, which it yields to: both drive the one native camera lease.
 +            dingosdk::camcorder_runtime::tick(r.base, client,
 +                r.spectate_ready && r.spectate_client == client && (state == 13 || state == 21), camera_phase);
++            // skate.'s HUD off while the camcorder's picture is on screen, as the park editor does;
++            // what the player had comes back after. A busy request queue is tried again next tick.
++            static std::optional<bool> camcorder_ui_before;
++            const bool filming = dingosdk::camcorder_runtime::owns_camera();
++            if (filming != camcorder_ui_before.has_value() && r.debug_model.ui_available) {
++                const bool before = filming ? r.debug_model.game_ui_hidden : *camcorder_ui_before;
++                std::array<char, 512> ignored{};
++                const dingosdk::overlay::DebugRequest hide{dingosdk::overlay::DebugAction::set_game_ui_hidden, filming, 0.0f};
++                if (before || queue_debug(nullptr, hide, ignored.data(), ignored.size())) {
++                    if (filming) camcorder_ui_before = before;
++                    else camcorder_ui_before.reset();
++                }
++            }
 +        }
          if (state == 13 || state == 21) {
              DINGO_PROFILE_ZONE("tick/camera view");
@@ -271,7 +374,7 @@ index eb18b43..4e700cc 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..b9a100e 100644
+index 34634f2..afcf255 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
 @@ -2,6 +2,16 @@
@@ -291,11 +394,12 @@ index 34634f2..b9a100e 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +51,9 @@ add_library(dingosdk_overlay STATIC
+@@ -41,8 +51,10 @@ add_library(dingosdk_overlay STATIC
      Extension/Trainer/trainer_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp
 +    Extension/Camcorder/camcorder_overlay.cpp
++    Extension/Camcorder/camcorder_page.cpp
  )
 -target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
 +target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)

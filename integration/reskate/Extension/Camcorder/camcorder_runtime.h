@@ -46,7 +46,11 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
 struct Published {
     camcorder::Frame frame;
     bool clean_feed{};
-    float blink{}; // seconds, for blinking readouts
+    bool operating{};     // `camcorder operate`: the pad works the camera
+    float blink{};        // seconds, for blinking readouts
+    std::string hint;     // the viewfinder's control hints, empty for none
+    std::vector<std::string> players; // who could be filmed (the menu's subject list)
+    std::string subject;  // who is, empty for nobody
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

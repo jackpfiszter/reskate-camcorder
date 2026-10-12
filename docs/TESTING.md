@@ -51,20 +51,24 @@ camcorder says goes there too.
 Multiplayer: everyone in a session should run the same build. Other players don't need the
 camcorder to be filmed, but a different ReSkate build may not be allowed to join.
 
-### Controls while the camera has the pad
+### Controls
 
-`camcorder operate on`, or setting up a tripod, gives the pad to the camera (the skater stops
-getting it, as with Freecam):
+Everything is on the **CAMCORDER** page of the ReSkate menu (Insert): on / off, REC, handheld or
+tripod, lens, grip, camera controls, who to film, tripods, tape. Keys and buttons can be bound in
+SETTINGS > CONTROLS. While the camcorder is on, skate.'s own HUD is hidden.
 
-| | Pad | Keyboard and mouse |
+**Camera controls** (the menu's toggle, or `camcorder operate on`), or setting up a tripod, give the
+mouse, keys and pad to the camera; the skater stands still until you turn them off:
+
+| | Mouse and keyboard | Pad |
 |---|---|---|
-| Aim | right stick | hold the right mouse button and move |
-| Zoom (wide / tele) | left / right trigger | Q / E |
-| Tripod setup: carry it | left stick | W A S D |
-| Tripod setup: lower / raise it | left / right trigger | Q / E |
-| Tripod setup: zoom instead | hold L3 (click the left stick) + triggers | hold Shift + Q / E |
+| Aim | move the mouse (no button needed) | right stick |
+| Zoom (wide / tele) | Q / E | left / right trigger |
+| Tripod setup: carry it | W A S D | left stick |
+| Tripod setup: lower / raise it | Q / E | left / right trigger |
+| Tripod setup: zoom instead | hold Shift + Q / E | hold L3 + triggers |
 
-The keyboard is not kept from the skater: W A S D also moves them. Use the pad for a clean test.
+The viewfinder shows a line of these hints while they apply.
 
 ### Checklist
 
@@ -73,10 +77,9 @@ Solo:
 - [ ] `camcorder power on`: the view jumps to a low, fisheye-ish handheld shot with black bars
       either side, STBY, `0:00:00` and `60min` in the corners, round black corners at full wide.
 - [ ] Skate around: the camera rides with you, shakes a little, never jumps or spins.
-- [ ] `camcorder operate on`: the pad drives the camera and the skater stops moving. Right stick
-      aims (right turns right, up looks up), triggers zoom (left wide, right tele), the W-T bar shows
-      while zooming, and the round corners vanish after a little zoom. `camcorder operate off`
-      gives the pad back.
+- [ ] Camera controls on (menu or `camcorder operate on`): the skater stops; the mouse (or right
+      stick) aims, right turns right and up looks up; Q / E (or the triggers) zoom, the W-T bar shows
+      while zooming, and the round corners vanish after a little zoom. Off again: you skate.
 - [ ] `camcorder lens stock`: much narrower (about 44 degrees), no round corners.
 - [ ] `camcorder grip eye`, `camcorder grip hip`, `camcorder grip long`: the camera height changes.
 - [ ] `camcorder rec`: red dot and REC, counter running. `camcorder rec` again: STBY.

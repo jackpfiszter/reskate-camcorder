@@ -74,6 +74,9 @@ Viewfinder layout_viewfinder(const Frame &frame, float width, float height, cons
         if (s.tripod_setup) what += "  SETUP";
         v.labels.push_back({what, right, bottom, text * 0.8f, Ink::white, Align::right});
     }
+    if (!options.hint.empty())
+        v.labels.push_back({options.hint, p.x + p.width * 0.5f, p.y + p.height - margin * 0.5f - text * 0.7f,
+                            text * 0.62f, Ink::white, Align::centre});
     if (s.tripod_setup) {
         // Action safe: 90% of the picture.
         v.safe_frame = Rect{p.x + p.width * 0.05f, p.y + p.height * 0.05f, p.width * 0.9f, p.height * 0.9f};
