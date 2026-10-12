@@ -16,8 +16,8 @@ and skate the line.
 
 - **The VX1000, by the numbers.** A 10:1 zoom (5.9-59 mm on a 1/3" sensor, about 44 to 4.7
   degrees across), the servo's real speeds (4.1 s end to end flat out, 20 s creeping), a 4:3
-  picture, and the Century Optics 0.3x fisheye: about 125 degrees, with round black corners at
-  full wide that clear with a touch of zoom.
+  picture, and the Century Optics 0.3x fisheye: about 125 degrees, straight lines bending as
+  through the real glass, with round black corners at full wide that clear with a touch of zoom.
 - **Handheld.** You are the filmer; the camera rides with your skater on a long grip (low, the
   fisheye follow shot), at the hip or at eye level. Lock on to a friend and the camera keeps
   them framed by itself, a little late like a real operator, so you can keep both hands on
@@ -33,6 +33,9 @@ and skate the line.
   Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480, with
   the game's own sound (nothing else on the PC), clean or through the VX mic. Stills go to
   Pictures\ReSkate Camcorder as JPEGs.
+- **The tape look.** Optionally, clips and stills look like MiniDV: 60 fields of video motion,
+  a CCD's hard white, drifting colour, sharpened edges, smeared colour, and the camcorder's date
+  stamp (any year you like).
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
   numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
   back to back in one MP4, ready to edit.
@@ -69,7 +72,8 @@ is set for MSVC, as ReSkate uses.
 ## Console commands
 
 Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|still|mode|lens|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|status`.
+`camcorder power|rec|stop|still|mode|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|status`.
+Settings are kept between games in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
 
 ## Releases

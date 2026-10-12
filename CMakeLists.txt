@@ -10,6 +10,8 @@ add_library(camcorder STATIC
     src/camcorder/audio.cpp
     src/camcorder/camcorder.cpp
     src/camcorder/commands.cpp
+    src/camcorder/look.cpp
+    src/camcorder/preferences.cpp
     src/camcorder/recorder.cpp
     src/camcorder/rigs.cpp
     src/camcorder/tape.cpp
@@ -31,6 +33,8 @@ if(BUILD_TESTING)
         tests/audio_tests.cpp
         tests/camcorder_tests.cpp
         tests/command_tests.cpp
+        tests/look_tests.cpp
+        tests/preference_tests.cpp
         tests/recorder_tests.cpp
         tests/rig_tests.cpp
         tests/tape_tests.cpp

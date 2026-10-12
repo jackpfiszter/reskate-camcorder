@@ -79,6 +79,10 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
     records, mouse messages, the cursor) and leaves it the keyboard, the left stick and the
     buttons; `DingoSDKOverlayReadMouseWheel` gives the camera the wheel.
 
+11. **The fisheye warp** (`overlay_render.cpp`): the SRV heap gets a third slot for the copy of the
+    game's frame (`camcorder_warp.cpp`), copied before the overlay draws; the clip's copy moves
+    into a draw callback after the warp (`camcorder_capture_draw`).
+
 ## To confirm in play
 
 - **Look units.** `read_controls` assumes the freecam's look deltas are .0025 rad each, as

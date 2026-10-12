@@ -44,6 +44,13 @@ Tangent fisheye_source(const Optics &o, float x, float y) noexcept {
     return {x * t, y * t};
 }
 
+TextureUv warp_uv(const Optics &o, float x, float y, float render_aspect) noexcept {
+    const float aspect = std::isfinite(render_aspect) && render_aspect > 0.2f ? render_aspect : 16.0f / 9.0f;
+    const float tall = std::tan(std::clamp(o.render_vertical_fov, 1.0f, 179.0f) * 0.5f * degrees);
+    const auto t = fisheye_source(o, x, y);
+    return {0.5f + 0.5f * t.x / (tall * aspect), 0.5f - 0.5f * t.y / tall};
+}
+
 Optics optics(Adapter adapter, float zoom, FisheyeRender render, float render_aspect, const LensSpec &lens) noexcept {
     Optics o;
     o.focal_mm = focal_length(zoom, lens);
@@ -67,6 +74,7 @@ Optics optics(Adapter adapter, float zoom, FisheyeRender render, float render_as
         o.render_vertical_fov = std::min(o.vertical_fov, widest_approximate);
         return o;
     }
+    o.warped = true;
     // The warp samples the flat render at fisheye_source(); open the flat camera until every point
     // of the picture left uncovered by the housing's shadow is inside it. The ray's tangent over
     // the distance from centre only grows outward, so the edge of that region is enough to check.

@@ -465,35 +465,53 @@ index c0ce6f9..ba9a578 100644
      bool show_on_ready = false;
      bool force_windowed = false;
 diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
-index 7169615..1f7d4aa 100644
+index 7169615..7e6f532 100644
 --- a/Extension/UI/Overlay/overlay_render.cpp
 +++ b/Extension/UI/Overlay/overlay_render.cpp
-@@ -4,6 +4,8 @@
+@@ -4,6 +4,9 @@
  #include "overlay_internal.h"
  #include "Extension/Trainer/trainer_page.h"
  #include "Extension/HallOfMeat/hall_of_meat_overlay.h"
 +#include "Extension/Camcorder/camcorder_overlay.h"
 +#include "Extension/Camcorder/camcorder_capture.h"
++#include "Extension/Camcorder/camcorder_warp.h"
  #include "park_previews.h"
  #include "chat_emotes.h"
  #include "input_capture.h"
-@@ -54,6 +56,7 @@ bool completed(UINT64 value, DWORD timeout_ms) {
+@@ -54,6 +57,8 @@ bool completed(UINT64 value, DWORD timeout_ms) {
  
  void destroy_graphics() {
      auto& s = state();
 +    camcorder_capture_release();
++    camcorder_warp_release();
      clear_park_previews();
      restore_input(false);
      {
-@@ -394,6 +397,7 @@ bool setup_graphics() {
+@@ -279,7 +284,7 @@ bool setup_graphics() {
+         return false;
+     }
+     heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+-    heap.NumDescriptors = 2; // ImGui's atlas, then the map download card's icon (upload_card_image)
++    heap.NumDescriptors = 3; // ImGui's atlas, the map download card's icon (upload_card_image), the camcorder's picture
+     heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+     graphics_result = s.device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&s.srvs));
+     if (FAILED(graphics_result)) {
+@@ -394,6 +399,14 @@ bool setup_graphics() {
          const int transfer = format == DXGI_FORMAT_R16G16B16A16_FLOAT ? 1
                             : format == DXGI_FORMAT_R10G10B10A2_UNORM && hdr_display ? 2 : 0;
          ImGui_ImplDX12_SetOutputTransfer(transfer, hdr_display ? hdr_white_nits : 80.0f);
 +        camcorder_capture_output(format, transfer);
++        // The SRV heap's third slot: the copy of the game's picture the camcorder's fisheye is drawn from.
++        const auto step = s.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
++        auto warp_cpu = s.srvs->GetCPUDescriptorHandleForHeapStart();
++        auto warp_gpu = s.srvs->GetGPUDescriptorHandleForHeapStart();
++        warp_cpu.ptr += 2 * step;
++        warp_gpu.ptr += 2 * step;
++        camcorder_warp_heap(s.device.Get(), warp_cpu, warp_gpu);
          dingosdk::logging::printf(dingosdk::logging::Level::info, dingosdk::logging::Channel::graphics,
              "Overlay output: %s (buffer format %d, display %s).",
              transfer == 1 ? "scRGB" : transfer == 2 ? "HDR10" : "SDR", static_cast<int>(format), hdr_display ? "in HDR" : "in SDR");
-@@ -634,7 +638,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -634,7 +647,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
      const bool game_text_frame = game_text_pending();
      const bool skate_hud_frame = skate_hud_pending();
      const bool nametag_frame = nametags_pending();
@@ -504,7 +522,7 @@ index 7169615..1f7d4aa 100644
      const bool item_browser_frame = item_browser_pending();
      const bool perf_frame = perf_hud_pending() || trainer_hud_pending();
      const bool hub_frame = hub_page_pending();
-@@ -705,6 +711,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -705,6 +720,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
          draw_perf_window();
      }
      draw_hub_page();
@@ -512,20 +530,24 @@ index 7169615..1f7d4aa 100644
      draw_hall_of_meat();
      draw_nametags();
      draw_game_text();
-@@ -734,6 +741,8 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -734,6 +750,11 @@ void render(IDXGISwapChain* presented, UINT flags) {
          ImGui::SetCurrentContext(previous); s.failed = true; restore_input(true); return;
      }
      upload_card_image(s);
 +    // The camcorder's copy of the picture, before anything of ours is drawn over it.
++    // (the fisheye's warp draws from a copy of the game's frame; the copy for a clip is made in the
++    // middle of the overlay's draws, after the warp and before the readouts)
++    camcorder_warp_copy(s.commands.Get(), frame.buffer.Get());
 +    camcorder_capture_record(s.device.Get(), s.commands.Get(), frame.buffer.Get());
      D3D12_RESOURCE_BARRIER barrier{};
      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
      barrier.Transition.pResource = frame.buffer.Get();
-@@ -754,6 +763,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -754,6 +775,8 @@ void render(IDXGISwapChain* presented, UINT flags) {
      const UINT64 signal = ++s.next_fence;
      if (FAILED(s.queue->Signal(s.fence.Get(), signal))) { s.failed = true; restore_input(true); return; }
      frame.fence = signal;
 +    camcorder_capture_submitted(s.fence.Get(), signal);
++    camcorder_warp_submitted(s.fence.Get(), signal);
      s.upload_fences[upload_slot] = signal;
      ++s.submitted_draws;
      ++s.rendered_frames;
@@ -652,10 +674,10 @@ index eb18b43..4e700cc 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..72274d7 100644
+index 34634f2..f0e4c9c 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
-@@ -2,6 +2,18 @@
+@@ -2,6 +2,20 @@
  add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
  target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
  
@@ -664,6 +686,8 @@ index 34634f2..72274d7 100644
 +    Extension/Camcorder/Model/camcorder/audio.cpp
 +    Extension/Camcorder/Model/camcorder/camcorder.cpp
 +    Extension/Camcorder/Model/camcorder/commands.cpp
++    Extension/Camcorder/Model/camcorder/look.cpp
++    Extension/Camcorder/Model/camcorder/preferences.cpp
 +    Extension/Camcorder/Model/camcorder/recorder.cpp
 +    Extension/Camcorder/Model/camcorder/rigs.cpp
 +    Extension/Camcorder/Model/camcorder/tape.cpp
@@ -674,7 +698,7 @@ index 34634f2..72274d7 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +53,15 @@ add_library(dingosdk_overlay STATIC
+@@ -41,8 +55,16 @@ add_library(dingosdk_overlay STATIC
      Extension/Trainer/trainer_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp
@@ -685,6 +709,7 @@ index 34634f2..72274d7 100644
 +    Extension/Camcorder/camcorder_audio.cpp
 +    Extension/Camcorder/camcorder_media.cpp
 +    Extension/Camcorder/camcorder_tape.cpp
++    Extension/Camcorder/camcorder_warp.cpp
  )
 -target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
 +target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model mfplat mfreadwrite mfuuid mmdevapi dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)

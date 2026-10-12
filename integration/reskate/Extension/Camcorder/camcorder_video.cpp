@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -14,7 +15,7 @@ namespace dingosdk::camcorder_video {
 namespace {
 using Microsoft::WRL::ComPtr;
 using namespace dingosdk::camcorder;
-using camcorder_media::frame_duration;
+using camcorder_media::frame_time;
 constexpr std::size_t queue_limit = 8; // about a quarter of a second of pictures
 std::string hresult(const char *what, HRESULT result) { return camcorder_media::failed(what, result); }
 } // namespace
@@ -35,6 +36,17 @@ struct Writer::Impl {
     std::int64_t audio_frames{}, video_frames{};
     VideoSize size;
     std::wstring path;
+    Finish finish;
+    DvClip dv_clip;
+    std::time_t started{};
+
+    // The wall-clock time of frame `index`, for the date stamp: it ticks over with the clip.
+    std::tm when(std::int64_t index) const {
+        const auto time = started + static_cast<std::time_t>(static_cast<double>(index) / clip_frame_rate(finish));
+        std::tm local{};
+        localtime_s(&local, &time);
+        return local;
+    }
 
     // Writes interleaved 16-bit stereo at the end of the sound written so far.
     HRESULT write_audio(const std::vector<std::int16_t> &pcm) {
@@ -82,12 +94,22 @@ struct Writer::Impl {
                             frame->white_nits);
             scale_bgra(picture, scaled);
             apply_vignette(scaled, frame->vignette);
-            bgra_to_nv12(scaled, nv12);
+            const bool fields = finish.fields();
+            const bool finishing = finish.dv.on || finish.date_stamp;
+            if (!finishing) bgra_to_nv12(scaled, nv12);
+            Image finished;
             for (int i = 0; i < frame->repeats && !failed; ++i) {
                 // On the clip's clock: after a stall the picture skips ahead with the sound.
                 const auto index = frame->index + i;
-                const HRESULT hr = camcorder_media::write_sample(writer.Get(), stream, nv12.data(), nv12.size(),
-                                                                 index * frame_duration, frame_duration);
+                if (finishing) {
+                    // Each repeat is its own frame of tape: the other field, the next second of the stamp.
+                    finished = scaled;
+                    finish_frame(finished, finish, dv_clip, index, clip_frame_rate(finish), when(index));
+                    bgra_to_nv12(finished, nv12);
+                }
+                const auto at = frame_time(index, fields);
+                const HRESULT hr = camcorder_media::write_sample(writer.Get(), stream, nv12.data(), nv12.size(), at,
+                                                                 frame_time(index + 1, fields) - at);
                 if (FAILED(hr)) {
                     fail("Encoding a frame", hr);
                 } else {
@@ -101,7 +123,7 @@ struct Writer::Impl {
             if (!failed) {
                 auto rest = audio.take();
                 // The sound runs to the end of the picture (all silence when it could not be captured).
-                const auto end = video_frames * frame_duration * audio_rate / 10'000'000LL;
+                const auto end = frame_time(video_frames, finish.fields()) * audio_rate / 10'000'000LL;
                 const auto have = audio_frames + static_cast<std::int64_t>(rest.size() / audio_channels);
                 if (have < end) rest.resize(rest.size() + static_cast<std::size_t>(end - have) * audio_channels, 0);
                 if (const HRESULT hr = write_audio(rest); FAILED(hr)) fail("Encoding the sound", hr);
@@ -131,7 +153,8 @@ Writer::~Writer() {
     if (impl_->thread.joinable()) impl_->thread.join();
 }
 
-bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double origin_seconds, std::string &error) {
+bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double origin_seconds, const Finish &finish,
+                   std::time_t started, std::string &error) {
     auto &s = *impl_;
     if (running()) {
         error = "A clip is still being written.";
@@ -144,7 +167,7 @@ bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double
     }
     const bool with_sound = sound != Sound::off;
     ComPtr<IMFSinkWriter> writer;
-    if (const HRESULT hr = camcorder_media::open_mp4(path, size, with_sound, writer, s.stream, s.audio_stream); FAILED(hr)) {
+    if (const HRESULT hr = camcorder_media::open_mp4(path, size, with_sound, finish.fields(), writer, s.stream, s.audio_stream); FAILED(hr)) {
         error = hresult("Setting up the H.264 encoder", hr);
         return false;
     }
@@ -160,6 +183,10 @@ bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double
         s.dropped = 0;
         s.sound = with_sound;
         s.audio_frames = s.video_frames = 0;
+        s.finish = finish;
+        s.started = started;
+        // Each clip's white balance starts somewhere of its own in its wander.
+        s.dv_clip.seed = static_cast<float>(origin_seconds - std::floor(origin_seconds));
     }
     if (with_sound) s.audio.start(origin_seconds, sound);
     s.thread = std::thread([&s] { s.run(); });

@@ -4,9 +4,13 @@
 // draw_hall_of_meat(), and count camcorder_pending() among the reasons to render with the
 // menu closed.
 #include "camcorder_overlay.h"
+#include "camcorder_capture.h"
 #include "camcorder_runtime.h"
+#include "camcorder_warp.h"
 #include "camcorder/viewfinder.h"
 #include <imgui.h>
+#include <backends/imgui_impl_dx12.h>
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 
@@ -40,6 +44,44 @@ void shadow(ImDrawList *list, const Circle &c, const Rect &picture) {
         list->AddCircle({c.x, c.y}, c.radius - ring * 2.0f, IM_COL32(0, 0, 0, 160 - ring * 25), segments, 2.5f);
     list->PopClipRect();
 }
+// The warp's mesh is drawn as the game drew it: the overlay's shader would otherwise treat the
+// game's pixels as sRGB colours and convert them again for an HDR display.
+void straight_output(const ImDrawList *, const ImDrawCmd *) {
+    const auto *render = static_cast<ImGui_ImplDX12_RenderState *>(ImGui::GetPlatformIO().Renderer_RenderState);
+    if (!render || !render->CommandList) return;
+    const float none[4]{0, 80, 0, 0};
+    render->CommandList->SetGraphicsRoot32BitConstants(0, 4, none, 16);
+}
+
+// The flat render, bent into the fisheye's picture: a grid over the 4:3 picture, each point
+// sampling the copy of the game's frame where the lens would have seen it (vx1000.h, warp_uv).
+void warp(ImDrawList *list, ImTextureID texture, const Optics &optics, const Rect &picture, float aspect) {
+    constexpr int columns = 64, rows = 48;
+    list->AddCallback(straight_output, nullptr);
+    list->PushTextureID(texture);
+    list->PrimReserve(columns * rows * 6, (columns + 1) * (rows + 1));
+    const auto first = static_cast<unsigned>(list->_VtxCurrentIdx);
+    for (int j = 0; j <= rows; ++j)
+        for (int i = 0; i <= columns; ++i) {
+            const float s = static_cast<float>(i) / columns, r = static_cast<float>(j) / rows;
+            const auto uv = warp_uv(optics, -1 + 2 * s, 0.75f - 1.5f * r, aspect);
+            list->PrimWriteVtx({picture.x + picture.width * s, picture.y + picture.height * r},
+                               {std::clamp(uv.u, 0.0f, 1.0f), std::clamp(uv.v, 0.0f, 1.0f)}, IM_COL32_WHITE);
+        }
+    for (int j = 0; j < rows; ++j)
+        for (int i = 0; i < columns; ++i) {
+            const auto a = static_cast<ImDrawIdx>(first + static_cast<unsigned>(j * (columns + 1) + i));
+            const auto b = static_cast<ImDrawIdx>(a + 1), c = static_cast<ImDrawIdx>(a + columns + 1), d = static_cast<ImDrawIdx>(c + 1);
+            list->PrimWriteIdx(a);
+            list->PrimWriteIdx(b);
+            list->PrimWriteIdx(d);
+            list->PrimWriteIdx(a);
+            list->PrimWriteIdx(d);
+            list->PrimWriteIdx(c);
+        }
+    list->PopTextureID();
+    list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+}
 } // namespace
 
 bool camcorder_pending() {
@@ -63,6 +105,11 @@ void draw_camcorder() {
     const auto v = layout_viewfinder(p.frame, io.DisplaySize.x, io.DisplaySize.y, options);
     if (!v.visible) return;
     auto *list = ImGui::GetBackgroundDrawList();
+    if (p.frame.optics.warped && io.DisplaySize.y > 0)
+        if (const auto texture = camcorder_warp_request(static_cast<int>(io.DisplaySize.x + 0.5f), static_cast<int>(io.DisplaySize.y + 0.5f)))
+            warp(list, *texture, p.frame.optics, v.picture, io.DisplaySize.x / io.DisplaySize.y);
+    // A clip's or a still's copy of the picture is made here: after the warp, before the readouts.
+    list->AddCallback(camcorder_capture_draw, nullptr);
     if (v.vignette) shadow(list, *v.vignette, v.picture);
     for (const auto &bar : v.bars)
         list->AddRectFilled({bar.x, bar.y}, {bar.x + bar.width, bar.y + bar.height}, IM_COL32(0, 0, 0, 255));

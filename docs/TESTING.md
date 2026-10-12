@@ -95,6 +95,10 @@ Solo:
 - [ ] Camera controls on (menu or `camcorder operate on`): the skater stops; the mouse (or right
       stick) aims, right turns right and up looks up; Q / E (or the triggers) zoom, the W-T bar shows
       while zooming, and the round corners vanish after a little zoom. Off again: you skate.
+- [ ] True fisheye (on by default): straight lines bow outward toward the edges (rails, ledges,
+      building edges), the middle looks slightly magnified, and zooming in straightens them.
+      `camcorder warp off` goes back to the flat stand-in: wide, round corners, no bend. Say if the
+      picture looks too soft in the middle, or if anything at the edges is cut off.
 - [ ] `camcorder lens stock`: much narrower (about 44 degrees), no round corners.
 - [ ] `camcorder grip eye`, `camcorder grip hip`, `camcorder grip long`: the camera height changes.
 - [ ] `camcorder rec`: red dot and REC, counter running. `camcorder rec` again: STBY.
@@ -157,13 +161,35 @@ through the VX mic: thin low end, rolled-off top, the level control pumping, sla
       one file, "ReSkate ... tape 1 (3 clips).mp4", with the clips back to back, sound in step at
       every cut. Mix a DV clip in: it is scaled to the first clip's size.
 - [ ] `camcorder tape new`, one more clip, capture again: only that clip, as tape 2.
+- [ ] With the true fisheye on, a clip and a still have the same bend as the screen.
+
+### Tape look
+
+The DV look and the date stamp go on clips and stills, not on the screen (the TAPE LOOK card, or
+the console). Turning the DV look on also switches to DV quality (640 x 480).
+
+- [ ] `camcorder look dv`, then a clip with fast skating: the motion is smoother (59.94 frames a
+      second), the picture softer top to bottom, white areas clip hard, colours smear sideways off
+      bright clothes and signs, hard edges have a halo, and over a minute the colour drifts.
+- [ ] Each part turns off on its own (`camcorder dv fields off`, `highlights`, `balance`,
+      `sharpen`, `chroma`), and the frame rate goes back to 29.97 with fields off.
+- [ ] `camcorder date on`: "4:03:22 PM" over "OCT 12 2026" in the bottom right, the seconds
+      ticking with the clip. `camcorder date year 1996`: the year says 1996.
+- [ ] A still has the look and the stamp too.
+- [ ] HD with the DV look and fields on: watch `ReSkate.log` for "frames were dropped".
+
+### Settings
+
+- [ ] Change the lens, grip, quality, sound, steer while filming, the tape look and the stamp; quit
+      the game and start it again: they are as you left them. The file is
+      `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt` (one command a line; delete it to reset).
 
 ### Known gaps (expected)
 
 - A tripod is invisible to the other players and in your own shots of it: there is no tripod
   model in the game to stand there yet.
 - No second picture: the camcorder's view replaces the game's while it is on.
-- The fisheye is the wide angle plus round corners; straight lines don't bend yet.
+- The tape look is on recordings only; the screen shows the clean picture.
 - The recording is of what is on screen: it records the camcorder's picture only while you look
   through it.
 

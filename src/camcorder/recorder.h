@@ -27,8 +27,8 @@ struct VideoSize {
     bool operator==(const VideoSize &) const = default;
 };
 VideoSize video_size(Quality, const PixelBox &capture) noexcept;
-// Bits a second for the encoder: about what the picture needs at 29.97 frames a second.
-std::uint32_t video_bitrate(const VideoSize &) noexcept;
+// Bits a second for the encoder: about what the picture needs at `frame_rate` (29.97 or 59.94).
+std::uint32_t video_bitrate(const VideoSize &, double frame_rate = 30000.0 / 1001.0) noexcept;
 
 // An 8-bit picture, four bytes a pixel in B, G, R, A order, rows packed.
 struct Image {
@@ -61,13 +61,13 @@ void apply_vignette(Image &image, float radius);
 // NV12 for H.264: a full-size luma plane, then interleaved half-size U, V. BT.709, limited range.
 void bgra_to_nv12(const Image &image, std::vector<std::uint8_t> &out);
 
-// Which presented frames become video frames, for a steady 30000/1001 a second whatever the game's
-// frame rate: a frame is due when the clock passes the next output frame's time. After a hitch
+// Which presented frames become video frames, for a steady 30000/1001 a second (or 60000/1001 for a
+// clip of fields, look.h) whatever the game's frame rate: a frame is due when the clock passes the next output frame's time. After a hitch
 // the frame shown is repeated (at most `max_repeat` times) so the clip keeps time with the clock.
 class FramePacer {
 public:
     explicit FramePacer(int max_repeat = 4) : max_repeat_(max_repeat) {}
-    void start(double seconds) noexcept;
+    void start(double seconds, double frame_rate = 30000.0 / 1001.0) noexcept;
     // How many video frames the frame shown at `seconds` should become (0: none).
     int due(double seconds) noexcept;
     // The video frame number (from 0 at the start) of the first of those: after a stall the clip
@@ -76,7 +76,7 @@ public:
     std::int64_t frames() const noexcept { return emitted_; }
 
 private:
-    double start_{};
+    double start_{}, rate_{30000.0 / 1001.0};
     std::int64_t emitted_{}, first_{};
     int max_repeat_;
     bool started_{};

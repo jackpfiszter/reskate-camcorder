@@ -112,3 +112,28 @@ TEST(zoom_servo_stops_soon_after_release_and_hides_the_bar) {
     servo.step(0.05f, 1.0f / 60); // inside the deadzone
     CHECK(servo.shown_for == 0);
 }
+
+TEST(warp_uv_maps_the_picture_into_the_flat_render) {
+    const float aspect = 16.0f / 9.0f;
+    const auto o = optics(Adapter::century_fisheye, 0.0f, FisheyeRender::warp, aspect);
+    CHECK(o.warped);
+    CHECK(!optics(Adapter::century_fisheye, 0.0f, FisheyeRender::approximate, aspect).warped);
+    const auto centre = warp_uv(o, 0, 0, aspect);
+    CHECK_NEAR(centre.u, 0.5, 1e-6);
+    CHECK_NEAR(centre.v, 0.5, 1e-6);
+    // Right is right, up is up (v grows down the texture).
+    CHECK(warp_uv(o, 0.5f, 0, aspect).u > 0.5f);
+    CHECK(warp_uv(o, 0, 0.5f, aspect).v < 0.5f);
+    // Every point the housing leaves visible lands inside the render.
+    const float radius = o.vignette_radius > 0 ? o.vignette_radius : 1.25f;
+    for (int i = 0; i <= 40; ++i)
+        for (int j = 0; j <= 30; ++j) {
+            const float x = -1 + 2.0f * i / 40, y = -0.75f + 1.5f * j / 30;
+            if (x * x + y * y > radius * radius) continue;
+            const auto uv = warp_uv(o, x, y, aspect);
+            CHECK(uv.u >= -1e-3f && uv.u <= 1.001f && uv.v >= -1e-3f && uv.v <= 1.001f);
+        }
+    // The fisheye squeezes the edges: equal steps out from the centre cover more and more render.
+    const float a = warp_uv(o, 0.25f, 0, aspect).u - 0.5f, b = warp_uv(o, 0.5f, 0, aspect).u - 0.5f;
+    CHECK(b > 2 * a);
+}

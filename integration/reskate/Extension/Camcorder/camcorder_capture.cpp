@@ -5,7 +5,9 @@
 #include "camcorder_video.h"
 #include "Engine/Core/Log/logging.h"
 #include "Extension/UI/Overlay/overlay.h"
+#include "camcorder/look.h"
 #include "camcorder/recorder.h"
+#include <backends/imgui_impl_dx12.h>
 #include <wrl/client.h>
 #include <algorithm>
 #include <array>
@@ -38,6 +40,20 @@ struct Slot {
     bool still{};         // also saved as a still
     float vignette{};
     SourceFormat source{};
+    Finish finish;        // a still's DV look and date stamp
+};
+// A frame worked out by camcorder_capture_record, copied by camcorder_capture_draw.
+struct Armed {
+    ID3D12Device *device{};
+    ID3D12Resource *back_buffer{};
+    D3D12_RESOURCE_DESC desc{};
+    PixelBox box;
+    SourceFormat source{};
+    float vignette{};
+    int due{};
+    std::int64_t index{};
+    bool still{};
+    Finish finish;
 };
 // A still being saved on a thread of its own.
 struct StillJob {
@@ -49,6 +65,7 @@ struct StillJob {
 struct Capture {
     std::array<Slot, 4> slots;
     Slot *recorded{}; // copied this frame, not yet submitted
+    std::optional<Armed> armed; // due this frame, not yet copied
     ComPtr<ID3D12Fence> fence;
     DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
     int transfer{};
@@ -107,10 +124,10 @@ bool in_flight(const Capture &c) {
     return false;
 }
 // Saves a still on its own thread: full size, the lens's corners, no readouts.
-void save_still(StillJob &job, camcorder_video::RawFrame frame) {
+void save_still(StillJob &job, camcorder_video::RawFrame frame, Finish finish) {
     if (job.thread.joinable()) job.thread.join();
     job.busy = true;
-    job.thread = std::thread([&job, frame = std::move(frame)] {
+    job.thread = std::thread([&job, frame = std::move(frame), finish] {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         std::pair<bool, std::string> result{false, "Windows did not say where the Pictures folder is."};
         const auto folder = camcorder_media::folder(FOLDERID_Pictures);
@@ -118,6 +135,8 @@ void save_still(StillJob &job, camcorder_video::RawFrame frame) {
             Image image;
             convert_to_bgra(frame.bytes.data(), frame.pitch, frame.width, frame.height, frame.format, image, frame.white_nits);
             apply_vignette(image, frame.vignette);
+            const auto when = local_now();
+            finish_frame(image, finish, DvClip{0.5f}, 0, clip_frame_rate(finish), when);
             const auto path = folder + L"\\" + camcorder_media::widen(photo_file_name(local_now()));
             std::string error;
             result = camcorder_media::save_jpeg(image, path, error) ? std::pair{true, narrow(path)} : std::pair{false, error};
@@ -150,7 +169,7 @@ void collect(Capture &c) {
             frame.bytes.assign(bytes, bytes + frame.pitch * static_cast<std::size_t>(slot.height));
             const D3D12_RANGE written{0, 0};
             slot.buffer->Unmap(0, &written);
-            if (slot.still) save_still(c.still, slot.repeats > 0 ? frame : std::move(frame));
+            if (slot.still) save_still(c.still, slot.repeats > 0 ? frame : std::move(frame), slot.finish);
             if (slot.repeats > 0) c.writer.push(std::move(frame));
         }
         slot.stage = Slot::Stage::free;
@@ -159,7 +178,8 @@ void collect(Capture &c) {
 }
 // Queues a copy of the picture into a free readback slot. Null when every slot is busy.
 Slot *copy_picture(Capture &c, ID3D12Device *device, ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer,
-                   const D3D12_RESOURCE_DESC &desc, const PixelBox &box, SourceFormat source, float vignette) {
+                   D3D12_RESOURCE_STATES state, const D3D12_RESOURCE_DESC &desc, const PixelBox &box, SourceFormat source,
+                   float vignette) {
     Slot *slot = nullptr;
     for (auto &candidate : c.slots)
         if (candidate.stage == Slot::Stage::free) {
@@ -204,7 +224,7 @@ Slot *copy_picture(Capture &c, ID3D12Device *device, ID3D12GraphicsCommandList *
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = back_buffer;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateBefore = state;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
     commands->ResourceBarrier(1, &barrier);
     D3D12_TEXTURE_COPY_LOCATION to{};
@@ -311,6 +331,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
         c.recorded->stage = Slot::Stage::free;
         c.recorded = nullptr;
     }
+    c.armed.reset(); // nor did last frame's draw reach the camcorder's (it was not on screen)
     if (!device || !commands || !back_buffer) return;
     const auto published = camcorder_runtime::published();
     const bool still = on_screen(published) && published.still != c.still_served && !c.still.busy;
@@ -340,12 +361,12 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
                 if (!folder.empty()) {
                     const auto path = folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now()));
                     started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box),
-                                             published.sound, origin, error);
+                                             published.sound, origin, published.finish, std::time(nullptr), error);
                 }
                 if (started) {
                     c.failed_clip = 0;
                     c.recording = true;
-                    c.pacer.start(origin);
+                    c.pacer.start(origin, clip_frame_rate(published.finish));
                 } else {
                     c.failed_clip = status.clip;
                     say(NoticeLevel::warning, "The camcorder cannot record.", error);
@@ -355,16 +376,34 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
         if (c.recording) due = c.pacer.due(now_seconds());
     }
     if (due <= 0 && !still) return;
-    const float vignette = published.frame.optics.fisheye ? published.frame.optics.vignette_radius : 0.0f;
+    Armed armed;
+    armed.device = device;
+    armed.back_buffer = back_buffer;
+    armed.desc = desc;
+    armed.box = box;
+    armed.source = *source;
+    armed.vignette = published.frame.optics.fisheye ? published.frame.optics.vignette_radius : 0.0f;
+    armed.due = std::max(due, 0);
+    armed.index = c.pacer.first();
+    armed.still = still;
+    armed.finish = published.finish;
+    c.armed = armed;
+    if (still) c.still_served = published.still;
+}
+
+void camcorder_capture_draw(const ImDrawList *, const ImDrawCmd *) {
+    auto &c = capture();
+    const auto armed = std::exchange(c.armed, std::nullopt);
+    const auto *render = static_cast<ImGui_ImplDX12_RenderState *>(ImGui::GetPlatformIO().Renderer_RenderState);
+    if (!armed || !render || !render->CommandList) return;
     // With every slot busy the GPU is behind: the next due frame repeats to cover this one.
-    Slot *slot = copy_picture(c, device, commands, back_buffer, desc, box, *source, vignette);
+    Slot *slot = copy_picture(c, armed->device, render->CommandList, armed->back_buffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
+                              armed->desc, armed->box, armed->source, armed->vignette);
     if (!slot) return;
-    slot->repeats = std::max(due, 0);
-    slot->index = c.pacer.first();
-    if (still) {
-        slot->still = true;
-        c.still_served = published.still;
-    }
+    slot->repeats = armed->due;
+    slot->index = armed->index;
+    slot->still = armed->still;
+    slot->finish = armed->finish;
 }
 
 void camcorder_capture_submitted(ID3D12Fence *fence, UINT64 signal) {

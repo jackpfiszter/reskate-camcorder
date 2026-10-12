@@ -10,6 +10,7 @@
 #include "Extension/Multiplayer/Net/protocol.h"
 #include "camcorder/audio.h"
 #include "camcorder/camcorder.h"
+#include "camcorder/look.h"
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -56,8 +57,12 @@ struct Published {
     std::uint32_t still{};        // counts `camcorder still` requests: each new number takes one
     std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
     std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
+    camcorder::Finish finish;     // `camcorder look|dv|date`: the DV look and the date stamp
+    bool warp{true};              // `camcorder warp`: the true fisheye
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).
 void note_render_aspect(float aspect) noexcept;
+// Overlay, render thread: the fisheye warp cannot be drawn here; keep the flat stand-in.
+void note_warp_failed() noexcept;
 } // namespace dingosdk::camcorder_runtime

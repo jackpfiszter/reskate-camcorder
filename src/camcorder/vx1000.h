@@ -61,6 +61,7 @@ struct Optics {
     bool fisheye{};
     float vignette_radius{};  // half picture widths; 0 when the housing's shadow is outside the picture
     float render_vertical_fov{}; // degrees: what to give the game's (flat, vertical-FOV) camera
+    bool warped{};            // the flat render is opened for the warp (FisheyeRender::warp)
 };
 
 // Zoom position 0 (wide) to 1 (tele) as a focal length. The servo moves the zoom ring at a steady
@@ -81,6 +82,12 @@ struct Tangent {
     float x{}, y{};
 };
 Tangent fisheye_source(const Optics &, float x, float y) noexcept;
+// The same point as a texture coordinate in the whole flat render (u right, v down, 0 to 1 across the
+// back buffer), which is `render_aspect` wide for 1 tall and `optics.render_vertical_fov` tall.
+struct TextureUv {
+    float u{}, v{};
+};
+TextureUv warp_uv(const Optics &, float x, float y, float render_aspect) noexcept;
 
 // The zoom rocker and the servo behind it. A light press creeps (20 s end to end), a full press
 // races (4.1 s), and the motor takes a moment to get going and to stop.

@@ -1,4 +1,5 @@
 #include "recorder.h"
+#include "rows.h"
 #include "tape.h"
 #include "viewfinder.h"
 #include <algorithm>
@@ -6,28 +7,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <thread>
 
 namespace dingosdk::camcorder {
 namespace {
 int even_down(float v) { return std::max(0, static_cast<int>(std::floor(v * 0.5f)) * 2); }
-
-// Runs `work(first, last)` over [0, rows) split across a few threads: each step is a pass over a
-// whole frame, 30 times a second, beside a running game. Small jobs stay on the calling thread.
-template <class Work> void for_rows(int rows, Work &&work) {
-    static const int threads = static_cast<int>(std::clamp(std::thread::hardware_concurrency() / 2, 1u, 4u));
-    const int parts = rows >= 256 ? threads : 1;
-    if (parts <= 1) {
-        work(0, rows);
-        return;
-    }
-    std::vector<std::thread> helpers;
-    const int step = (rows + parts - 1) / parts;
-    for (int first = step; first < rows; first += step)
-        helpers.emplace_back([&work, first, last = std::min(rows, first + step)] { work(first, last); });
-    work(0, std::min(rows, step));
-    for (auto &helper : helpers) helper.join();
-}
 
 // A display's white is 1; HDR highlights above it roll off into it instead of clipping hard.
 double tone(double x) {
@@ -114,9 +97,9 @@ VideoSize video_size(Quality quality, const PixelBox &capture) noexcept {
     return {std::max(2, (height * 4 / 3) & ~1), height};
 }
 
-std::uint32_t video_bitrate(const VideoSize &size) noexcept {
+std::uint32_t video_bitrate(const VideoSize &size, double frame_rate) noexcept {
     // About a quarter of a bit a pixel a frame: plenty for a fisheye line full of concrete texture.
-    const double bits = static_cast<double>(size.width) * size.height * ntsc_frame_rate * 0.25;
+    const double bits = static_cast<double>(size.width) * size.height * (frame_rate > 0 ? frame_rate : ntsc_frame_rate) * 0.25;
     return static_cast<std::uint32_t>(std::clamp(bits, 1.0e6, 40.0e6));
 }
 
@@ -315,8 +298,9 @@ void bgra_to_nv12(const Image &image, std::vector<std::uint8_t> &out) {
     });
 }
 
-void FramePacer::start(double seconds) noexcept {
+void FramePacer::start(double seconds, double frame_rate) noexcept {
     start_ = seconds;
+    rate_ = frame_rate > 0 && std::isfinite(frame_rate) ? frame_rate : ntsc_frame_rate;
     emitted_ = first_ = 0;
     started_ = true;
 }
@@ -325,7 +309,7 @@ int FramePacer::due(double seconds) noexcept {
     if (!std::isfinite(seconds)) return 0;
     if (!started_) start(seconds);
     // Frames that should exist by now, the first at the start.
-    const auto wanted = static_cast<std::int64_t>(std::floor((seconds - start_) * ntsc_frame_rate)) + 1;
+    const auto wanted = static_cast<std::int64_t>(std::floor((seconds - start_) * rate_)) + 1;
     const auto missing = wanted - emitted_;
     if (missing <= 0) return 0;
     const int count = static_cast<int>(std::min<std::int64_t>(missing, max_repeat_));

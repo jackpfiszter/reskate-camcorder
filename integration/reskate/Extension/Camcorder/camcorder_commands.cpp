@@ -30,6 +30,10 @@ void register_camcorder_commands(Commands &registry) {
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},
         {"quality", "Record in HD (1440 x 1080) or at the VX1000's own 640 x 480", "hd|dv"},
         {"sound", "Clips without sound, with the game's, or through the VX mic", "off|game|vx"},
+        {"warp", "The true fisheye (lines bend) or the flat stand-in", "[on|off|toggle]"},
+        {"look", "The DV look on clips and stills, or a clean picture", "dv|clean|toggle"},
+        {"dv", "One part of the DV look", "fields|highlights|balance|sharpen|chroma [on|off|toggle]"},
+        {"date", "The camcorder's date stamp on clips and stills, and the year it says", "[on|off|toggle] | year <yyyy>|now"},
     };
     for (const auto &verb : verbs) {
         std::vector<Argument> arguments;

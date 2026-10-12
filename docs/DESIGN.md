@@ -145,13 +145,19 @@ through the camcorder and steer by it, as real filmers do.
    on the stock lens), 4:3 pillarbox bars, and the fisheye's round shadow drawn over the
    picture. A flat game camera cannot bend lines, so the fisheye is approximated by giving the
    flat camera its coverage (about 94 degrees vertical).
-2. **The warp.** A full-screen pass on the overlay's D3D12 command list samples the frame
-   through `fisheye_source()` (equidistant projection, already in the model and tested), with
-   the game camera opened just wide enough that every visible point has picture behind it
-   (`FisheyeRender::warp`). That is the real barrel.
-3. **DV.** Interlacing (60 fields), 4:1:1 chroma smear, the edge enhancement and the hard
-   highlight clip of a 1/3" CCD, an auto white balance that drifts. Each a small shader step,
-   each switchable.
+2. **The warp (built).** The game camera is opened just wide enough that every visible point has
+   picture behind it (`FisheyeRender::warp`). The overlay copies the frame into a texture and
+   draws it back over the 4:3 picture through a 64 x 48 mesh whose texture coordinates follow the
+   equidistant fisheye (`warp_uv`, tested), with ImGui's own pipeline: no new shader, and a draw
+   callback switches off the HDR conversion for the mesh. Clips and stills are copied in another
+   draw callback after the mesh, so they bend exactly as the screen does. The cost is softness in
+   the middle: the flat render spreads its pixels over about 118 degrees, so the centre of the
+   fisheye is about half the resolution of the screen.
+3. **DV (built, on recordings).** `look.h`: 60 fields (clips at 59.94, each frame one field),
+   a 1/3" CCD's hard white and dense blacks, a wandering auto white balance, edge enhancement,
+   and 4:1:1 colour smear, each switchable; and the date stamp from the camera's character
+   generator, with any year. Done on the CPU in the encoder thread (about 3.5 ms a frame at
+   640 x 480), so the screen keeps the clean picture.
 
 ## Controls (proposed)
 

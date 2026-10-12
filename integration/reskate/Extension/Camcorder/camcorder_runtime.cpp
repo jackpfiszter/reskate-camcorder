@@ -7,11 +7,16 @@
 #include "Extension/Skater/client_source_spawn.h"
 #include "Extension/UI/Overlay/overlay.h"
 #include "camcorder/commands.h"
+#include "camcorder/preferences.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <optional>
+#include <sstream>
 
 namespace dingosdk::camcorder_runtime {
 namespace {
@@ -38,6 +43,10 @@ struct State {
     bool dv{};
     Sound sound{Sound::game};
     std::uint32_t still{}, tape{1}, capture_tape{};
+    Finish finish;             // the DV look and the date stamp on clips and stills
+    bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
+    std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
+    bool preferences_loaded{}, loading{};
     bool was_powered{};
     std::string last_detail;
     std::string refused; // why the game has not handed over its camera, while it has not
@@ -100,6 +109,54 @@ std::optional<Subject> subject_from(State &s, float dt) {
             }
     s.subject_velocity.reset();
     return std::nullopt;
+}
+
+// The settings file: %LOCALAPPDATA%\ReSkate Camcorder\settings.txt.
+std::filesystem::path preferences_path() {
+    wchar_t *base{};
+    std::size_t length{};
+    if (_wdupenv_s(&base, &length, L"LOCALAPPDATA") != 0 || !base) return {};
+    std::filesystem::path path = *base ? std::filesystem::path(base) / L"ReSkate Camcorder" / L"settings.txt" : std::filesystem::path{};
+    std::free(base);
+    return path;
+}
+const char *on_off(bool on) { return on ? "on" : "off"; }
+Preferences current_preferences(const State &s) {
+    const auto status = s.camcorder.status();
+    const auto &dv = s.finish.dv;
+    return {
+        {"lens", status.adapter == Adapter::century_fisheye ? "fisheye" : "stock"},
+        {"warp", on_off(s.warp)},
+        {"grip", status.grip == Grip::long_grip ? "long" : status.grip == Grip::hip ? "hip" : "eye"},
+        {"lockon", on_off(status.lock_on)},
+        {"head", status.head == TripodRig::Head::locked ? "locked" : status.head == TripodRig::Head::manual ? "manual" : "follow"},
+        {"aim", on_off(s.aiming)},
+        {"clean", on_off(s.clean_feed)},
+        {"quality", s.dv ? "dv" : "hd"},
+        {"sound", s.sound == Sound::off ? "off" : s.sound == Sound::game ? "game" : "vx"},
+        {"look", dv.on ? "dv" : "clean"},
+        {"dv-fields", on_off(dv.fields)},
+        {"dv-highlights", on_off(dv.highlights)},
+        {"dv-balance", on_off(dv.white_balance)},
+        {"dv-sharpen", on_off(dv.sharpen)},
+        {"dv-chroma", on_off(dv.chroma)},
+        {"date", on_off(s.finish.date_stamp)},
+        {"date-year", s.finish.stamp_year > 0 ? std::to_string(s.finish.stamp_year) : "now"},
+    };
+}
+void save_preferences(const State &s) {
+    const auto path = preferences_path();
+    if (path.empty()) return;
+    std::error_code ignored;
+    std::filesystem::create_directories(path.parent_path(), ignored);
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << write_preferences(current_preferences(s));
+    if (!file) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder: could not save its settings.");
+}
+bool is_setting(std::string_view verb) {
+    for (const auto *name : {"lens", "warp", "grip", "lockon", "head", "aim", "clean", "quality", "sound", "look", "dv", "date"})
+        if (verb == name) return true;
+    return false;
 }
 
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
@@ -191,6 +248,8 @@ void publish(State &s, const Frame &frame) {
     s.published.still = s.still;
     s.published.tape = s.tape;
     s.published.capture_tape = s.capture_tape;
+    s.published.finish = s.finish;
+    s.published.warp = s.warp;
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
     const auto &status = frame.status;
@@ -225,6 +284,8 @@ bool wants_controller() noexcept { return wants_pad(state()); }
 
 bool powered() noexcept { return state().camcorder.powered(); }
 
+void note_warp_failed() noexcept { state().warp_failed.store(true); }
+
 void note_render_aspect(float aspect) noexcept {
     if (std::isfinite(aspect) && aspect > 0.2f && aspect < 10) state().render_aspect.store(aspect, std::memory_order_relaxed);
 }
@@ -232,6 +293,24 @@ void note_render_aspect(float aspect) noexcept {
 void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_phase) noexcept {
     auto &s = state();
     try {
+        if (!s.preferences_loaded) {
+            // Last time's settings, once: each line is a camcorder command.
+            s.preferences_loaded = true;
+            if (const auto path = preferences_path(); !path.empty()) {
+                std::ifstream file(path, std::ios::binary);
+                std::stringstream text;
+                text << file.rdbuf();
+                s.loading = true;
+                for (const auto &preference : read_preferences(text.str())) {
+                    auto [verb, words] = preference_command(preference);
+                    if (is_setting(verb)) command(verb, words);
+                }
+                s.loading = false;
+            }
+        }
+        // The true fisheye, unless the overlay found it cannot draw it here.
+        s.camcorder.settings().fisheye_render =
+            s.warp && !s.warp_failed.load(std::memory_order_relaxed) ? FisheyeRender::warp : FisheyeRender::approximate;
         const auto now = Clock::now();
         const float dt = s.last_tick == Clock::time_point{} ? 0.0f
                          : std::clamp(std::chrono::duration<float>(now - s.last_tick).count(), 0.0f, 0.1f);
@@ -250,7 +329,6 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
                     s.camcorder.aim_handheld({matrix_yaw_pitch(view->world).yaw, 3 * degrees});
             } else {
                 s.operating = false; // a fresh start next time: the pad is the skater's
-                s.aiming = false;
             }
         }
         if (!s.camcorder.powered() || !ready) {
@@ -296,6 +374,9 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
 
 std::string command(std::string_view verb, const std::vector<std::string> &words) {
     auto &s = state();
+    const auto save = [&s] {
+        if (!s.loading) save_preferences(s);
+    };
     if (verb == "subject") {
         if (words.empty() || words[0] == "none") {
             s.subject = 0;
@@ -326,16 +407,67 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
     }
     if (verb == "aim") {
         s.aiming = words.empty() || words[0] == "toggle" ? !s.aiming : words[0] == "on" || words[0] == "1";
-        if (s.aiming && !s.camcorder.powered()) {
-            s.aiming = false;
-            return "Turn the camcorder on first.";
-        }
-        return s.aiming ? "Aiming while you skate: mouse or right stick aims, wheel or triggers zoom."
+        save();
+        return s.aiming ? "Steer while filming: the mouse or right stick aims, the wheel or triggers zoom."
                         : "The mouse and the right stick are the skater's again.";
+    }
+    const auto switched = [&](bool current) {
+        return words.empty() || words[0] == "toggle" ? !current : words[0] == "on" || words[0] == "1";
+    };
+    if (verb == "warp") {
+        s.warp = switched(s.warp);
+        save();
+        if (s.warp && s.warp_failed.load()) return "This display cannot show the true fisheye; it stays flat.";
+        return s.warp ? "True fisheye: straight lines bend as through the Century lens."
+                      : "Flat fisheye: the wide angle and round corners, without the bend.";
+    }
+    if (verb == "look") {
+        const auto word = words.empty() ? std::string("toggle") : words[0];
+        if (word == "dv") s.finish.dv.on = true;
+        else if (word == "clean" || word == "off") s.finish.dv.on = false;
+        else if (word == "toggle") s.finish.dv.on = !s.finish.dv.on;
+        else return "Usage: camcorder look dv|clean";
+        if (s.finish.dv.on && !s.loading && !s.dv) {
+            // The look belongs at the VX1000's own size, and 60 fields a second in HD is a lot of work.
+            s.dv = true;
+            save();
+            return "DV look on clips and stills, recorded at 640 x 480 (camcorder quality hd for HD).";
+        }
+        save();
+        return s.finish.dv.on ? "DV look on clips and stills." : "Clean picture on clips and stills.";
+    }
+    if (verb == "dv") {
+        auto &dv = s.finish.dv;
+        const auto part = words.empty() ? std::string() : words[0];
+        bool *flag = part == "fields" ? &dv.fields : part == "highlights" ? &dv.highlights
+                   : part == "balance" ? &dv.white_balance : part == "sharpen" ? &dv.sharpen
+                   : part == "chroma" ? &dv.chroma : nullptr;
+        if (!flag) return "Usage: camcorder dv fields|highlights|balance|sharpen|chroma [on|off|toggle]";
+        const std::vector<std::string> rest(words.begin() + 1, words.end());
+        *flag = rest.empty() || rest[0] == "toggle" ? !*flag : rest[0] == "on" || rest[0] == "1";
+        save();
+        return "DV " + part + (*flag ? " on." : " off.") + (dv.on ? "" : " (The DV look itself is off: camcorder look dv.)");
+    }
+    if (verb == "date") {
+        if (!words.empty() && words[0] == "year") {
+            if (words.size() < 2 || words[1] == "now") s.finish.stamp_year = 0;
+            else {
+                const int year = std::atoi(words[1].c_str());
+                if (year < 1970 || year > 2099) return "Usage: camcorder date year <1970-2099>|now";
+                s.finish.stamp_year = year;
+            }
+            save();
+            return s.finish.stamp_year ? "The date stamp says " + std::to_string(s.finish.stamp_year) + "."
+                                       : "The date stamp says this year.";
+        }
+        s.finish.date_stamp = switched(s.finish.date_stamp);
+        save();
+        return s.finish.date_stamp ? "Date stamp on clips and stills." : "No date stamp.";
     }
     if (verb == "quality") {
         if (!words.empty() && (words[0] == "dv" || words[0] == "hd")) s.dv = words[0] == "dv";
         else if (!words.empty()) return "Usage: camcorder quality hd|dv";
+        save();
         return s.dv ? "Recording at 640 x 480, the VX1000's own size." : "Recording in HD (1440 x 1080).";
     }
     if (verb == "still" || verb == "photo") {
@@ -354,17 +486,20 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         else if (word == "game" || word == "on") s.sound = Sound::game;
         else if (word == "vx" || word == "mic") s.sound = Sound::vx_mic;
         else if (!word.empty()) return "Usage: camcorder sound off|game|vx";
+        save();
         return s.sound == Sound::off    ? "Clips without sound."
                : s.sound == Sound::game ? "Clips with the game's sound."
                                         : "Clips with the game's sound through the VX mic.";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";
+        save();
         return s.clean_feed ? "Clean feed: the frame and lens only." : "Viewfinder readouts on.";
     }
     CommandContext context;
     context.filmer = filmer_from(s, Clock::now(), 0);
     auto answer = run_command(s.camcorder, verb, words, context);
+    if (verb == "lens" || verb == "grip" || verb == "lockon" || verb == "head") save();
     if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.operating)
         answer += " Operate is on: the pad works the camera.";
     else if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.aiming)

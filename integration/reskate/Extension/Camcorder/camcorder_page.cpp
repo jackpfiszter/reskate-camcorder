@@ -45,6 +45,11 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     int lens = s.adapter == Adapter::century_fisheye ? 0 : 1;
     if (choice(menu, "camcorder-lens", lens, {"FISHEYE", "STOCK LENS"}))
         run(menu, callbacks, lens ? "lens stock" : "lens fisheye");
+    if (s.adapter == Adapter::century_fisheye) {
+        bool bend = published.warp;
+        if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
+            run(menu, callbacks, bend ? "warp on" : "warp off");
+    }
     field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, or at your eye.");
     int grip = static_cast<int>(s.grip);
     if (choice(menu, "camcorder-grip", grip, {"LONG GRIP", "HIP", "EYE LEVEL"}))
@@ -101,6 +106,36 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     }
     end_card();
 
+    begin_card(menu, "camcorder-look", "TAPE LOOK", "What MiniDV did to the picture. On clips and stills, not the screen.");
+    const auto &finish = published.finish;
+    bool dv_look = finish.dv.on;
+    if (toggle_row(menu, "DV look", "Video motion, hard white, drifting colour, sharpened edges, smeared colour. Sets DV quality.", dv_look))
+        run(menu, callbacks, dv_look ? "look dv" : "look clean");
+    if (finish.dv.on) {
+        const auto part = [&](const char *label, const char *detail, bool on, const char *word) {
+            bool value = on;
+            if (toggle_row(menu, label, detail, value)) run(menu, callbacks, std::string("dv ") + word + (value ? " on" : " off"));
+        };
+        part("Fields", "60 a second: smooth video motion, half the lines each.", finish.dv.fields, "fields");
+        part("Highlights", "White clips early and hard; blacks are dense.", finish.dv.highlights, "highlights");
+        part("White balance", "The colour drifts warm and cool.", finish.dv.white_balance, "balance");
+        part("Sharpening", "Bright and dark halos on hard edges.", finish.dv.sharpen, "sharpen");
+        part("Colour smear", "DV's 4:1:1: colour bleeds sideways.", finish.dv.chroma, "chroma");
+    }
+    bool stamp = finish.date_stamp;
+    if (toggle_row(menu, "Date stamp", "The camera's date and time in the corner.", stamp))
+        run(menu, callbacks, stamp ? "date on" : "date off");
+    if (finish.date_stamp) {
+        static constexpr int years[] = {0, 1995, 1996, 1997, 1998, 1999};
+        int year = 0;
+        for (int i = 0; i < 6; ++i)
+            if (years[i] == finish.stamp_year) year = i;
+        field(menu, "Year", "The year the stamp says (any year: camcorder date year 1993).");
+        if (choice(menu, "camcorder-year", year, {"THIS YEAR", "1995", "1996", "1997", "1998", "1999"}))
+            run(menu, callbacks, year ? "date year " + std::to_string(years[year]) : std::string("date year now"));
+    }
+    end_card();
+
     begin_card(menu, "camcorder-tape", "TAPE", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
     field(menu, "Quality", "HD for sharing, or the VX1000's own 640 x 480.");
     int quality = published.dv ? 1 : 0;
@@ -126,6 +161,7 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
          "On a pad: right stick, triggers, left stick, L3.");
     note("Steer while filming: you keep skating on the keyboard or left stick and buttons; the mouse (or right "
          "stick) aims and the wheel (or triggers) zooms. Mouse or right-stick tricks wait until you turn it off.");
+    note("Settings are kept between games.");
     note("Put the camcorder on keys or buttons in SETTINGS > CONTROLS: Camcorder on / off, REC, camera controls, "
          "steer while filming, set up a tripod, next tripod, take a still. Every action is also a console command: camcorder status.");
     end_card();
