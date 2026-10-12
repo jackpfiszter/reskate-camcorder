@@ -128,6 +128,14 @@ How filming feels. Every number is optional; the defaults are the camcorder's ow
 | | `raise_speed` | `0.8` | 0.05 to 5 | Metres a second the camera rises and drops (LB / RB) |
 | | `lowest`, `highest` | `0.12`, `2.3` | 0.02 to 4 | The handheld lens's range above the feet |
 | | `height_step` | `0.15` | 0.01 to 1 | Metres a `camcorder height up` / `down` moves it |
+| `arms` | `sway` | `2.5` | 0.3 to 15 | Hz: how stiffly the arms hold the camera side to side and front to back |
+| | `bob` | `3.5` | 0.3 to 15 | Hz: the same up and down (a landing dips it) |
+| | `damping` | `0.45` | 0.1 to 2 | Under 1 the camera swings past and back after a jolt; 1 settles without |
+| | `tilt` | `0.8` | 0 to 4 | Radians the frame tips a metre of swing (the nod on a landing) |
+| | `reach` | `0.3` | 0 to 1 | Metres the camera can swing at most |
+| `aim` | `swing` | `3` | 0.3 to 15 | Hz the camera's weight follows where the hands aim (lower: heavier) |
+| | `damping` | `0.7` | 0.1 to 2 | Under 1 a quick turn carries on a little past and settles |
+| | `hunting` | `1` | 0 to 5 | A person's small corrections chasing a subject (0: none) |
 | `shake` | `hands`, `wheels`, `footsteps` | `1` each | 0 to 5 | How much of each kind of shake |
 | `tripod` | `height` | `1.1` | 0.15 to 2 | A new tripod's height |
 | | `drag` | `0.35` | 0.02 to 3 | Seconds the fluid head takes to answer |

@@ -133,6 +133,28 @@ private:
 // A critically damped spring: follows its target with no overshoot, settling in about
 // 1 / frequency seconds, the way a person swings a camera after something. Exact for any
 // time step, so frame rate never changes how it feels.
+// A mass on a spring with a damper: `damping` 1 settles without overshoot (as Spring does); under
+// 1 it swings past and back, as a weight held at arm's length does. `push` is an outside
+// acceleration on it (the body it hangs from speeding up, stopping, landing). Sub-stepped, so it
+// stays steady at any frame rate.
+struct Swing {
+    float value{}, velocity{};
+    void reset(float v) { value = v; velocity = 0; }
+    void step(float target, float frequency_hz, float damping, float dt, bool angular = false, float push = 0) {
+        if (!std::isfinite(value) || !std::isfinite(velocity)) reset(target);
+        dt = std::clamp(std::isfinite(dt) ? dt : 0.0f, 0.0f, 0.25f);
+        const float omega = 2 * pi * std::clamp(frequency_hz, 0.01f, 30.0f);
+        const float zeta = std::clamp(damping, 0.05f, 4.0f);
+        const int steps = std::max(1, static_cast<int>(std::ceil(dt * 480)));
+        const float h = dt / static_cast<float>(steps);
+        for (int i = 0; i < steps; ++i) {
+            const float x = angular ? wrap_angle(value - target) : value - target;
+            velocity += (-omega * omega * x - 2 * zeta * omega * velocity + push) * h;
+            value = angular ? wrap_angle(value + velocity * h) : value + velocity * h;
+        }
+    }
+};
+
 struct Spring {
     float value{}, velocity{};
     void reset(float v) { value = v; velocity = 0; }

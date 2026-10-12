@@ -321,3 +321,77 @@ TEST(the_handheld_camera_raises_and_lowers) {
     for (int i = 0; i < 300; ++i) rig.step(f, nullptr, down, 1.0f / 30, 1);
     CHECK_NEAR(rig.lens_height(false), rig.settings().lowest, 1e-4); // a skate's height off the ground
 }
+
+TEST(a_swing_overshoots_and_a_spring_does_not) {
+    Swing swing;
+    Spring spring;
+    float most_swing = 0, most_spring = 0;
+    for (int i = 0; i < 240; ++i) {
+        swing.step(1, 2, 0.4f, 1.0f / 60);
+        spring.step(1, 2, 1.0f / 60);
+        most_swing = std::max(most_swing, swing.value);
+        most_spring = std::max(most_spring, spring.value);
+    }
+    CHECK(most_swing > 1.1f);       // past the target, then back
+    CHECK(most_spring <= 1.0001f);  // never past
+    CHECK_NEAR(swing.value, 1, 0.01);
+}
+
+TEST(the_camera_rides_steady_motion_without_lagging) {
+    // Rolling at a steady 6 m/s: the arms hang straight, the camera where the grip holds it.
+    HandheldRig rig;
+    auto f = standing();
+    f.on_board = true;
+    f.ground = 0.0f;
+    f.velocity = {0, 0, 6};
+    Shot shot;
+    for (int i = 0; i < 120; ++i) {
+        f.position[2] = 6.0f * i / 60;
+        shot = rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    }
+    const auto grip = rig.grip_position(f);
+    CHECK_NEAR(shot.camera[14], grip[2], 0.02);
+}
+
+TEST(a_landing_jolts_the_camera_and_it_settles) {
+    HandheldRig rig;
+    auto f = standing({0, 0, 0});
+    f.on_board = true;
+    f.ground = 0.0f;
+    Shot shot;
+    for (int i = 0; i < 60; ++i) rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    const float rest = rig.step(f, nullptr, {}, 1.0f / 60, 1).camera[13];
+    // Dropping off a ledge at 4 m/s for a third of a second (the arms settle in the fall), then
+    // down on the ground over three frames: the arms carry on a moment and the camera dips.
+    f.velocity = {0, -4, 0};
+    for (int i = 0; i < 20; ++i) rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    float lowest = rig.step(f, nullptr, {}, 1.0f / 60, 1).camera[13];
+    const float falling = lowest;
+    for (const float v : {-2.5f, -1.0f, 0.0f}) {
+        f.velocity = {0, v, 0};
+        lowest = std::min(lowest, rig.step(f, nullptr, {}, 1.0f / 60, 1).camera[13]);
+    }
+    for (int i = 0; i < 20; ++i) lowest = std::min(lowest, rig.step(f, nullptr, {}, 1.0f / 60, 1).camera[13]);
+    CHECK(lowest < falling - 0.03f); // a visible dip below where it rode the fall
+    for (int i = 0; i < 120; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    CHECK_NEAR(shot.camera[13], rest, 0.01); // and back
+}
+
+TEST(a_flick_of_the_aim_carries_on_a_little_and_settles) {
+    HandheldRig rig;
+    auto f = standing();
+    rig.face({0, 0});
+    rig.step(f, nullptr, {}, 1.0f / 60, 1);
+    OperatorInput flick;
+    flick.look_x = 1; // full right for a fifth of a second
+    for (int i = 0; i < 12; ++i) rig.step(f, nullptr, flick, 1.0f / 60, 1);
+    const float let_go = rig.aim().yaw;
+    float furthest = let_go;
+    for (int i = 0; i < 90; ++i) {
+        rig.step(f, nullptr, {}, 1.0f / 60, 1);
+        furthest = std::min(furthest, rig.aim().yaw); // right is negative yaw
+    }
+    const float settled = rig.aim().yaw;
+    CHECK(furthest < settled - 0.01f); // it swung past where the hands stopped
+    CHECK(std::abs(rig.aim().yaw - settled) < 1e-3f);
+}

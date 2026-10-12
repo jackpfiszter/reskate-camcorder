@@ -52,6 +52,15 @@ struct Handling {
     float raise_speed{0.8f}; // metres a second the handheld camera rises and drops
     float lowest{0.12f}, highest{2.3f}; // the handheld lens above the feet
     float height_step{0.15f}; // metres a `camcorder height up|down` moves it
+    // The arms the camera hangs from (the body's pushes, stops, turns and landings swing it).
+    float arm_sway{2.5f}, arm_bob{3.5f}; // Hz: side to side and front to back; up and down
+    float arm_damping{0.45f};            // under 1 it swings past and back
+    float arm_tilt{0.8f};                // radians the frame tips a metre of swing
+    float arm_reach{0.3f};               // metres it can swing at most
+    // The camera's weight in the hands.
+    float aim_swing{3.0f};   // Hz the camera follows where the hands aim
+    float aim_damping{0.7f}; // under 1 a flick carries on a little past
+    float hunting{1};        // a person's small corrections chasing a subject (0: none)
     HandShake::Amounts shake;
     // Tripods.
     float tripod_height{1.1f};    // a new tripod's

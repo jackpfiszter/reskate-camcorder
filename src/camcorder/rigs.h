@@ -107,6 +107,17 @@ public:
         float steadiness = 0.5f;      // HandShake
         float max_nudge = 25 * degrees;
         float raise_speed = 0.8f;     // metres a second the camera rises and drops (LB / RB)
+        // The arms the camera hangs from: the body's pushes, stops, turns and landings swing it
+        // (and tip the frame) before it settles; at a steady speed it rides along.
+        float arm_sway = 2.5f;        // Hz, side to side and front to back
+        float arm_bob = 3.5f;         // Hz, up and down
+        float arm_damping = 0.45f;    // under 1: it swings past and back
+        float arm_tilt = 0.8f;        // radians the frame tips a metre of swing
+        float arm_reach = 0.3f;       // metres it can swing at most
+        // The camera's weight in the hands: a turn builds up and winds down, a flick overshoots.
+        float aim_swing = 3.0f;       // Hz the camera follows where the hands aim
+        float aim_damping = 0.7f;
+        float hunting = 1;            // the small corrections of a person chasing a subject
         float lowest = 0.12f, highest = 2.3f; // the lens above the feet: a skate's height to overhead
         HandShake::Amounts shake;
     };
@@ -132,7 +143,11 @@ public:
 
 private:
     Settings settings_;
-    Spring yaw_, pitch_;
+    Swing yaw_, pitch_;
+    std::array<Swing, 3> arm_{};  // the arms' swing, x y z, metres
+    Vec3 last_velocity_{}, last_eye_{};
+    bool arm_started_{};
+    float hunt_time_{}, last_target_yaw_{}, target_rate_{};
     // Free aim (no subject): yaw relative to the filmer's heading, so the camera turns with them as
     // a held camera does; pitch absolute.
     float offset_yaw_{}, free_pitch_{};

@@ -117,7 +117,31 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
         const float low = std::max(settings_.lowest, 0.0f), high = std::max(settings_.highest, low);
         set_lift(lift_ + std::clamp(now + raise * settings_.raise_speed * dt, low, high) - now);
     }
-    const auto eye = grip_position(filmer);
+    const auto grip = grip_position(filmer);
+    // The arms: the camera hangs from the body, so the body's pushes, stops, turns and landings
+    // swing it before it settles; at a steady speed it rides along (the body's acceleration, not
+    // its speed, moves it). A jump in place (a respawn) starts it again.
+    if (!arm_started_ || length(sub(grip, last_eye_)) > 3) {
+        for (auto &a : arm_) a.reset(0);
+        last_velocity_ = filmer.velocity;
+    }
+    Vec3 push{};
+    if (arm_started_ && dt > 1e-4f && finite(filmer.velocity))
+        for (std::size_t i = 0; i < 3; ++i) push[i] = -(filmer.velocity[i] - last_velocity_[i]) / dt;
+    if (const float g = length(push); g > 40) push = mul(push, 40 / g); // a hard landing, not a teleport
+    for (std::size_t i = 0; i < 3; ++i) {
+        auto &a = arm_[i];
+        a.step(0, i == 1 ? settings_.arm_bob : settings_.arm_sway, settings_.arm_damping, dt, false, push[i]);
+        if (std::abs(a.value) > settings_.arm_reach) {
+            a.value = std::copysign(settings_.arm_reach, a.value);
+            a.velocity = 0;
+        }
+    }
+    if (finite(filmer.velocity)) last_velocity_ = filmer.velocity;
+    last_eye_ = grip;
+    arm_started_ = true;
+    const Vec3 swing{arm_[0].value, arm_[1].value, arm_[2].value};
+    const auto eye = add(grip, swing);
     const auto facing = flat_forward(filmer.forward);
     const float heading = std::atan2(facing[0], facing[2]);
     // Start looking the way the filmer faces, level.
@@ -139,8 +163,14 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
         if (look_y == 0) nudge_pitch_ = damp(nudge_pitch_, 0, 1.5f, dt);
         const auto ahead = add(subject->position, mul(subject->velocity, settings_.lead));
         const auto aim = aim_at(eye, add(ahead, {0, settings_.aim_height, 0}));
-        target_yaw = aim.yaw + nudge_yaw_;
-        target_pitch = aim.pitch + nudge_pitch_;
+        // A person chasing a subject is never exactly on it: small corrections, more of them the
+        // faster the subject crosses the frame.
+        if (dt > 1e-4f) target_rate_ = damp(target_rate_, std::abs(wrap_angle(aim.yaw - last_target_yaw_)) / dt, 0.3f, dt);
+        last_target_yaw_ = aim.yaw;
+        hunt_time_ += dt;
+        const float hunt = std::max(settings_.hunting, 0.0f) * (0.004f + 0.05f * std::min(target_rate_, 2.0f));
+        target_yaw = aim.yaw + nudge_yaw_ + hunt * (std::sin(hunt_time_ * 2 * pi * 0.37f) + 0.6f * std::sin(hunt_time_ * 2 * pi * 0.93f + 1.3f));
+        target_pitch = aim.pitch + nudge_pitch_ + 0.6f * hunt * std::sin(hunt_time_ * 2 * pi * 0.51f + 0.7f);
         // Losing the subject leaves the camera where it points, held at that angle to the body.
         offset_yaw_ = wrap_angle(yaw_.value - heading);
         free_pitch_ = pitch_.value;
@@ -153,9 +183,11 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     }
     // A tracking camera swings after the subject like a person; a free one follows the stick and
     // the filmer's turns, the arm a moment behind the body.
-    const float reaction = tracking ? settings_.operator_reaction : 5.0f;
-    yaw_.step(wrap_angle(target_yaw), reaction, dt, true);
-    pitch_.step(std::clamp(target_pitch, -highest_pitch, highest_pitch), reaction, dt);
+    // With weight: a turn builds up and winds down, and swings a little past before settling.
+    const float reaction = tracking ? settings_.operator_reaction : settings_.aim_swing;
+    const float damping = tracking ? 0.75f : settings_.aim_damping;
+    yaw_.step(wrap_angle(target_yaw), reaction, damping, dt, true);
+    pitch_.step(std::clamp(target_pitch, -highest_pitch, highest_pitch), reaction, damping, dt);
     // Swinging the camera round tips it a little, the way an arm does.
     const float turn = dt > 0 ? wrap_angle(yaw_.value - last_yaw_) / dt : 0;
     last_yaw_ = yaw_.value;
@@ -169,8 +201,11 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
     amounts.footsteps *= hold;
     const auto shake = shake_.step(dt, std::isfinite(speed) ? speed : 0, filmer.on_board, settings_.steadiness, amounts);
     Shot shot;
-    shot.camera = camera_matrix(add(eye, shake.position), yaw_.value + shake.yaw, pitch_.value + shake.pitch,
-                                roll_ + shake.roll);
+    // The arms' swing tips the frame too: a dip on landing nods it down, a swing out leans it.
+    const float sideways = dot(swing, flat_right(facing));
+    shot.camera = camera_matrix(add(eye, shake.position), yaw_.value + shake.yaw,
+                                pitch_.value + shake.pitch + swing[1] * settings_.arm_tilt,
+                                roll_ + shake.roll + sideways * settings_.arm_tilt * 0.5f);
     shot.valid = valid_camera_matrix(shot.camera);
     return shot;
 }

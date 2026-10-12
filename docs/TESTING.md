@@ -94,6 +94,12 @@ Solo:
 - [ ] `camcorder power on`: the view jumps to a low, fisheye-ish handheld shot with black bars
       either side, STBY, `0:00:00` and `60min` in the corners, round black corners at full wide.
 - [ ] Skate around: the camera rides with you, shakes a little, never jumps or spins.
+- [ ] It feels held, not bolted on: a push, a hard stop or a sharp turn swings the camera a little
+      and it settles; dropping off a ledge, the frame dips and nods on the landing and comes back.
+      Rolling steadily it rides smoothly with no lag.
+- [ ] Aim has weight: a quick flick of the mouse carries on a touch past and settles back; a
+      locked-on friend stays framed but not perfectly (small corrections, a little behind when
+      they change direction). Too much or too little: tell me which, or tune `handling.json`.
 - [ ] Camera controls on (menu or `camcorder operate on`): the skater stops; the mouse (or right
       stick) aims, right turns right and up looks up; Q / E (or the triggers) zoom, the W-T bar shows
       while zooming, and the round corners vanish after a little zoom. Off again: you skate.

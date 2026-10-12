@@ -30,6 +30,14 @@ void Camcorder::set_handling(const Handling &h) {
     rig.lowest = h.lowest;
     rig.highest = h.highest;
     rig.shake = h.shake;
+    rig.arm_sway = h.arm_sway;
+    rig.arm_bob = h.arm_bob;
+    rig.arm_damping = h.arm_damping;
+    rig.arm_tilt = h.arm_tilt;
+    rig.arm_reach = h.arm_reach;
+    rig.aim_swing = h.aim_swing;
+    rig.aim_damping = h.aim_damping;
+    rig.hunting = h.hunting;
     const auto tripod = [&](TripodRig::Settings &t) {
         t.drag = h.tripod_drag;
         t.pan_speed = h.tripod_pan_speed;

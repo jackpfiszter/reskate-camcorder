@@ -259,6 +259,22 @@ Reading<Handling> read_handling(std::string_view text, const Handling &base) {
             h.highest = h.lowest;
         }
     }
+    if (const auto *arms = f.get("arms", Kind::object, "an object, { ... }")) {
+        Fields a{*arms, "arms.", reading.notes};
+        a.number("sway", h.arm_sway, 0.3, 15);
+        a.number("bob", h.arm_bob, 0.3, 15);
+        a.number("damping", h.arm_damping, 0.1, 2);
+        a.number("tilt", h.arm_tilt, 0, 4);
+        a.number("reach", h.arm_reach, 0, 1);
+        a.unknown();
+    }
+    if (const auto *aim = f.get("aim", Kind::object, "an object, { ... }")) {
+        Fields a{*aim, "aim.", reading.notes};
+        a.number("swing", h.aim_swing, 0.3, 15);
+        a.number("damping", h.aim_damping, 0.1, 2);
+        a.number("hunting", h.hunting, 0, 5);
+        a.unknown();
+    }
     if (const auto *shake = f.get("shake", Kind::object, "an object, { ... }")) {
         Fields s{*shake, "shake.", reading.notes};
         s.number("hands", h.shake.hands, 0, 5);
@@ -373,6 +389,11 @@ std::string write_handling(const Handling &h) {
            line("lead", h.lead) + line("steadiness", h.steadiness) + line("max_nudge", h.max_nudge) +
            line("raise_speed", h.raise_speed) + line("lowest", h.lowest) + line("highest", h.highest) +
            line("height_step", h.height_step, true);
+    out += "  },\n  \"arms\": {\n";
+    out += line("sway", h.arm_sway) + line("bob", h.arm_bob) + line("damping", h.arm_damping) + line("tilt", h.arm_tilt) +
+           line("reach", h.arm_reach, true);
+    out += "  },\n  \"aim\": {\n";
+    out += line("swing", h.aim_swing) + line("damping", h.aim_damping) + line("hunting", h.hunting, true);
     out += "  },\n  \"shake\": {\n";
     out += line("hands", h.shake.hands) + line("wheels", h.shake.wheels) + line("footsteps", h.shake.footsteps, true);
     out += "  },\n  \"tripod\": {\n";
