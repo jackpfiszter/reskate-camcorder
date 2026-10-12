@@ -5,6 +5,9 @@ and your friends the way 90s skate videos were shot, without the replay editor. 
 VX1000 with a Century fisheye and chase the skater, or set up tripods at the spot, press REC,
 and skate the line.
 
+**▶ [Watch the demo edit](https://vimeo.com/1235181226)**, filmed in game with the camcorder (an
+earlier version: the look and the camera light have come on since).
+
 > **Status: early, in testing.** Filming, recording to MP4 and sound work in game. The
 > camcorder's model (camera, lens, zoom, tape, rigs, viewfinder, commands) is unit-tested, and
 > CI builds ReSkate with the camcorder on Windows (MSVC, warnings as errors); tagged versions
