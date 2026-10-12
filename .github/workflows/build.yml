@@ -14,6 +14,17 @@ jobs:
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
+      # Every source file must be in ReSkate's build too (reskate.patch), or the Windows link fails.
+      - name: Sources listed in reskate.patch
+        run: |
+          missing=0
+          for f in src/camcorder/*.cpp; do
+            grep -q "^+ *Extension/Camcorder/Model/camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+          done
+          for f in integration/reskate/Extension/Camcorder/*.cpp; do
+            grep -q "^+ *Extension/Camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+          done
+          exit $missing
 
   reskate:
     name: ReSkate with the camcorder (Windows)
@@ -49,3 +60,26 @@ jobs:
             ReSkate/build/vs2022-x64/Release/ReSkate.dll
             ReSkate/build/vs2022-x64/Release/ReSkateLauncher.exe
           if-no-files-found: error
+
+  # A tag like v0.3.0 publishes the build on the repository's Releases page.
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [model, reskate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ReSkate-camcorder
+          path: package
+      - name: Zip the build
+        run: |
+          cp LICENSE README.md docs/TESTING.md package/
+          cd package && zip -r "../ReSkate-camcorder-${GITHUB_REF_NAME}.zip" .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ReSkate-camcorder-*.zip
+          generate_release_notes: true
