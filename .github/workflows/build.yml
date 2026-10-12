@@ -14,6 +14,17 @@ jobs:
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
+      # Every source file must be in ReSkate's build too (reskate.patch), or the Windows link fails.
+      - name: Sources listed in reskate.patch
+        run: |
+          missing=0
+          for f in src/camcorder/*.cpp; do
+            grep -q "^+ *Extension/Camcorder/Model/camcorder/$(basename "$f")$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+          done
+          for f in integration/reskate/Extension/Camcorder/*.cpp; do
+            grep -q "^+ *Extension/Camcorder/$(basename "$f")$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+          done
+          exit $missing
 
   reskate:
     name: ReSkate with the camcorder (Windows)
