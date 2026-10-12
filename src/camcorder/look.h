@@ -115,6 +115,35 @@ void apply_dv(Image &image, const DvLook &look, const LookProfile &profile, cons
 std::vector<std::string> date_stamp_lines(const std::tm &local_time, int year, const StampProfile & = {});
 // Draws them into a bottom corner of the picture: blocky, with a dark edge.
 void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile & = {});
+// The date stamp as rectangles in a `width` x `height` picture: the dark edges, then the dots over
+// them. burn_date draws these; the overlay draws the same on screen.
+struct StampMarks {
+    std::vector<PixelBox> edges, dots;
+    std::array<std::uint8_t, 3> colour{};
+};
+StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile & = {});
+
+// The auto white balance's red and blue gains at `seconds` into a clip.
+std::array<float, 2> white_balance(const LookProfile &, const DvClip &, double seconds);
+
+// The look as the overlay's shader does it on screen (and so in clips and stills): the numbers
+// for one frame, with the player's switched-off parts at their neutral values. Fields are left to
+// the recording (recorded_finish).
+struct ScreenLook {
+    bool on{};
+    float black_crush{}, highlight_gain{1}, saturation{1};
+    bool highlight_bleed{};
+    float red_gain{1}, blue_gain{1};
+    float sharpen{}, grain{};
+    float chroma_width{}, softness{}; // in pixels of a 720-wide picture
+};
+ScreenLook screen_look(const Finish &, const DvClip &, double seconds);
+// How often the screen shows a new picture for a film-like camera (24p, Super 8's 18), so it moves
+// as it records; 0 for video, which shows every frame the game draws.
+double screen_frame_rate(const Finish &) noexcept;
+// What is left to do to a recorded frame when the screen already had the look and the stamp.
+Finish recorded_finish(Finish finish, bool look_on_screen, bool stamp_on_screen);
+
 // The look's camera parts, the stamp, then the tape: one finished frame.
 void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::int64_t index, double frame_rate,
                   const std::tm &local_time);

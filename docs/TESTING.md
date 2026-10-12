@@ -165,8 +165,10 @@ through the VX mic: thin low end, rolled-off top, the level control pumping, sla
 
 ### Tape look
 
-The DV look and the date stamp go on clips and stills, not on the screen (the TAPE LOOK card, or
-the console). Turning the DV look on also switches to DV quality (640 x 480).
+The camera's look and the date stamp show on screen, and clips and stills record what the screen
+shows (the TAPE LOOK card, or the console). The look is on unless you turn it off; each camera has
+its own (switching cameras changes it straight away). Turning it on from the console also switches
+to the camera's own size (640 x 480 for the VX1000).
 
 - [ ] `camcorder look dv`, then a clip with fast skating: the motion is smoother (59.94 frames a
       second), the picture softer top to bottom, white areas clip hard, colours smear sideways off
@@ -205,7 +207,7 @@ folder, and make sure it is enabled in the mod list.
 - A tripod is invisible to the other players and in your own shots of it: there is no tripod
   model in the game to stand there yet.
 - No second picture: the camcorder's view replaces the game's while it is on.
-- The tape look is on recordings only; the screen shows the clean picture.
+- The fields (60 a second) are in clips only; the screen moves at the game's frame rate.
 - The recording is of what is on screen: it records the camcorder's picture only while you look
   through it.
 

@@ -46,7 +46,7 @@ struct State {
     bool dv{};
     Sound sound{Sound::game};
     std::uint32_t still{}, tape{1}, capture_tape{};
-    Finish finish;             // the DV look and the date stamp on clips and stills
+    Finish finish{.dv = {.on = true}}; // the look (on unless turned off: it is the camera's character) and the stamp
     bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
     std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
     bool preferences_loaded{}, loading{};

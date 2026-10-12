@@ -23,6 +23,7 @@ struct RawFrame {
     float vignette{};  // the fisheye housing's shadow, camcorder::Optics::vignette_radius
     int repeats{1};    // how many video frames it becomes (camcorder::FramePacer)
     std::int64_t index{}; // the first of them, from 0 at the clip's start (FramePacer::first)
+    bool look_on_screen{}, stamp_on_screen{}; // the picture already has the look and the stamp (camcorder_warp.h)
 };
 
 struct Result {

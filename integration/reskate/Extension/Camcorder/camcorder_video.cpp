@@ -95,7 +95,11 @@ struct Writer::Impl {
             scale_bgra(picture, scaled);
             apply_vignette(scaled, frame->vignette);
             const auto rate = clip_rate(finish);
-            const bool styled = finish.dv.on || finish.date_stamp;
+            // Only what the screen did not already do (recorded_finish): the fields, at least.
+            const auto left = recorded_finish(finish, frame->look_on_screen, frame->stamp_on_screen);
+            const bool styled = left.fields() || (left.dv.on && (left.dv.highlights || left.dv.white_balance || left.dv.sharpen ||
+                                                                left.dv.chroma || left.dv.grain)) ||
+                                left.date_stamp;
             if (!styled) bgra_to_nv12(scaled, nv12);
             Image finished;
             for (int i = 0; i < frame->repeats && !failed; ++i) {
@@ -104,7 +108,7 @@ struct Writer::Impl {
                 if (styled) {
                     // Each repeat is its own frame of tape: the other field, the next second of the stamp.
                     finished = scaled;
-                    finish_frame(finished, finish, dv_clip, index, rate.fps(), when(index));
+                    finish_frame(finished, left, dv_clip, index, rate.fps(), when(index));
                     bgra_to_nv12(finished, nv12);
                 }
                 const auto at = frame_time(index, rate);

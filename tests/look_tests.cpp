@@ -185,3 +185,57 @@ TEST(a_finished_frame_has_the_stamp_and_the_look) {
     finish_frame(both, finish, {}, 0, 59.94, moment(1996, 7, 4, 15, 30, 0));
     CHECK(both.pixels != stamped.pixels);
 }
+
+TEST(the_screen_look_follows_the_camera_and_the_switches) {
+    Finish finish;
+    CHECK(!screen_look(finish, {}, 0).on); // off: nothing
+    finish.dv.on = true;
+    finish.look.grain = 0.3f;
+    finish.look.softness = 1.5f;
+    auto s = screen_look(finish, {0.2f}, 5);
+    CHECK(s.on);
+    CHECK_NEAR(s.black_crush, finish.look.black_crush, 1e-6);
+    CHECK_NEAR(s.highlight_gain, 1.1, 1e-6);
+    CHECK(s.highlight_bleed);
+    CHECK_NEAR(s.sharpen, 0.44, 1e-6);
+    CHECK_NEAR(s.grain, 0.3, 1e-6);
+    CHECK_NEAR(s.chroma_width, 4, 1e-6);
+    CHECK_NEAR(s.softness, 1.5, 1e-6);
+    CHECK(s.red_gain != 1 && std::abs((s.red_gain - 1) + (s.blue_gain - 1)) < 1e-5); // a cast, red against blue
+    // Each switch puts its part back to neutral.
+    finish.dv.highlights = finish.dv.white_balance = finish.dv.sharpen = finish.dv.grain = finish.dv.chroma = false;
+    s = screen_look(finish, {0.2f}, 5);
+    CHECK(s.on && s.black_crush == 0 && s.highlight_gain == 1 && !s.highlight_bleed && s.saturation == 1);
+    CHECK(s.red_gain == 1 && s.blue_gain == 1 && s.sharpen == 0 && s.grain == 0 && s.chroma_width == 0 && s.softness == 0);
+}
+
+TEST(film_cameras_move_at_their_own_rate_on_screen) {
+    Finish finish;
+    CHECK(screen_frame_rate(finish) == 0); // video: every game frame
+    finish.motion = Motion::p18;
+    CHECK_NEAR(screen_frame_rate(finish), 18, 1e-9);
+    finish.motion = Motion::p24;
+    CHECK_NEAR(screen_frame_rate(finish), 24000.0 / 1001, 1e-9);
+}
+
+TEST(a_recording_skips_what_the_screen_already_did) {
+    Finish finish;
+    finish.dv.on = true;
+    finish.date_stamp = true;
+    const auto rest = recorded_finish(finish, true, true);
+    CHECK(rest.dv.on && rest.dv.fields); // the fields are the clip's own
+    CHECK(!rest.dv.highlights && !rest.dv.white_balance && !rest.dv.sharpen && !rest.dv.chroma && !rest.dv.grain);
+    CHECK(!rest.date_stamp);
+    CHECK(recorded_finish(finish, false, false) == finish);
+}
+
+TEST(stamp_marks_are_what_burn_date_draws) {
+    const auto when = moment(1996, 7, 4, 15, 30, 0);
+    const auto marks = stamp_marks(640, 480, when, 0);
+    CHECK(!marks.dots.empty() && marks.edges.size() == marks.dots.size());
+    for (const auto &d : marks.dots) CHECK(d.x >= 320 && d.y >= 320 && d.x + d.width <= 640 && d.y + d.height <= 480);
+    StampProfile left;
+    left.corner = StampProfile::Corner::bottom_left;
+    for (const auto &d : stamp_marks(640, 480, when, 0, left).dots) CHECK(d.x < 320);
+    CHECK(stamp_marks(32, 24, when, 0).dots.empty());
+}

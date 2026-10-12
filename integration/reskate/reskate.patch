@@ -465,7 +465,7 @@ index c0ce6f9..ba9a578 100644
      bool show_on_ready = false;
      bool force_windowed = false;
 diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
-index 7169615..7e6f532 100644
+index 7169615..af8a6e3 100644
 --- a/Extension/UI/Overlay/overlay_render.cpp
 +++ b/Extension/UI/Overlay/overlay_render.cpp
 @@ -4,6 +4,9 @@
@@ -507,7 +507,7 @@ index 7169615..7e6f532 100644
 +        auto warp_gpu = s.srvs->GetGPUDescriptorHandleForHeapStart();
 +        warp_cpu.ptr += 2 * step;
 +        warp_gpu.ptr += 2 * step;
-+        camcorder_warp_heap(s.device.Get(), warp_cpu, warp_gpu);
++        camcorder_warp_heap(s.device.Get(), warp_cpu, warp_gpu, format, transfer);
          dingosdk::logging::printf(dingosdk::logging::Level::info, dingosdk::logging::Channel::graphics,
              "Overlay output: %s (buffer format %d, display %s).",
              transfer == 1 ? "scRGB" : transfer == 2 ? "HDR10" : "SDR", static_cast<int>(format), hdr_display ? "in HDR" : "in SDR");

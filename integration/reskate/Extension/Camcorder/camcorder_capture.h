@@ -21,6 +21,9 @@ bool camcorder_capture_poll();
 // A drawn frame, with the command list open and before the overlay draws: works out whether a video
 // frame or a still is due, for the copy camcorder_capture_draw makes.
 void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer);
+// Frame building (draw_camcorder): whether this frame's picture already has the camera's look and
+// the date stamp on screen (the recording then leaves them out).
+void camcorder_capture_screen(bool look, bool stamp);
 // An ImGui draw callback, added by draw_camcorder where the picture is finished: makes the copy
 // (the back buffer is a render target then).
 void camcorder_capture_draw(const ImDrawList *, const ImDrawCmd *);

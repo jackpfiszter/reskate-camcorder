@@ -163,11 +163,15 @@ through the camcorder and steer by it, as real filmers do.
    draw callback after the mesh, so they bend exactly as the screen does. The cost is softness in
    the middle: the flat render spreads its pixels over about 118 degrees, so the centre of the
    fisheye is about half the resolution of the screen.
-3. **DV (built, on recordings).** `look.h`: 60 fields (clips at 59.94, each frame one field),
-   a 1/3" CCD's hard white and dense blacks, a wandering auto white balance, edge enhancement,
-   and 4:1:1 colour smear, each switchable; and the date stamp from the camera's character
-   generator, with any year. Done on the CPU in the encoder thread (about 3.5 ms a frame at
-   640 x 480), so the screen keeps the clean picture.
+3. **The look (built, on screen).** `look.h`: a small CCD's hard white and dense blacks, a
+   wandering auto white balance, edge enhancement, grain, tape softness and colour smear, each
+   switchable, in the amounts the camera's profile gives. The overlay draws it with the fisheye
+   in one pixel shader pass (`camcorder_warp.cpp`), so the viewfinder shows what the tape gets;
+   clips and stills copy the result. The date stamp is drawn over it, the same marks the CPU
+   would burn (`stamp_marks`). Film cameras (24p, 18p) hold each picture on screen for their
+   frame time. The 60 fields stay with the recording (clips at 59.94, each frame one field),
+   because they follow the clip's frames, not the screen's. Where the shader cannot be built, the
+   fisheye falls back to an ImGui mesh and the look to the CPU in the encoder (`recorded_finish`).
 
 ## Controls (proposed)
 

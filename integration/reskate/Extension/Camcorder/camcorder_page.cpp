@@ -127,10 +127,10 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
 
     const auto &finish = published.finish;
     const std::string format = finish.look.format;
-    begin_card(menu, "camcorder-look", "TAPE LOOK", ("What " + format + " did to the picture. On clips and stills, not the screen.").c_str());
+    begin_card(menu, "camcorder-look", "TAPE LOOK", ("What " + format + " did to the picture: on screen, in clips and in stills.").c_str());
     bool dv_look = finish.dv.on;
     const std::string look_label = format + " look";
-    if (toggle_row(menu, look_label.c_str(), "The camera's motion, highlights, colour drift, sharpening, grain and tape smear. Sets its own size.", dv_look))
+    if (toggle_row(menu, look_label.c_str(), "The camera's highlights, colour drift, sharpening, grain, tape smear and motion. Each camera has its own.", dv_look))
         run(menu, callbacks, dv_look ? "look dv" : "look clean");
     if (finish.dv.on) {
         const auto part = [&](const char *label, const char *detail, bool on, const char *word) {

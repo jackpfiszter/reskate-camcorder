@@ -32,13 +32,10 @@ void keep_field(Image &image, int parity) {
 // the white balance's cast (red and blue gains) for this frame; then its saturation.
 void tone_and_balance(Image &image, const DvLook &look, const LookProfile &profile, const DvClip &clip, double seconds) {
     float red = 1, blue = 1;
-    if (look.white_balance && profile.white_balance_drift > 0) {
-        // Two slow wanders, never in step: a cast that drifts over tens of seconds, never still.
-        const double phase = clip.seed * two_pi, amount = profile.white_balance_drift;
-        const double cast = amount * std::sin(seconds * two_pi / 37.0 + phase) +
-                            0.57 * amount * std::sin(seconds * two_pi / 11.0 + 2.1 * phase);
-        red = static_cast<float>(1 + cast);
-        blue = static_cast<float>(1 - cast);
+    if (look.white_balance) {
+        const auto gains = white_balance(profile, clip, seconds);
+        red = gains[0];
+        blue = gains[1];
     }
     const float crush = std::clamp(profile.black_crush, 0.0f, 0.5f);
     const float gain = std::clamp(profile.highlight_gain, 0.5f, 2.0f);
@@ -320,29 +317,86 @@ std::vector<std::string> date_stamp_lines(const std::tm &t, int year, const Stam
     return {time, date};
 }
 
-void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile &stamp) {
-    if (image.width < 64 || image.height < 48) return;
+StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile &stamp) {
+    StampMarks marks;
+    marks.colour = stamp.colour;
+    if (width < 64 || height < 48) return marks;
     const auto lines = date_stamp_lines(local_time, year, stamp);
-    const int dot = std::max(1, static_cast<int>(std::lround(image.height / 130.0)));
+    const int dot = std::max(1, static_cast<int>(std::lround(height / 130.0)));
     const int edge = std::max(1, dot / 3);
     // Inside the picture's safe area, as the camera kept it.
-    const int margin = static_cast<int>(image.width * 0.07f);
+    const int margin = static_cast<int>(width * 0.07f);
     const bool left = stamp.corner == StampProfile::Corner::bottom_left;
-    const int bottom = image.height - static_cast<int>(image.height * 0.08f);
+    const int bottom = height - static_cast<int>(height * 0.08f);
     const int line_height = 9 * dot;
     const int count = static_cast<int>(lines.size());
     const int top = bottom - count * line_height + 2 * dot;
+    for (int i = 0; i < count; ++i) {
+        const auto &text = lines[static_cast<std::size_t>(i)];
+        const int text_width = static_cast<int>(text.size()) * 6 * dot - dot;
+        const int right = left ? margin + text_width : width - margin;
+        each_dot(text, right, top + i * line_height, dot, [&](int x, int y) {
+            marks.edges.push_back({x - edge, y - edge, dot + 2 * edge, dot + 2 * edge});
+            marks.dots.push_back({x, y, dot, dot});
+        });
+    }
+    return marks;
+}
+
+void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile &stamp) {
+    const auto marks = stamp_marks(image.width, image.height, local_time, year, stamp);
     // The dark edge first, then the dots over it.
-    for (int pass = 0; pass < 2; ++pass)
-        for (int i = 0; i < count; ++i) {
-            const auto &text = lines[static_cast<std::size_t>(i)];
-            const int width = static_cast<int>(text.size()) * 6 * dot - dot;
-            const int right = left ? margin + width : image.width - margin;
-            each_dot(text, right, top + i * line_height, dot, [&](int x, int y) {
-                if (pass == 0) fill(image, x - edge, y - edge, x + dot + edge, y + dot + edge, {16, 16, 16});
-                else fill(image, x, y, x + dot, y + dot, stamp.colour);
-            });
-        }
+    for (const auto &b : marks.edges) fill(image, b.x, b.y, b.x + b.width, b.y + b.height, {16, 16, 16});
+    for (const auto &b : marks.dots) fill(image, b.x, b.y, b.x + b.width, b.y + b.height, marks.colour);
+}
+
+std::array<float, 2> white_balance(const LookProfile &profile, const DvClip &clip, double seconds) {
+    if (!(profile.white_balance_drift > 0)) return {1, 1};
+    // Two slow wanders, never in step: a cast that drifts over tens of seconds, never still.
+    const double phase = clip.seed * two_pi, amount = profile.white_balance_drift;
+    const double cast = amount * std::sin(seconds * two_pi / 37.0 + phase) +
+                        0.57 * amount * std::sin(seconds * two_pi / 11.0 + 2.1 * phase);
+    return {static_cast<float>(1 + cast), static_cast<float>(1 - cast)};
+}
+
+ScreenLook screen_look(const Finish &finish, const DvClip &clip, double seconds) {
+    ScreenLook s;
+    const auto &look = finish.dv;
+    const auto &p = finish.look;
+    if (!look.on) return s;
+    s.on = true;
+    if (look.highlights) {
+        s.black_crush = std::clamp(p.black_crush, 0.0f, 0.5f);
+        s.highlight_gain = std::clamp(p.highlight_gain, 0.5f, 2.0f);
+        s.saturation = std::clamp(p.saturation, 0.0f, 2.0f);
+        s.highlight_bleed = s.highlight_gain > 1;
+    }
+    if (look.white_balance) {
+        const auto gains = white_balance(p, clip, seconds);
+        s.red_gain = gains[0];
+        s.blue_gain = gains[1];
+    }
+    if (look.sharpen) s.sharpen = std::clamp(p.sharpen, 0.0f, 2.0f);
+    if (look.grain) s.grain = std::clamp(p.grain, 0.0f, 1.0f);
+    if (look.chroma) {
+        s.chroma_width = p.chroma_width > 1 ? std::clamp(p.chroma_width, 0.0f, 16.0f) : 0.0f;
+        s.softness = std::clamp(p.softness, 0.0f, 8.0f);
+    }
+    return s;
+}
+
+double screen_frame_rate(const Finish &finish) noexcept {
+    // Film-like cameras (24p, Super 8's 18) show their own cadence; video's 25 to 60 is left to the game.
+    return finish.motion == Motion::p24 || finish.motion == Motion::p18 ? clip_rate(finish).fps() : 0;
+}
+
+Finish recorded_finish(Finish finish, bool look_on_screen, bool stamp_on_screen) {
+    if (look_on_screen) {
+        // The fields stay: they are about which moments a frame shows, so they follow the clip's own frames.
+        finish.dv.highlights = finish.dv.white_balance = finish.dv.sharpen = finish.dv.chroma = finish.dv.grain = false;
+    }
+    if (stamp_on_screen) finish.date_stamp = false;
+    return finish;
 }
 
 void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::int64_t index, double frame_rate,

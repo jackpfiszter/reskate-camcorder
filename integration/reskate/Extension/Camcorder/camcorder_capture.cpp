@@ -41,6 +41,7 @@ struct Slot {
     float vignette{};
     SourceFormat source{};
     Finish finish;        // a still's DV look and date stamp
+    bool look_on_screen{}, stamp_on_screen{}; // what the picture pass already did to it
 };
 // A frame worked out by camcorder_capture_record, copied by camcorder_capture_draw.
 struct Armed {
@@ -54,6 +55,7 @@ struct Armed {
     std::int64_t index{};
     bool still{};
     Finish finish;
+    bool look_on_screen{}, stamp_on_screen{};
 };
 // A still being saved on a thread of its own.
 struct StillJob {
@@ -66,6 +68,7 @@ struct Capture {
     std::array<Slot, 4> slots;
     Slot *recorded{}; // copied this frame, not yet submitted
     std::optional<Armed> armed; // due this frame, not yet copied
+    bool look_on_screen{}, stamp_on_screen{}; // this frame's, from draw_camcorder
     ComPtr<ID3D12Fence> fence;
     DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
     int transfer{};
@@ -136,7 +139,7 @@ void save_still(StillJob &job, camcorder_video::RawFrame frame, Finish finish) {
             convert_to_bgra(frame.bytes.data(), frame.pitch, frame.width, frame.height, frame.format, image, frame.white_nits);
             apply_vignette(image, frame.vignette);
             const auto when = local_now();
-            finish_frame(image, finish, DvClip{0.5f}, 0, clip_rate(finish).fps(), when);
+            finish_frame(image, finish, DvClip{0.5f}, 0, clip_rate(finish).fps(), when); // what the screen left
             const auto path = folder + L"\\" + camcorder_media::widen(photo_file_name(local_now()));
             std::string error;
             result = camcorder_media::save_jpeg(image, path, error) ? std::pair{true, narrow(path)} : std::pair{false, error};
@@ -169,7 +172,11 @@ void collect(Capture &c) {
             frame.bytes.assign(bytes, bytes + frame.pitch * static_cast<std::size_t>(slot.height));
             const D3D12_RANGE written{0, 0};
             slot.buffer->Unmap(0, &written);
-            if (slot.still) save_still(c.still, slot.repeats > 0 ? frame : std::move(frame), slot.finish);
+            frame.look_on_screen = slot.look_on_screen;
+            frame.stamp_on_screen = slot.stamp_on_screen;
+            if (slot.still)
+                save_still(c.still, slot.repeats > 0 ? frame : std::move(frame),
+                           recorded_finish(slot.finish, slot.look_on_screen, slot.stamp_on_screen));
             if (slot.repeats > 0) c.writer.push(std::move(frame));
         }
         slot.stage = Slot::Stage::free;
@@ -387,6 +394,8 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
     armed.index = c.pacer.first();
     armed.still = still;
     armed.finish = published.finish;
+    armed.look_on_screen = c.look_on_screen;
+    armed.stamp_on_screen = c.stamp_on_screen;
     c.armed = armed;
     if (still) c.still_served = published.still;
 }
@@ -404,6 +413,14 @@ void camcorder_capture_draw(const ImDrawList *, const ImDrawCmd *) {
     slot->index = armed->index;
     slot->still = armed->still;
     slot->finish = armed->finish;
+    slot->look_on_screen = armed->look_on_screen;
+    slot->stamp_on_screen = armed->stamp_on_screen;
+}
+
+void camcorder_capture_screen(bool look, bool stamp) {
+    auto &c = capture();
+    c.look_on_screen = look;
+    c.stamp_on_screen = stamp;
 }
 
 void camcorder_capture_submitted(ID3D12Fence *fence, UINT64 signal) {

@@ -7,12 +7,16 @@
 #include "camcorder_capture.h"
 #include "camcorder_runtime.h"
 #include "camcorder_warp.h"
+#include "camcorder/look.h"
 #include "camcorder/viewfinder.h"
 #include <imgui.h>
 #include <backends/imgui_impl_dx12.h>
 #include <algorithm>
+#include <iterator>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 
 namespace dingosdk::overlay {
 namespace {
@@ -82,6 +86,60 @@ void warp(ImDrawList *list, ImTextureID texture, const Optics &optics, const Rec
     list->PopTextureID();
     list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 }
+double seconds_now() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// The picture pass's numbers for this frame (camcorder_warp.h): the lens, and the camera's look.
+PicturePass pass_numbers(const camcorder_runtime::Published &p, const Rect &picture, float width, float height,
+                         std::uint32_t frame) {
+    static const double start = seconds_now();
+    const auto &o = p.frame.optics;
+    const auto look = screen_look(p.finish, DvClip{0.37f}, seconds_now() - start);
+    constexpr float radians = 3.14159265f / 180;
+    PicturePass pass;
+    const float rect[4]{picture.x, picture.y, picture.width, picture.height};
+    std::copy(std::begin(rect), std::end(rect), pass.rect);
+    pass.screen[0] = width;
+    pass.screen[1] = height;
+    pass.screen[2] = 1 / width;
+    pass.screen[3] = 1 / height;
+    pass.lens[0] = o.warped ? 1.0f : 0.0f;
+    pass.lens[1] = o.horizontal_fov * 0.5f * radians;
+    pass.lens[2] = std::tan(std::clamp(o.render_vertical_fov, 1.0f, 179.0f) * 0.5f * radians);
+    pass.lens[3] = width / height;
+    pass.tone[0] = look.on ? 1.0f : 0.0f;
+    pass.tone[1] = look.black_crush;
+    pass.tone[2] = look.highlight_gain;
+    pass.tone[3] = look.saturation;
+    pass.colour[0] = look.red_gain;
+    pass.colour[1] = look.blue_gain;
+    pass.colour[2] = look.sharpen;
+    pass.colour[3] = look.grain;
+    pass.tape[0] = look.chroma_width;
+    pass.tape[1] = look.softness;
+    pass.tape[2] = picture.width / 720;
+    pass.tape[3] = static_cast<float>(frame % 65536u);
+    pass.output[0] = static_cast<float>(camcorder_warp_transfer());
+    pass.output[1] = 200; // the white an HDR game's picture is taken to have, as the recording takes it
+    pass.output[2] = look.highlight_bleed ? 1.0f : 0.0f;
+    return pass;
+}
+
+// The camera's date stamp, over the picture: what it records is what it shows.
+void draw_stamp(ImDrawList *list, const camcorder_runtime::Published &p, const Rect &picture) {
+    const auto time = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &time);
+    const auto marks = stamp_marks(static_cast<int>(picture.width), static_cast<int>(picture.height), local,
+                                   p.finish.stamp_year, p.finish.stamp);
+    const auto box = [&](const PixelBox &b, ImU32 colour) {
+        list->AddRectFilled({picture.x + static_cast<float>(b.x), picture.y + static_cast<float>(b.y)},
+                            {picture.x + static_cast<float>(b.x + b.width), picture.y + static_cast<float>(b.y + b.height)}, colour);
+    };
+    for (const auto &b : marks.edges) box(b, IM_COL32(16, 16, 16, 255));
+    for (const auto &b : marks.dots) box(b, IM_COL32(marks.colour[0], marks.colour[1], marks.colour[2], 255));
+}
 } // namespace
 
 bool camcorder_pending() {
@@ -105,10 +163,33 @@ void draw_camcorder() {
     const auto v = layout_viewfinder(p.frame, io.DisplaySize.x, io.DisplaySize.y, options);
     if (!v.visible) return;
     auto *list = ImGui::GetBackgroundDrawList();
-    if (p.frame.optics.warped && io.DisplaySize.y > 0)
-        if (const auto texture = camcorder_warp_request(static_cast<int>(io.DisplaySize.x + 0.5f), static_cast<int>(io.DisplaySize.y + 0.5f)))
+    const int width = static_cast<int>(io.DisplaySize.x + 0.5f), height = static_cast<int>(io.DisplaySize.y + 0.5f);
+    const bool warped = p.frame.optics.warped;
+    // A film camera's picture moves at its own rate (Super 8's 18): the copy is held in between.
+    static double next_picture = 0;
+    static std::uint32_t pictures = 0;
+    const double film_rate = screen_frame_rate(p.finish), now = seconds_now();
+    bool copy = true;
+    if (film_rate > 0) {
+        copy = now >= next_picture;
+        if (copy) next_picture = (now - next_picture > 0.25 ? now : next_picture) + 1 / film_rate;
+    }
+    bool look_on_screen = false;
+    if ((warped || p.finish.dv.on || film_rate > 0) && height > 0 && camcorder_picture_pass_ready()) {
+        if (camcorder_warp_request(width, height, copy)) {
+            if (copy) ++pictures; // the grain changes with the picture
+            camcorder_picture_pass(list, pass_numbers(p, v.picture, io.DisplaySize.x, io.DisplaySize.y, pictures));
+            look_on_screen = p.finish.dv.on;
+        }
+    } else if (warped && height > 0) {
+        // No picture pass on this system: the bend alone, as a mesh; the look is left to the recording.
+        if (const auto texture = camcorder_warp_request(width, height))
             warp(list, *texture, p.frame.optics, v.picture, io.DisplaySize.x / io.DisplaySize.y);
-    // A clip's or a still's copy of the picture is made here: after the warp, before the readouts.
+    }
+    if (p.finish.date_stamp) draw_stamp(list, p, v.picture);
+    // A clip's or a still's copy of the picture is made here: after the picture pass and the stamp,
+    // before the readouts. It is told what the screen already did, so it is not done twice.
+    camcorder_capture_screen(look_on_screen, p.finish.date_stamp);
     list->AddCallback(camcorder_capture_draw, nullptr);
     if (v.vignette) shadow(list, *v.vignette, v.picture);
     for (const auto &bar : v.bars)
