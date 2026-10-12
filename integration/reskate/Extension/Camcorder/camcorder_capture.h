@@ -33,4 +33,6 @@ void camcorder_capture_submitted(ID3D12Fence *fence, UINT64 signal);
 void camcorder_capture_release();
 // The last clip written ("Saved ..." or why it failed), for the menu.
 std::string camcorder_capture_last();
+// The newest clip written this game, for review; empty before the first.
+std::wstring camcorder_capture_last_clip();
 } // namespace dingosdk::overlay

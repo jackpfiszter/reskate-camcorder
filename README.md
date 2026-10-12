@@ -43,6 +43,10 @@ and skate the line.
   the workings, so the camcorder can change through the mod browser with no ReSkate update.
   `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8 film, a wide converter,
   a pole cam and a board cam; [docs/MODDING.md](docs/MODDING.md) has every field.
+- **Easy to use.** One click binds the keys (F5 to F10); a quick menu over the viewfinder changes
+  the camera, lens and grip or records without opening the ReSkate menu; a short guide the first
+  time; aim speed and invert; and review: the last clip plays back in the viewfinder, so you know
+  you got the trick.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
   numbered clip list per tape (`camcorder tape clips`). Capture the tape to get all its clips
   back to back in one MP4, ready to edit.
@@ -81,7 +85,7 @@ is set for MSVC, as ReSkate uses.
 ## Console commands
 
 Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|still|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|mods|export|status`.
+`camcorder power|rec|stop|still|review|quick|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|sensitivity|invert|guide|open|mods|export|status`.
 Settings are kept between games in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
 

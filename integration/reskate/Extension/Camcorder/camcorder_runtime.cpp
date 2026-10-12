@@ -15,12 +15,16 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <thread>
+#include <ShlObj.h>
+#include <shellapi.h>
 
 namespace dingosdk::camcorder_runtime {
 namespace {
@@ -51,6 +55,20 @@ struct State {
     bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
     std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
     bool preferences_loaded{}, loading{};
+    // The player's own feel (not a mod's): the mouse's speed and which way is up.
+    float sensitivity{1};
+    bool invert{};
+    // The first-use guide: shown once, the first time the camera comes on (`camcorder guide` again).
+    bool guide_seen{};
+    double guide_until{};
+    // The quick menu (`camcorder quick`): a short list over the viewfinder, worked with the keys,
+    // the stick or the wheel while it is open (the skater waits).
+    bool quick{};
+    int quick_index{};
+    double quick_used{};       // when it was last touched; it closes itself after a while
+    float quick_held{};        // seconds a direction has been held (it repeats)
+    int quick_last{};          // that direction: -1 up, 1 down, 2 do, -2 close, 0 none
+    std::uint32_t review{}, review_stop{}; // requests for the overlay's clip review
     PresenceBeacon beacon;               // telling the others we film (the REC light by our name)
     std::mutex presence_mutex;
     PresenceBook presence;               // what the others said
@@ -153,6 +171,9 @@ Preferences current_preferences(const State &s) {
         {"dv-grain", on_off(dv.grain)},
         {"date", on_off(s.finish.date_stamp)},
         {"date-year", s.finish.stamp_year > 0 ? std::to_string(s.finish.stamp_year) : "now"},
+        {"sensitivity", [&] { char t[16]; std::snprintf(t, sizeof(t), "%g", static_cast<double>(s.sensitivity)); return std::string(t); }()},
+        {"invert", on_off(s.invert)},
+        {"guide", s.guide_seen ? "seen" : "off"},
     };
 }
 void save_preferences(const State &s) {
@@ -165,7 +186,7 @@ void save_preferences(const State &s) {
     if (!file) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder: could not save its settings.");
 }
 bool is_setting(std::string_view verb) {
-    for (const auto *name : {"camera", "lens", "warp", "grip", "lockon", "head", "aim", "clean", "quality", "sound", "look", "dv", "date"})
+    for (const auto *name : {"sensitivity", "invert", "guide", "camera", "lens", "warp", "grip", "lockon", "head", "aim", "clean", "quality", "sound", "look", "dv", "date"})
         if (verb == name) return true;
     return false;
 }
@@ -279,7 +300,68 @@ std::string export_profiles(const State &s) {
 }
 
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
-bool wants_pad(State &s) { return s.camcorder.powered() && s.owned && (s.operating || s.camcorder.tripod_setup()); }
+bool wants_pad(State &s) {
+    return s.camcorder.powered() && s.owned && (s.operating || s.camcorder.tripod_setup() || s.quick);
+}
+double wall_seconds() { return std::chrono::duration<double>(Clock::now().time_since_epoch()).count(); }
+
+// The quick menu's lines: what each shows, and the command it runs.
+struct QuickItem {
+    std::string label, value, verb;
+    std::vector<std::string> words;
+    bool closes{}; // done: the menu closes
+};
+std::vector<QuickItem> quick_items(const State &s) {
+    const auto status = s.camcorder.status();
+    const auto on = [](bool b) { return std::string(b ? "on" : "off"); };
+    return {
+        {"REC", status.transport == Transport::recording ? "recording" : "standby", "rec", {}, true},
+        {"Take a still", "", "still", {}, true},
+        {"Review the last clip", "", "review", {}, true},
+        {"Camera", status.camera_name, "camera", {"next"}, false},
+        {"Lens", status.lens_name, "lens", {"next"}, false},
+        {"Grip", status.grip_name, "grip", {"next"}, false},
+        {"Steer while filming", on(s.aiming), "aim", {"toggle"}, false},
+        {"Look", on(s.finish.dv.on), "look", {"toggle"}, false},
+        {"Set up a tripod here", "", "tripod", {"place"}, true},
+        {"Handheld / tripod", status.mode == Mode::tripod ? "tripod" : "handheld", "mode", {"toggle"}, false},
+        {"Close", "", "", {}, true},
+    };
+}
+
+// The quick menu's controls while it is open: up / down (W / S, the stick, the wheel) choose, right
+// (D) does it, left (A) closes. A held direction repeats.
+void quick_controls(State &s, float dt) {
+    overlay::FlightInput pad;
+    DingoSDKOverlayReadFlightInput(&pad, true, true);
+    float notches{};
+    DingoSDKOverlayReadMouseWheel(&notches);
+    if (!pad.active) return;
+    const int count = static_cast<int>(quick_items(s).size());
+    int direction = pad.forward > 0.6f ? -1 : pad.forward < -0.6f ? 1 : pad.right > 0.6f ? 2 : pad.right < -0.6f ? -2 : 0;
+    const bool fresh = direction != 0 && direction != s.quick_last;
+    s.quick_held = direction == s.quick_last && direction != 0 ? s.quick_held + dt : 0;
+    s.quick_last = direction;
+    const bool repeat = (direction == -1 || direction == 1) && s.quick_held > 0.35f;
+    if (repeat) s.quick_held -= 0.12f;
+    if (notches != 0 && std::isfinite(notches)) {
+        direction = notches > 0 ? -1 : 1;
+        s.quick_used = wall_seconds();
+        s.quick_index = (s.quick_index + direction + count) % count;
+        return;
+    }
+    if (!fresh && !repeat) return;
+    s.quick_used = wall_seconds();
+    if (direction == -1 || direction == 1) {
+        s.quick_index = (s.quick_index + direction + count) % count;
+    } else if (direction == -2) {
+        s.quick = false;
+    } else if (direction == 2) {
+        const auto item = quick_items(s)[static_cast<std::size_t>(std::clamp(s.quick_index, 0, count - 1))];
+        if (item.closes) s.quick = false;
+        if (!item.verb.empty()) command(item.verb, item.words);
+    }
+}
 // Aiming while skating: the camera takes only what a skater can spare.
 bool wants_aim(State &s) { return s.camcorder.powered() && s.owned && s.aiming && !wants_pad(s); }
 
@@ -317,6 +399,13 @@ OperatorInput read_controls(State &s, float dt) {
     OperatorInput in;
     const bool pad_held = wants_pad(s), aim = wants_aim(s);
     set_capture(s, pad_held, aim);
+    if (s.quick) {
+        // The quick menu has the controls; nothing moves the camera meanwhile.
+        if (wall_seconds() - s.quick_used > 8) s.quick = false; // left open: it closes itself
+        else if (pad_held) quick_controls(s, dt);
+        s.wheel_zoom = 0;
+        return in;
+    }
     const float wheel = wheel_rocker(s, dt);
     if (!pad_held && !aim) {
         s.wheel_zoom = 0;
@@ -331,9 +420,11 @@ OperatorInput read_controls(State &s, float dt) {
         return in;
     }
     const float turn = std::max(s.camcorder.handheld().settings().look_speed * std::max(dt, 1e-3f), 1e-4f);
-    const float mouse = s.camcorder.handling().mouse; // radians a pixel
-    in.look_x = std::clamp(pad.look_x / 25.0f + mouse_x * mouse / turn, -1.0f, 1.0f);
-    in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse_y * mouse / turn), -1.0f, 1.0f);
+    // Radians a pixel (the mod's), times the player's own sensitivity; up is up unless inverted.
+    const float mouse = s.camcorder.handling().mouse * s.sensitivity;
+    const float up = s.invert ? 1.0f : -1.0f;
+    in.look_x = std::clamp(pad.look_x / 25.0f * s.sensitivity + mouse_x * mouse / turn, -1.0f, 1.0f);
+    in.look_y = std::clamp(up * (pad.look_y / 25.0f * s.sensitivity + mouse_y * mouse / turn), -1.0f, 1.0f);
     if (aim) {
         in.zoom = std::clamp(pad.pad_up + wheel, -1.0f, 1.0f); // Q / E are the skater's here
         in.raise = pad.pad_raise;                              // and R / F too: LB / RB only
@@ -393,7 +484,9 @@ void publish(State &s, const Frame &frame) {
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
     const auto &status = frame.status;
-    if (status.tripod_setup)
+    if (s.quick)
+        s.published.hint = "W/S or wheel choose   D do it   A close   (stick: up/down, right, left)";
+    else if (status.tripod_setup)
         s.published.hint = "Mouse aim   WASD move   Q/E height   Shift+Q/E zoom   REC to roll";
     else if (s.operating && wants_pad(s))
         s.published.hint = "Mouse aim   Q/E or wheel zoom   R/F height   (operate off to skate)";
@@ -401,6 +494,17 @@ void publish(State &s, const Frame &frame) {
         s.published.hint = "Mouse / R-stick aim   wheel / triggers zoom   LB/RB height   you steer";
     else
         s.published.hint.clear();
+    s.published.quick.clear();
+    s.published.quick_index = -1;
+    if (s.quick) {
+        for (const auto &item : quick_items(s)) s.published.quick.push_back({item.label, item.value});
+        s.published.quick_index = s.quick_index;
+    }
+    s.published.guide = wall_seconds() < s.guide_until;
+    s.published.sensitivity = s.sensitivity;
+    s.published.invert = s.invert;
+    s.published.review = s.review;
+    s.published.review_stop = s.review_stop;
     s.published.players.clear();
     s.published.subject.clear();
     for (const auto &p : s.players) {
@@ -495,12 +599,20 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         if (s.camcorder.powered() != s.was_powered) {
             s.was_powered = s.camcorder.powered();
             if (s.was_powered) {
+                // The first time ever: a short guide over the viewfinder.
+                if (!s.guide_seen) {
+                    s.guide_seen = true;
+                    s.guide_until = wall_seconds() + 15;
+                    save_preferences(s);
+                }
                 // Start looking where the game's camera was looking, level, so the first frame faces
                 // the way the player was already looking.
                 if (const auto view = latest_game_view(); view && valid_camera_matrix(view->world))
                     s.camcorder.aim_handheld({matrix_yaw_pitch(view->world).yaw, 3 * degrees});
             } else {
                 s.operating = false; // a fresh start next time: the pad is the skater's
+                s.quick = false;
+                s.guide_until = 0;
             }
         }
         if (!s.camcorder.powered() || !ready) {
@@ -668,6 +780,67 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         return s.sound == Sound::off    ? "Clips without sound."
                : s.sound == Sound::game ? "Clips with the game's sound."
                                         : "Clips with the game's sound through the camera's own mic.";
+    }
+    if (verb == "sensitivity") {
+        const float value = words.empty() ? 1.0f : static_cast<float>(std::atof(words[0].c_str()));
+        if (!(value >= 0.25f && value <= 4.0f)) return "Usage: camcorder sensitivity <0.25 to 4> (1 as built)";
+        s.sensitivity = value;
+        save();
+        char text[64];
+        std::snprintf(text, sizeof(text), "Aim sensitivity %.2gx.", static_cast<double>(value));
+        return text;
+    }
+    if (verb == "invert") {
+        s.invert = switched(s.invert);
+        save();
+        return s.invert ? "Up and down inverted: push up to look down." : "Push up to look up.";
+    }
+    if (verb == "guide") {
+        if (!words.empty() && words[0] == "seen") {
+            s.guide_seen = true;
+            return "";
+        }
+        if (!words.empty() && words[0] == "off") {
+            s.guide_until = 0;
+            return "Guide hidden.";
+        }
+        if (!s.camcorder.powered()) return "Turn the camcorder on to see the guide over its picture.";
+        s.guide_until = wall_seconds() + 20;
+        return "The guide is over the viewfinder for a few seconds.";
+    }
+    if (verb == "quick") {
+        const auto word = words.empty() ? std::string("toggle") : words[0];
+        const bool open = word == "open" || (word == "toggle" && !s.quick);
+        if (open && !s.camcorder.powered()) return "Turn the camcorder on first.";
+        s.quick = open;
+        if (open) s.quick_used = wall_seconds();
+        s.quick_last = 0;
+        return open ? "Quick menu: W/S or the wheel choose, D does it, A closes." : "Quick menu closed.";
+    }
+    if (verb == "review") {
+        if (!words.empty() && words[0] == "stop") {
+            ++s.review_stop;
+            return "Review stopped.";
+        }
+        if (!s.camcorder.powered()) return "Turn the camcorder on first: the clip plays in its viewfinder.";
+        ++s.review;
+        return "Playing the last clip in the viewfinder (camcorder review stop, or REC, to stop).";
+    }
+    if (verb == "open") {
+        // Explorer on the folder, off the game thread (Explorer can take its time).
+        const bool stills = !words.empty() && (words[0] == "stills" || words[0] == "pictures");
+        std::thread([stills] {
+            const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            PWSTR base{};
+            if (SUCCEEDED(SHGetKnownFolderPath(stills ? FOLDERID_Pictures : FOLDERID_Videos, KF_FLAG_CREATE, nullptr, &base)) && base) {
+                const std::wstring path = std::wstring(base) + L"\\ReSkate Camcorder";
+                CreateDirectoryW(path.c_str(), nullptr);
+                ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
+            if (base) CoTaskMemFree(base);
+            if (SUCCEEDED(com)) CoUninitialize();
+        }).detach();
+        return stills ? "Opening Pictures\\ReSkate Camcorder." : "Opening Videos\\ReSkate Camcorder.";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";

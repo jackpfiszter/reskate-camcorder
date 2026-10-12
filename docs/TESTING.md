@@ -56,9 +56,16 @@ camcorder to be filmed, but a different ReSkate build may not be allowed to join
 
 ### Controls
 
-Everything is on the **CAMCORDER** page of the ReSkate menu (Insert): on / off, REC, handheld or
-tripod, lens, grip, camera controls, who to film, tripods, tape. Keys and buttons can be bound in
+Everything is on the **CAMCORDER** page of the ReSkate menu (Insert): on / off, REC, review,
+handheld or tripod, camera, lens, grip, who to film, tripods, tape, look, controls, mods. Its
+CONTROLS card has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC, quick menu, still,
+steer while filming, tripod) where they are free. Keys and buttons can be changed in
 SETTINGS > CONTROLS. While the camcorder is on, skate.'s own HUD is hidden.
+
+The **quick menu** (F7 after SET UP KEYS, or `camcorder quick`) is a short list over the
+viewfinder: REC, still, review, camera, lens, grip, steer while filming, look, tripod. W / S or
+the wheel (stick up / down) choose, D (stick right) does it, A (stick left) closes. The skater
+waits while it is open; it closes itself after 8 seconds untouched.
 
 **Camera controls** (the menu's toggle, or `camcorder operate on`), or setting up a tripod, give the
 mouse, keys and pad to the camera; the skater stands still until you turn them off:
@@ -134,9 +141,24 @@ Solo:
       aim turns with you. Open the ReSkate menu: the mouse works in it. Off again: all as before.
 - [ ] `camcorder still` (or TAKE A STILL, or a bound key): "Still saved." and a JPEG in
       **Pictures\ReSkate Camcorder** of the 4:3 picture, no readouts.
+- [ ] The first time the camera comes on (or SHOW THE GUIDE): a short list of the controls over
+      the viewfinder for about 15 seconds, then not again on later games.
+- [ ] CAMCORDER page > CONTROLS > SET UP KEYS: F5 to F10 show next to their jobs; F5 turns the
+      camera on, F6 records. Keys you had bound already are left alone.
+- [ ] F7 (quick menu): the list shows over the picture, the skater stops. W / S and the wheel move
+      the amber line; D on Camera, Lens or Grip changes it and the value updates; D on REC records
+      and closes the menu; A closes. Left alone it closes after about 8 seconds.
+- [ ] Record a clip, then `camcorder review` (or the quick menu's Review, or REVIEW THE LAST CLIP):
+      the clip plays in the viewfinder at its own speed, PLAY and the time in the corners, a bar
+      along the bottom; no sound. It stops at the end, on `camcorder review stop`, on REC, or with
+      the camera off. Before any clip: "Nothing to review."
+- [ ] Aim speed (CONTROLS card, or `camcorder sensitivity 2`): the mouse and stick aim twice as
+      fast. Invert up and down: pushing up looks down.
+- [ ] OPEN CLIPS / OPEN STILLS: Explorer opens on Videos (Pictures)\ReSkate Camcorder.
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",
       "Camcorder: pad to camera", "Camcorder: steer while filming", "Camcorder: set up a tripod",
-      "Camcorder: next tripod" and "Camcorder: take a still".
+      "Camcorder: next tripod", "Camcorder: take a still", "Camcorder: quick menu" and
+      "Camcorder: hold it higher / lower".
 
 With a friend:
 
@@ -223,7 +245,8 @@ folder, and make sure it is enabled in the mod list.
 
 ### Settings
 
-- [ ] Change the lens, grip, quality, sound, steer while filming, the tape look and the stamp; quit
+- [ ] Change the lens, grip, quality, sound, steer while filming, the tape look, the stamp, the aim
+      speed and invert; quit
       the game and start it again: they are as you left them. The file is
       `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt` (one command a line; delete it to reset).
 
@@ -233,6 +256,8 @@ folder, and make sure it is enabled in the mod list.
   model in the game to stand there yet.
 - No second picture: the camcorder's view replaces the game's while it is on.
 - The fields (60 a second) are in clips only; the screen moves at the game's frame rate.
+- Review plays the picture only, not the sound, and only the last clip recorded this game (older
+  clips: OPEN CLIPS).
 - The recording is of what is on screen: it records the camcorder's picture only while you look
   through it.
 

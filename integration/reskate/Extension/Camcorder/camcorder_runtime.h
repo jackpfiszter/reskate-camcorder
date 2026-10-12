@@ -75,6 +75,13 @@ struct Published {
     };
     std::vector<Choice> cameras, lenses, grips;
     std::size_t mod_notes{};      // problems found in the mods' profiles (`camcorder mods`)
+    // The quick menu (`camcorder quick`): its lines, label and value; quick_index -1 when closed.
+    std::vector<std::pair<std::string, std::string>> quick;
+    int quick_index{-1};
+    bool guide{};                 // the first-use guide is over the viewfinder
+    float sensitivity{1};
+    bool invert{};
+    std::uint32_t review{}, review_stop{}; // count `camcorder review` and `review stop` requests
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

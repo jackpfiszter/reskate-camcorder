@@ -83,6 +83,10 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
     game's frame (`camcorder_warp.cpp`), copied before the overlay draws; the clip's copy moves
     into a draw callback after the warp (`camcorder_capture_draw`).
 
+12. **Clip review** (`overlay_render.cpp`): a fourth SRV slot for the clip played back in the
+    viewfinder (`camcorder_review.cpp`): its picture is uploaded with the frame's commands, before
+    the overlay draws, and its upload buffers are fenced like the warp's.
+
 ## To confirm in play
 
 - **Look units.** `read_controls` assumes the freecam's look deltas are .0025 rad each, as

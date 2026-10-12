@@ -82,6 +82,7 @@ struct Capture {
     camcorder_tape::Capture tape;
     std::mutex last_mutex;
     std::string last;
+    std::wstring last_clip; // the newest clip written, for review
     bool format_said{};
 };
 Capture &capture() {
@@ -281,6 +282,10 @@ bool camcorder_capture_poll() {
     if (auto result = c.writer.take_result()) {
         if (result->ok) {
             c.tape_log.saved(result->path);
+            {
+                std::lock_guard lock(c.last_mutex);
+                c.last_clip = result->path;
+            }
             say(result->warning.empty() ? NoticeLevel::info : NoticeLevel::warning, "Clip saved.",
                 narrow(result->path) + (result->warning.empty() ? "" : " " + result->warning));
             if (const auto dropped = c.writer.dropped())
@@ -454,5 +459,10 @@ void camcorder_capture_release() {
 std::string camcorder_capture_last() {
     std::lock_guard lock(capture().last_mutex);
     return capture().last;
+}
+
+std::wstring camcorder_capture_last_clip() {
+    std::lock_guard lock(capture().last_mutex);
+    return capture().last_clip;
 }
 } // namespace dingosdk::overlay
