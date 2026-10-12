@@ -1,0 +1,113 @@
+name: past releases
+
+# Publishes the builds made before releases existed as versioned zips on the Releases page, from the
+# files each build run kept (no rebuild: the zip holds exactly what was tested). Runs once when this
+# file changes; later versions come from tags (build.yml's release job). (v0.5.0 and v0.6.0 were
+# published by the first run of this file.)
+#
+# A workflow may not tag a commit whose workflow files differ from the repository's, and these
+# versions predate the release job. So each is tagged on a commit holding that version's source
+# with today's .github folder: the same code, built the same way, and the notes name the original.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/past-releases.yml']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    name: ${{ matrix.tag }}
+    runs-on: ubuntu-24.04
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - tag: v0.1.0
+            sha: d5cc0c2aaa3193a01bfd78053d0a0324c5d91410
+            run: 38180865904
+            title: First in-game build
+            notes: The first build of ReSkate with the camcorder. Known not to take over the camera in solo play (fixed in v0.1.2).
+          - tag: v0.1.1
+            sha: 87baf1d73848f94a86e4f351aff7c1b4b1443cee
+            run: 38182030282
+            title: Input and viewfinder fixes
+            notes: The pad and keyboard drive the camera while operating; vertical aim the right way up; the viewfinder only over the camcorder's own picture; eye-level grip clear of the face.
+          - tag: v0.1.2
+            sha: 695f8184f5fcf9f38fd1349d59c4989127aa0732
+            run: 38184090610
+            title: Solo play takes the camera
+            notes: The camcorder now takes over the camera when playing alone.
+          - tag: v0.1.3
+            sha: cbcf0c668ac23eab08ea7f7cbb8763794ef40755
+            run: 38185312139
+            title: Aim turns with the filmer
+            notes: Handheld aim is relative to the skater's heading and starts where the game camera was looking; operate resets when the camera is turned off.
+          - tag: v0.2.0
+            sha: c84654876143a8d5ca2a7bf64be86cf68e916695
+            run: 38187579485
+            title: The CAMCORDER menu
+            notes: A CAMCORDER page in the ReSkate menu, mouse aim with no button held, on-screen control hints, skate.'s HUD hidden while filming.
+          - tag: v0.3.0
+            sha: ba9278bf03602a0e786d931fc8a28a7ec867b4e5
+            run: 38191651198
+            title: Clips to MP4
+            notes: REC to STBY writes an MP4 of the 4:3 picture to Videos\ReSkate Camcorder (HD or the VX1000's 640 x 480).
+          - tag: v0.4.0
+            sha: 4634103f0ff40c01614fe199faa18c5c5e939533
+            run: 38195257904
+            title: Sound
+            notes: Clips carry the game's own sound (nothing else on the PC), clean or through the VX1000's mic.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+      - name: A commit to tag (the version's source, today's CI files)
+        id: anchor
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          old_tree=$(gh api "repos/$REPO/git/commits/${{ matrix.sha }}" --jq .tree.sha)
+          ci_tree=$(gh api "repos/$REPO/git/trees/${{ github.sha }}" --jq '.tree[] | select(.path == ".github") | .sha')
+          tree=$(jq -n --arg base "$old_tree" --arg sha "$ci_tree" \
+            '{base_tree: $base, tree: [{path: ".github", mode: "040000", type: "tree", sha: $sha}]}' |
+            gh api "repos/$REPO/git/trees" --input - --jq .sha)
+          when=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          commit=$(jq -n --arg tree "$tree" --arg parent "${{ matrix.sha }}" --arg when "$when" \
+            --arg message "${{ matrix.tag }}: ${{ matrix.sha }} with this repository's current CI files" \
+            '{message: $message, tree: $tree, parents: [$parent],
+              author: {name: "Jack Pfiszter", email: "130564204+jackpfiszter@users.noreply.github.com", date: $when},
+              committer: {name: "Jack Pfiszter", email: "130564204+jackpfiszter@users.noreply.github.com", date: $when}}' |
+            gh api "repos/$REPO/git/commits" --input - --jq .sha)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ReSkate-camcorder
+          path: package
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+      - name: Zip the build
+        run: |
+          cp LICENSE README.md package/
+          if [ -f docs/TESTING.md ]; then cp docs/TESTING.md package/; fi
+          cd package && zip -r "../ReSkate-camcorder-${{ matrix.tag }}.zip" .
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ matrix.tag }}
+          target_commitish: ${{ steps.anchor.outputs.commit }}
+          name: ${{ matrix.tag }} - ${{ matrix.title }}
+          body: |
+            ${{ matrix.notes }}
+
+            **Install:** back up `ReSkate.dll` and `ReSkateLauncher.exe` beside `Skate.exe`, put the two from this zip there, and start the game with this `ReSkateLauncher.exe`. `TESTING.md` in the zip has the details. To go back, restore the two files.
+
+            Built from commit ${{ matrix.sha }} (the tag adds only today's CI files to it).
+
+            This zip holds a modified `ReSkate.dll` (GPL-3.0). Its source is this repository at `${{ matrix.tag }}` plus ReSkate at the commit in `integration/reskate/reskate.commit`.
+          files: ReSkate-camcorder-${{ matrix.tag }}.zip
+          make_latest: false
