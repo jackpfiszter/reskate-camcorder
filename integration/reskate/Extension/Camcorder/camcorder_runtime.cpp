@@ -1,4 +1,3 @@
-// REFERENCE ONLY: not yet compiled or run in the game (integration/reskate/README.md).
 #include "camcorder_runtime.h"
 #include "Engine/Core/Log/logging.h"
 #include "Engine/Game/UI/game_view.h"

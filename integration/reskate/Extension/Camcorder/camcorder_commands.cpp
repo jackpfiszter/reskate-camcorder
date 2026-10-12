@@ -1,5 +1,3 @@
-// REFERENCE ONLY: not yet compiled or run in the game (integration/reskate/README.md).
-//
 // The `camcorder ...` console commands, registered like the trainer's (trainer_commands.cpp):
 // each verb takes the rest of the line as words and runs on the game thread. Add
 // register_camcorder_commands to Extension/Console/commands.h and call it where the others are.

@@ -1,5 +1,3 @@
-// REFERENCE ONLY: not yet compiled or run in the game (integration/reskate/README.md).
-//
 // Draws the viewfinder (src/camcorder/viewfinder.h) on ImGui's background draw list, under
 // ReSkate's own menus and chat, taking no input: the 4:3 bars, the fisheye housing's shadow
 // and the VX1000-style readouts. Call draw_camcorder() from overlay_render.cpp beside

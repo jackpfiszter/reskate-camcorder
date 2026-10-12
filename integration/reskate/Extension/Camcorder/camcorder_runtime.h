@@ -3,9 +3,7 @@
 // tick, runs the model, and puts its shot on screen through the same native camera lease the
 // party's Spectate uses (update_party_camera, Extension/Skater/client_source_spawn.h).
 //
-// REFERENCE ONLY: written against ReSkate's source at the time of writing, not yet compiled or
-// run in the game. See integration/reskate/README.md for where it plugs in and what is
-// still to be confirmed in play.
+// Built into ReSkate.dll by integration/reskate/install.ps1 (see its README for where it plugs in).
 //
 // Threads, as in the trainer: the client (game) thread owns the camcorder. The console runs
 // `camcorder ...` commands on that thread; the overlay only reads the published frame.
