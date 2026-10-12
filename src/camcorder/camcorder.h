@@ -61,6 +61,7 @@ struct Status {
     std::string lens_id, lens_name;        // the adapter; an empty id is the stock lens
     bool fisheye{};
     Grip grip{};
+    float handheld_height{};               // the handheld lens above the feet, metres
     bool lock_on{};
     TripodRig::Head head{};
     std::string message;                   // the last thing worth telling the player
@@ -89,7 +90,13 @@ public:
     void set_camera(const CameraProfile &camera);
     // A lens on the front, or none for the camera's own.
     void set_adapter(std::optional<Adapter> adapter) { settings_.adapter = std::move(adapter); }
-    void set_grip(Grip grip) { handheld_.settings().grip = grip; }
+    // A grip puts the camera back at that grip's height.
+    void set_grip(Grip grip) {
+        handheld_.settings().grip = grip;
+        handheld_.set_lift(0);
+    }
+    // Raises or lowers the handheld camera from its grip's height.
+    void set_handheld_lift(float metres) { handheld_.set_lift(metres); }
     // Points the handheld camera this way in the world (it then turns with the filmer).
     void aim_handheld(YawPitch aim) { handheld_.face(aim); }
     void set_lock_on(bool on) { handheld_.settings().lock_on = on; }

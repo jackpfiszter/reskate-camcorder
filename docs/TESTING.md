@@ -67,6 +67,7 @@ mouse, keys and pad to the camera; the skater stands still until you turn them o
 |---|---|---|
 | Aim | move the mouse (no button needed) | right stick |
 | Zoom (wide / tele) | Q / E | left / right trigger |
+| Hold the camera higher / lower | R / F | RB / LB |
 | Tripod setup: carry it | W A S D | left stick |
 | Tripod setup: lower / raise it | Q / E | left / right trigger |
 | Tripod setup: zoom instead | hold Shift + Q / E | hold L3 + triggers |
@@ -81,6 +82,7 @@ for following a friend's line: you keep skating, the camera takes only the look 
 | Skate | the keyboard, as always | left stick and buttons |
 | Aim | move the mouse | right stick |
 | Zoom (wide / tele) | mouse wheel | left / right trigger |
+| Higher / lower | a bound key (Camcorder: hold it higher / lower) | RB / LB |
 
 While it is on, skate.'s own mouse and right-stick controls (and the triggers) don't reach the
 game; turn it off for those.
@@ -100,7 +102,11 @@ Solo:
       `camcorder warp off` goes back to the flat stand-in: wide, round corners, no bend. Say if the
       picture looks too soft in the middle, or if anything at the edges is cut off.
 - [ ] `camcorder lens stock`: much narrower (about 44 degrees), no round corners.
-- [ ] `camcorder grip eye`, `camcorder grip hip`, `camcorder grip long`: the camera height changes.
+- [ ] `camcorder grip long`: the camera is low, about knee height (0.45 m), not at your head;
+      `hip` at the waist; `eye` at eye level. Same on a board and on foot, and on a ledge.
+- [ ] Hold RB / LB (or R / F with camera controls on): the camera rises and drops smoothly, from
+      a skate's height off the ground to overhead. A new grip puts it back. `camcorder height up`
+      and `down` step it, for binding to keys.
 - [ ] `camcorder rec`: red dot and REC, counter running. `camcorder rec` again: STBY.
       `camcorder tape clips` lists the clip.
 - [ ] `camcorder tripod place`: the view jumps to a tripod just ahead of you, in SETUP with a faint

@@ -207,6 +207,7 @@ Status Camcorder::status() const {
     s.lens_name = settings_.adapter ? settings_.adapter->name : "stock lens";
     s.fisheye = settings_.adapter && settings_.adapter->fisheye;
     s.grip = handheld_.settings().grip;
+    s.handheld_height = handheld_.lens_height(true);
     s.lock_on = handheld_.settings().lock_on;
     s.head = active_tripod_ >= 0 && tripods_[active_tripod_] ? tripods_[active_tripod_]->settings().head
                                                              : settings_.tripod.head;

@@ -308,6 +308,7 @@ OperatorInput read_controls(State &s, float dt) {
     in.look_y = std::clamp(-(pad.look_y / 25.0f + mouse_y * .0025f / turn), -1.0f, 1.0f);
     if (aim) {
         in.zoom = std::clamp(pad.pad_up + wheel, -1.0f, 1.0f); // Q / E are the skater's here
+        in.raise = pad.pad_raise;                              // and R / F too: LB / RB only
         return in;
     }
     in.move_x = pad.right;   // the pad's reading includes the keyboard's WASD, Q and E
@@ -317,6 +318,7 @@ OperatorInput read_controls(State &s, float dt) {
     } else {
         in.zoom = pad.up;  // otherwise (or holding boost) they work the zoom rocker
         in.fast = pad.boost;
+        in.raise = std::clamp(pad.pad_raise + pad.key_raise, -1.0f, 1.0f); // LB / RB or R / F: the handheld camera's height
     }
     if (wheel != 0) in.zoom = std::clamp(in.zoom + wheel, -1.0f, 1.0f);
     return in;
@@ -363,9 +365,9 @@ void publish(State &s, const Frame &frame) {
     if (status.tripod_setup)
         s.published.hint = "Mouse aim   WASD move   Q/E height   Shift+Q/E zoom   REC to roll";
     else if (s.operating && wants_pad(s))
-        s.published.hint = "Mouse aim   Q/E or wheel zoom   (operate off to skate)";
+        s.published.hint = "Mouse aim   Q/E or wheel zoom   R/F height   (operate off to skate)";
     else if (wants_aim(s))
-        s.published.hint = "Mouse / R-stick aim   wheel / triggers zoom   you steer";
+        s.published.hint = "Mouse / R-stick aim   wheel / triggers zoom   LB/RB height   you steer";
     else
         s.published.hint.clear();
     s.published.players.clear();
@@ -450,7 +452,12 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         TickInput in;
         in.dt = dt;
         in.filmer = filmer_from(s, now, dt);
-        if (in.filmer.valid) in.filmer.on_board = on_board(client);
+        if (in.filmer.valid) {
+            in.filmer.on_board = on_board(client);
+            // The ground under the filmer, so the handheld camera's heights are from the feet.
+            const auto &p = in.filmer.position;
+            in.filmer.ground = local_ground_height(p[0], p[2], p[1] + 0.5f, p[1] - 3.0f);
+        }
         in.subject = subject_from(s, dt);
         in.controls = read_controls(s, dt);
         in.ground_under_tripod = ground_under_tripod(s.camcorder);

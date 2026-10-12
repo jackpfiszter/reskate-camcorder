@@ -183,15 +183,28 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         return "Tripod head: " + std::string(head_word(head)) + ".";
     }
     if (same(verb, "height")) {
+        // A step a press: bound to a key or a button, it moves the camera a hand's width.
+        constexpr float step = 0.15f;
+        const bool up = same(first, "up"), down = same(first, "down"), reset = same(first, "reset");
         float metres{};
         const auto [end, error] = std::from_chars(first.data(), first.data() + first.size(), metres);
-        if (first.empty() || error != std::errc{} || end != first.data() + first.size() || !std::isfinite(metres))
-            return "Usage: camcorder height <metres>";
-        const int slot = cam.status().active_tripod;
-        if (slot < 0 || !cam.tripod(slot)) return "No tripod set up.";
-        cam.set_tripod_height(slot, metres);
-        char text[48];
-        std::snprintf(text, sizeof(text), "Tripod height %.2f m.", static_cast<double>(cam.tripod(slot)->settings().height));
+        const bool number = !first.empty() && error == std::errc{} && end == first.data() + first.size() && std::isfinite(metres);
+        if (!up && !down && !reset && !number) return "Usage: camcorder height up|down|reset|<metres>";
+        char text[64];
+        const auto status = cam.status();
+        if (status.mode == Mode::tripod) {
+            const int slot = status.active_tripod;
+            if (slot < 0 || !cam.tripod(slot)) return "No tripod set up.";
+            const float now = cam.tripod(slot)->settings().height;
+            cam.set_tripod_height(slot, up ? now + step : down ? now - step : reset ? 1.1f : metres);
+            std::snprintf(text, sizeof(text), "Tripod height %.2f m.", static_cast<double>(cam.tripod(slot)->settings().height));
+            return text;
+        }
+        const auto &rig = cam.handheld();
+        const float base = grip_height(rig.settings().grip, true);
+        const float lift = up ? rig.lift() + step : down ? rig.lift() - step : reset ? 0.0f : metres - base;
+        cam.set_handheld_lift(std::clamp(base + lift, HandheldRig::lowest, HandheldRig::highest) - base);
+        std::snprintf(text, sizeof(text), "Camera held %.2f m up.", static_cast<double>(cam.handheld().lens_height(true)));
         return text;
     }
     if (same(verb, "tape")) {

@@ -14,7 +14,7 @@
 //   camcorder lockon [on|off|toggle]
 //   camcorder tripod place|next|setup [on|off|toggle]|remove [1-4]|<1-4>
 //   camcorder head locked|manual|follow|next
-//   camcorder height <metres>           the active tripod's
+//   camcorder height up|down|reset|<metres>  the handheld camera's, or the active tripod's
 //   camcorder tape new|clips
 //
 // `camcorder subject ...` needs the players in the session and is answered by the ReSkate side.

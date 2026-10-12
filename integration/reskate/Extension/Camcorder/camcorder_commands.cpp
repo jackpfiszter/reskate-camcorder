@@ -24,7 +24,7 @@ void register_camcorder_commands(Commands &registry) {
         {"aim", "Aim with the mouse or right stick while you skate", "[on|off|toggle]"},
         {"tripod", "Set up, choose and take down tripods", "place|next|setup [on|off]|remove [1-4]|<1-4>"},
         {"head", "The tripod's fluid head", "locked|manual|follow|next"},
-        {"height", "The active tripod's height", "<metres>"},
+        {"height", "Hold the camera higher or lower (or the active tripod's height)", "up|down|reset|<metres>"},
         {"tape", "List the clips, join them into one file, or put in a new tape", "clips|capture|new"},
         {"still", "Save a still of the camcorder's picture (Pictures\\ReSkate Camcorder)", nullptr},
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},

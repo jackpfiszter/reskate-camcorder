@@ -63,21 +63,36 @@ std::string_view grip_name(Grip grip) noexcept {
     return "Long grip";
 }
 
+float grip_height(Grip grip, bool on_board) noexcept {
+    float height = 0.45f;
+    switch (grip) {
+    case Grip::long_grip: height = 0.45f; break; // a handle's length off the ground: the fisheye follow shot
+    case Grip::hip: height = 1.0f; break;
+    case Grip::eye_level: height = 1.6f; break;
+    }
+    // A filmer on a board crouches: everything sits a little lower.
+    return on_board ? height * 0.92f : height;
+}
+
+float HandheldRig::lens_height(bool on_board) const {
+    return std::clamp(grip_height(settings_.grip, on_board) + lift_, lowest, highest);
+}
+
 Vec3 HandheldRig::grip_position(const Filmer &filmer) const {
     const auto forward = flat_forward(filmer.forward);
     const auto right = flat_right(forward);
-    // Height above the feet, out to the right hand, ahead of the body. A filmer on a board
-    // crouches: everything sits a little lower.
-    float height = 0, side = 0, ahead = 0;
+    // Out to the right hand and ahead of the body. Eye level sits clear in front of the face: the
+    // filmer is the player's own skater, whose head is drawn (from inside it the view would be the
+    // inside of the head).
+    float side = 0, ahead = 0;
     switch (settings_.grip) {
-    case Grip::long_grip: height = 0.45f; side = 0.35f; ahead = 0.55f; break;
-    case Grip::hip: height = 1.0f; side = 0.3f; ahead = 0.3f; break;
-    // Eye level sits clear in front of the face: the filmer is the player's own skater, whose head is
-    // drawn (from inside it the view would be the inside of the head).
-    case Grip::eye_level: height = 1.6f; side = 0.08f; ahead = 0.3f; break;
+    case Grip::long_grip: side = 0.35f; ahead = 0.55f; break;
+    case Grip::hip: side = 0.3f; ahead = 0.3f; break;
+    case Grip::eye_level: side = 0.08f; ahead = 0.3f; break;
     }
-    if (filmer.on_board) height *= 0.92f;
-    return add(add(add(filmer.position, {0, height, 0}), mul(right, side)), mul(forward, ahead));
+    // From the feet: the root less what it sits above them.
+    const Vec3 feet{filmer.position[0], filmer.position[1] - root_above_feet_, filmer.position[2]};
+    return add(add(add(feet, {0, lens_height(filmer.on_board), 0}), mul(right, side)), mul(forward, ahead));
 }
 
 void HandheldRig::face(YawPitch aim) {
@@ -94,6 +109,25 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
                        float zoom_ratio) {
     dt = clamp_dt(dt);
     if (!filmer.valid || !finite(filmer.position)) return {};
+    // Where the feet are under the root: from the ground when the game found it (a root more than
+    // a quarter metre higher than usual is a jump, and the camera rises with the filmer).
+    if (filmer.ground && std::isfinite(*filmer.ground)) {
+        const float above = filmer.position[1] - *filmer.ground;
+        if (above > -0.5f && above < 2.0f) {
+            const float kept = std::clamp(above, 0.0f, 1.6f);
+            if (!measured_) {
+                root_above_feet_ = kept;
+                measured_ = true;
+            } else if (above < root_above_feet_ + 0.25f) {
+                root_above_feet_ = damp(root_above_feet_, kept, 2.0f, dt);
+            }
+        }
+    }
+    // LB / RB (or R / F, or `camcorder height`) raise and lower it, about a metre in a second and a bit.
+    if (const float raise = clamp_unit(input.raise); raise != 0) {
+        const float now = lens_height(filmer.on_board);
+        set_lift(lift_ + std::clamp(now + raise * 0.8f * dt, lowest, highest) - now);
+    }
     const auto eye = grip_position(filmer);
     const auto facing = flat_forward(filmer.forward);
     const float heading = std::atan2(facing[0], facing[2]);

@@ -20,10 +20,13 @@ namespace dingosdk::camcorder {
 // The person holding the camera: the local skater, as the game places them.
 struct Filmer {
     bool valid{};
-    Vec3 position{};       // feet (the skater's root)
+    Vec3 position{};       // the skater's root (where the game puts it: not always at the feet)
     Vec3 forward{0, 0, 1}; // the way the body faces; only its flat part is used
     Vec3 velocity{};       // metres a second
     bool on_board{true};
+    // The height of the surface under the filmer, when the game found it: the handheld camera's
+    // heights are from the feet, and the root can be well above them.
+    std::optional<float> ground;
 };
 // Who is being filmed: their root and velocity.
 struct Subject {
@@ -35,7 +38,7 @@ struct Subject {
 struct OperatorInput {
     float look_x{}, look_y{};     // right, up
     float move_x{}, move_y{};     // right, forward (tripod setup only)
-    float raise{};                // up (tripod setup only)
+    float raise{};                // up: a tripod's head being set up, or the handheld camera
     float zoom{};                 // -1 wide, 1 tele
     bool fast{};                  // tripod setup: move quickly
 };
@@ -67,6 +70,8 @@ enum class Grip : std::uint8_t {
     eye_level, // through the viewfinder: the long-lens shot
 };
 std::string_view grip_name(Grip) noexcept;
+// The lens's height above the feet for a grip, standing (on a board the filmer crouches a little).
+float grip_height(Grip, bool on_board) noexcept;
 
 class HandheldRig {
 public:
@@ -87,6 +92,13 @@ public:
     Shot step(const Filmer &, const Subject *, const OperatorInput &, float dt, float zoom_ratio);
     // Where the camera is held, for a filmer standing at `filmer`.
     Vec3 grip_position(const Filmer &) const;
+    // Raising or lowering the camera from its grip's height (LB / RB, `camcorder height`), in
+    // metres; the lens stays between `lowest` and `highest` above the feet.
+    static constexpr float lowest = 0.12f, highest = 2.3f;
+    void set_lift(float metres) { lift_ = std::isfinite(metres) ? std::clamp(metres, -3.0f, 3.0f) : 0.0f; }
+    float lift() const { return lift_; }
+    // The lens's height above the feet now (the grip's, plus the lift, within lowest to highest).
+    float lens_height(bool on_board) const;
     YawPitch aim() const { return {yaw_.value, pitch_.value}; }
     // Points the camera this way in the world now; from then on, without a subject, it keeps that
     // angle to the filmer's heading and turns with them.
@@ -100,6 +112,11 @@ private:
     // Free aim (no subject): yaw relative to the filmer's heading, so the camera turns with them as
     // a held camera does; pitch absolute.
     float offset_yaw_{}, free_pitch_{};
+    float lift_{};
+    // How far the root sits above the feet, measured from the ground under the filmer (smoothed;
+    // not while airborne). 0 until the game has found the ground.
+    float root_above_feet_{};
+    bool measured_{};
     bool offset_pending_{}; // face() was given a world yaw: turn it into an offset on the next step
     float nudge_yaw_{}, nudge_pitch_{};
     float roll_{}, last_yaw_{};

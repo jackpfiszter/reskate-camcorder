@@ -276,3 +276,48 @@ TEST(handheld_face_sets_the_world_aim_then_follows_the_body) {
     for (int i = 0; i < 30; ++i) shot = rig.step(standing({}, {0, 0, 1}), nullptr, {}, 1.0f / 60, 1);
     CHECK(matrix_forward(shot.camera)[0] < -0.95f);
 }
+
+TEST(handheld_heights_are_from_the_feet_whatever_the_root) {
+    // The game's root a metre above the feet (the skater's middle), the ground under them at 0.
+    for (const float root : {0.0f, 1.0f}) {
+        HandheldRig rig;
+        auto f = standing({0, root, 0});
+        f.on_board = false;
+        f.ground = 0.0f;
+        Shot shot;
+        for (int i = 0; i < 30; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
+        CHECK_NEAR(shot.camera[13], 0.45, 0.06); // the long grip: low, whatever the root
+        rig.settings().grip = Grip::eye_level;
+        shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
+        CHECK_NEAR(shot.camera[13], 1.6, 0.08);
+    }
+}
+
+TEST(a_jump_lifts_the_camera_with_the_filmer) {
+    HandheldRig rig;
+    auto f = standing({0, 1, 0});
+    f.on_board = false;
+    f.ground = 0.0f;
+    for (int i = 0; i < 30; ++i) rig.step(f, nullptr, {}, 1.0f / 30, 1);
+    f.position = {0, 1.6f, 0}; // an ollie: the root rises, the ground stays
+    Shot shot;
+    for (int i = 0; i < 10; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
+    CHECK(shot.camera[13] > 0.9f); // up with the filmer, not left on the ground
+}
+
+TEST(the_handheld_camera_raises_and_lowers) {
+    HandheldRig rig;
+    auto f = standing();
+    f.on_board = false;
+    f.ground = 0.0f;
+    OperatorInput up;
+    up.raise = 1;
+    for (int i = 0; i < 30; ++i) rig.step(f, nullptr, up, 1.0f / 30, 1);
+    CHECK_NEAR(rig.lens_height(false), 0.45 + 0.8, 0.05); // about 0.8 m in a second
+    for (int i = 0; i < 300; ++i) rig.step(f, nullptr, up, 1.0f / 30, 1);
+    CHECK_NEAR(rig.lens_height(false), HandheldRig::highest, 1e-4); // held overhead, no higher
+    OperatorInput down;
+    down.raise = -1;
+    for (int i = 0; i < 300; ++i) rig.step(f, nullptr, down, 1.0f / 30, 1);
+    CHECK_NEAR(rig.lens_height(false), HandheldRig::lowest, 1e-4); // a skate's height off the ground
+}

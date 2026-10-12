@@ -69,7 +69,7 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
         if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
             run(menu, callbacks, bend ? "warp on" : "warp off");
     }
-    field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, or at your eye.");
+    field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, or at your eye. LB / RB or R / F move it up and down.");
     int grip = static_cast<int>(s.grip);
     if (choice(menu, "camcorder-grip", grip, {"LONG GRIP", "HIP", "EYE LEVEL"}))
         run(menu, callbacks, grip == 0 ? "grip long" : grip == 1 ? "grip hip" : "grip eye");
@@ -192,7 +192,7 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
         note(warning.c_str());
     }
     note("Put the camcorder on keys or buttons in SETTINGS > CONTROLS: Camcorder on / off, REC, camera controls, "
-         "steer while filming, set up a tripod, next tripod, take a still. Every action is also a console command: camcorder status.");
+         "steer while filming, set up a tripod, next tripod, take a still, hold it higher, lower. Every action is also a console command: camcorder status.");
     end_card();
 
     ImGui::EndChild();
