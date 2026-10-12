@@ -583,7 +583,7 @@ index c0ce6f9..ba9a578 100644
      bool show_on_ready = false;
      bool force_windowed = false;
 diff --git a/Extension/UI/Overlay/overlay_render.cpp b/Extension/UI/Overlay/overlay_render.cpp
-index 7169615..a986aa0 100644
+index 7169615..a1484cc 100644
 --- a/Extension/UI/Overlay/overlay_render.cpp
 +++ b/Extension/UI/Overlay/overlay_render.cpp
 @@ -4,6 +4,10 @@
@@ -616,7 +616,7 @@ index 7169615..a986aa0 100644
      heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
      graphics_result = s.device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&s.srvs));
      if (FAILED(graphics_result)) {
-@@ -394,6 +401,19 @@ bool setup_graphics() {
+@@ -394,6 +401,20 @@ bool setup_graphics() {
          const int transfer = format == DXGI_FORMAT_R16G16B16A16_FLOAT ? 1
                             : format == DXGI_FORMAT_R10G10B10A2_UNORM && hdr_display ? 2 : 0;
          ImGui_ImplDX12_SetOutputTransfer(transfer, hdr_display ? hdr_white_nits : 80.0f);
@@ -629,14 +629,15 @@ index 7169615..a986aa0 100644
 +        warp_gpu.ptr += 2 * step;
 +        camcorder_warp_heap(s.device.Get(), warp_cpu, warp_gpu, format, transfer);
 +        // The fourth: the clip the camcorder plays back in its viewfinder.
-+        auto review_cpu = warp_cpu, review_gpu = warp_gpu;
++        auto review_cpu = warp_cpu;
++        auto review_gpu = warp_gpu;
 +        review_cpu.ptr += step;
 +        review_gpu.ptr += step;
 +        camcorder_review_heap(s.device.Get(), review_cpu, review_gpu);
          dingosdk::logging::printf(dingosdk::logging::Level::info, dingosdk::logging::Channel::graphics,
              "Overlay output: %s (buffer format %d, display %s).",
              transfer == 1 ? "scRGB" : transfer == 2 ? "HDR10" : "SDR", static_cast<int>(format), hdr_display ? "in HDR" : "in SDR");
-@@ -634,7 +654,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -634,7 +655,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
      const bool game_text_frame = game_text_pending();
      const bool skate_hud_frame = skate_hud_pending();
      const bool nametag_frame = nametags_pending();
@@ -647,7 +648,7 @@ index 7169615..a986aa0 100644
      const bool item_browser_frame = item_browser_pending();
      const bool perf_frame = perf_hud_pending() || trainer_hud_pending();
      const bool hub_frame = hub_page_pending();
-@@ -705,6 +727,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -705,6 +728,7 @@ void render(IDXGISwapChain* presented, UINT flags) {
          draw_perf_window();
      }
      draw_hub_page();
@@ -655,7 +656,7 @@ index 7169615..a986aa0 100644
      draw_hall_of_meat();
      draw_nametags();
      draw_game_text();
-@@ -734,6 +757,12 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -734,6 +758,12 @@ void render(IDXGISwapChain* presented, UINT flags) {
          ImGui::SetCurrentContext(previous); s.failed = true; restore_input(true); return;
      }
      upload_card_image(s);
@@ -668,7 +669,7 @@ index 7169615..a986aa0 100644
      D3D12_RESOURCE_BARRIER barrier{};
      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
      barrier.Transition.pResource = frame.buffer.Get();
-@@ -754,6 +783,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
+@@ -754,6 +784,9 @@ void render(IDXGISwapChain* presented, UINT flags) {
      const UINT64 signal = ++s.next_fence;
      if (FAILED(s.queue->Signal(s.fence.Get(), signal))) { s.failed = true; restore_input(true); return; }
      frame.fence = signal;
