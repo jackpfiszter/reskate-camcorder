@@ -60,6 +60,12 @@ jobs:
       - name: Install the camcorder
         shell: pwsh
         run: ./camcorder/integration/reskate/install.ps1 -ReSkate ReSkate
+      # ReSkate's Spotify device (SpotifyHelper, Rust) links an import library cargo unpacks with
+      # its dependencies: fetched before configuring, which looks for it.
+      - name: Fetch the Spotify device's Rust dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path ReSkate/SpotifyHelper/Cargo.toml) { cargo fetch --manifest-path ReSkate/SpotifyHelper/Cargo.toml }
       # A modified ReSkate must not send its crashes to the ReSkate developers' crash reports.
       - name: Configure (crash uploads off)
         working-directory: ReSkate
