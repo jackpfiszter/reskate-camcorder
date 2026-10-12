@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(camcorder STATIC
+    src/camcorder/audio.cpp
     src/camcorder/camcorder.cpp
     src/camcorder/commands.cpp
     src/camcorder/recorder.cpp
@@ -27,6 +28,7 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(camcorder_tests
         tests/test_main.cpp
+        tests/audio_tests.cpp
         tests/camcorder_tests.cpp
         tests/command_tests.cpp
         tests/recorder_tests.cpp

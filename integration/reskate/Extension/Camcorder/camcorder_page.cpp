@@ -101,11 +101,15 @@ void camcorder_page(SkateMenu &menu, const Model &, const CallbacksV3 &callbacks
     int quality = published.dv ? 1 : 0;
     if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", "DV 640 x 480"}))
         run(menu, callbacks, quality ? "quality dv" : "quality hd");
+    field(menu, "Sound", "The game's own sound (nothing else on your PC), or as the VX1000's mic heard it.");
+    int sound = static_cast<int>(published.sound);
+    if (choice(menu, "camcorder-sound", sound, {"OFF", "GAME", "VX MIC"}))
+        run(menu, callbacks, sound == 0 ? "sound off" : sound == 1 ? "sound game" : "sound vx");
     if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
     ImGui::SameLine();
     if (small_button("NEW TAPE")) run(menu, callbacks, "tape new");
     if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last clip", last);
-    note("Clips are the picture only, no sound yet.");
+    note("Turn the game's music down in its audio settings for clean session sound.");
     end_card();
 
     begin_card(menu, "camcorder-controls", "CONTROLS");

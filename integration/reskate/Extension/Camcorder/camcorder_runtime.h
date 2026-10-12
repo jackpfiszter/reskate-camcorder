@@ -10,6 +10,7 @@
 // Threads, as in the trainer: the client (game) thread owns the camcorder. The console runs
 // `camcorder ...` commands on that thread; the overlay only reads the published frame.
 #include "Extension/Multiplayer/Net/protocol.h"
+#include "camcorder/audio.h"
 #include "camcorder/camcorder.h"
 #include <cstdint>
 #include <string>
@@ -52,6 +53,7 @@ struct Published {
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
     std::string subject;  // who is, empty for nobody
     bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
+    camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`
 };
 Published published() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).

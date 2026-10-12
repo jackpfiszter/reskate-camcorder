@@ -1,11 +1,14 @@
 #include "camcorder_video.h"
+#include "camcorder_audio.h"
 #include <Windows.h>
 #include <ShlObj.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -43,9 +46,36 @@ struct Writer::Impl {
     std::thread thread;
     // Encoder thread only.
     ComPtr<IMFSinkWriter> writer;
-    DWORD stream{};
+    DWORD stream{}, audio_stream{};
+    bool sound{};
+    camcorder_audio::Capture audio;
+    std::int64_t audio_frames{}, video_frames{};
     VideoSize size;
     std::wstring path;
+
+    // Writes interleaved 16-bit stereo at the end of the sound written so far.
+    HRESULT write_audio(const std::vector<std::int16_t> &pcm) {
+        if (pcm.empty()) return S_OK;
+        const auto frames = static_cast<std::int64_t>(pcm.size() / audio_channels);
+        const auto bytes = static_cast<DWORD>(pcm.size() * sizeof(std::int16_t));
+        ComPtr<IMFMediaBuffer> buffer;
+        ComPtr<IMFSample> sample;
+        BYTE *data{};
+        HRESULT hr = MFCreateMemoryBuffer(bytes, &buffer);
+        if (SUCCEEDED(hr)) hr = buffer->Lock(&data, nullptr, nullptr);
+        if (SUCCEEDED(hr)) {
+            std::memcpy(data, pcm.data(), bytes);
+            buffer->Unlock();
+            hr = buffer->SetCurrentLength(bytes);
+        }
+        if (SUCCEEDED(hr)) hr = MFCreateSample(&sample);
+        if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer.Get());
+        if (SUCCEEDED(hr)) hr = sample->SetSampleTime(audio_frames * 10'000'000LL / audio_rate);
+        if (SUCCEEDED(hr)) hr = sample->SetSampleDuration(frames * 10'000'000LL / audio_rate);
+        if (SUCCEEDED(hr)) hr = writer->WriteSample(audio_stream, sample.Get());
+        if (SUCCEEDED(hr)) audio_frames += frames;
+        return hr;
+    }
 
     void run() {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -55,22 +85,34 @@ struct Writer::Impl {
         scaled.resize(size.width, size.height);
         std::vector<std::uint8_t> nv12;
         bool failed = false;
+        const auto fail = [&](const char *what, HRESULT hr) {
+            failed = true;
+            done.error = hresult(what, hr);
+        };
         for (;;) {
-            RawFrame frame;
+            std::optional<RawFrame> frame;
+            bool last = false;
             {
                 std::unique_lock lock(mutex);
-                wake.wait(lock, [&] { return !queue.empty() || finishing; });
-                if (queue.empty()) break;
-                frame = std::move(queue.front());
-                queue.pop_front();
+                // Wakes for a picture, or every 30 ms to write the sound that came in meanwhile.
+                wake.wait_for(lock, std::chrono::milliseconds(30), [&] { return !queue.empty() || finishing; });
+                if (!queue.empty()) {
+                    frame = std::move(queue.front());
+                    queue.pop_front();
+                } else if (finishing) {
+                    last = true;
+                }
             }
-            if (failed) continue;
-            convert_to_bgra(frame.bytes.data(), frame.pitch, frame.width, frame.height, frame.format, picture,
-                            frame.white_nits);
+            if (sound && !failed)
+                if (const HRESULT hr = write_audio(audio.take()); FAILED(hr)) fail("Encoding the sound", hr);
+            if (last) break;
+            if (!frame || failed) continue;
+            convert_to_bgra(frame->bytes.data(), frame->pitch, frame->width, frame->height, frame->format, picture,
+                            frame->white_nits);
             scale_bgra(picture, scaled);
-            apply_vignette(scaled, frame.vignette);
+            apply_vignette(scaled, frame->vignette);
             bgra_to_nv12(scaled, nv12);
-            for (int i = 0; i < frame.repeats && !failed; ++i) {
+            for (int i = 0; i < frame->repeats && !failed; ++i) {
                 ComPtr<IMFMediaBuffer> buffer;
                 ComPtr<IMFSample> sample;
                 BYTE *data{};
@@ -81,18 +123,32 @@ struct Writer::Impl {
                     buffer->Unlock();
                     hr = buffer->SetCurrentLength(static_cast<DWORD>(nv12.size()));
                 }
+                // On the clip's clock: after a stall the picture skips ahead with the sound.
+                const auto index = frame->index + i;
                 if (SUCCEEDED(hr)) hr = MFCreateSample(&sample);
                 if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer.Get());
-                if (SUCCEEDED(hr)) hr = sample->SetSampleTime(done.frames * frame_duration);
+                if (SUCCEEDED(hr)) hr = sample->SetSampleTime(index * frame_duration);
                 if (SUCCEEDED(hr)) hr = sample->SetSampleDuration(frame_duration);
                 if (SUCCEEDED(hr)) hr = writer->WriteSample(stream, sample.Get());
                 if (FAILED(hr)) {
-                    failed = true;
-                    done.error = hresult("Encoding a frame", hr);
+                    fail("Encoding a frame", hr);
                 } else {
                     ++done.frames;
+                    video_frames = std::max(video_frames, index + 1);
                 }
             }
+        }
+        if (sound) {
+            audio.stop();
+            if (!failed) {
+                auto rest = audio.take();
+                // The sound runs to the end of the picture (all silence when it could not be captured).
+                const auto end = video_frames * frame_duration * audio_rate / 10'000'000LL;
+                const auto have = audio_frames + static_cast<std::int64_t>(rest.size() / audio_channels);
+                if (have < end) rest.resize(rest.size() + static_cast<std::size_t>(end - have) * audio_channels, 0);
+                if (const HRESULT hr = write_audio(rest); FAILED(hr)) fail("Encoding the sound", hr);
+            }
+            if (const auto why = audio.error(); !why.empty()) done.warning = "No sound: " + why;
         }
         if (!failed && done.frames > 0) {
             const HRESULT hr = writer->Finalize();
@@ -117,7 +173,7 @@ Writer::~Writer() {
     if (impl_->thread.joinable()) impl_->thread.join();
 }
 
-bool Writer::start(const std::wstring &path, VideoSize size, std::string &error) {
+bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double origin_seconds, std::string &error) {
     auto &s = *impl_;
     if (running()) {
         error = "A clip is still being written.";
@@ -155,6 +211,28 @@ bool Writer::start(const std::wstring &path, VideoSize size, std::string &error)
     if (SUCCEEDED(hr)) hr = describe(in.Get(), MFVideoFormat_NV12);
     if (SUCCEEDED(hr)) hr = in->SetUINT32(MF_MT_DEFAULT_STRIDE, static_cast<UINT32>(size.width));
     if (SUCCEEDED(hr)) hr = writer->SetInputMediaType(s.stream, in.Get(), nullptr);
+    // The sound: AAC at 192 kbit/s from 48 kHz 16-bit stereo.
+    const bool with_sound = sound != Sound::off;
+    if (SUCCEEDED(hr) && with_sound) {
+        ComPtr<IMFMediaType> audio_out, audio_in;
+        hr = MFCreateMediaType(&audio_out);
+        if (SUCCEEDED(hr)) hr = audio_out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        if (SUCCEEDED(hr)) hr = audio_out->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, audio_rate);
+        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, audio_channels);
+        if (SUCCEEDED(hr)) hr = audio_out->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 24000);
+        if (SUCCEEDED(hr)) hr = writer->AddStream(audio_out.Get(), &s.audio_stream);
+        if (SUCCEEDED(hr)) hr = MFCreateMediaType(&audio_in);
+        if (SUCCEEDED(hr)) hr = audio_in->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        if (SUCCEEDED(hr)) hr = audio_in->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, audio_rate);
+        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, audio_channels);
+        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, audio_channels * 2);
+        if (SUCCEEDED(hr)) hr = audio_in->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, audio_rate * audio_channels * 2);
+        if (SUCCEEDED(hr)) hr = writer->SetInputMediaType(s.audio_stream, audio_in.Get(), nullptr);
+    }
     if (SUCCEEDED(hr)) hr = writer->BeginWriting();
     if (FAILED(hr)) {
         error = hresult("Setting up the H.264 encoder", hr);
@@ -172,7 +250,10 @@ bool Writer::start(const std::wstring &path, VideoSize size, std::string &error)
         s.running = true;
         s.result.reset();
         s.dropped = 0;
+        s.sound = with_sound;
+        s.audio_frames = s.video_frames = 0;
     }
+    if (with_sound) s.audio.start(origin_seconds, sound);
     s.thread = std::thread([&s] { s.run(); });
     return true;
 }

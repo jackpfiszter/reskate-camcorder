@@ -128,11 +128,16 @@ TEST(pacer_keeps_29_97_whatever_the_frame_rate) {
         for (int i = 0; i <= static_cast<int>(hz * 10); ++i) total += pacer.due(100.0 + i / hz);
         CHECK_NEAR(static_cast<double>(total), 300, 2); // ten seconds
     }
-    // A 2-second stall is not filled with a frozen frame.
+    // A 2-second stall is not filled with a frozen frame: the clip skips ahead to keep the clock.
     FramePacer pacer;
-    pacer.due(0);
+    CHECK(pacer.due(0) == 1);
+    CHECK(pacer.first() == 0);
+    CHECK(pacer.due(1.0 / 29.97 + 1e-6) == 1);
+    CHECK(pacer.first() == 1);
     CHECK(pacer.due(2.0) == 4);
+    CHECK(pacer.first() == 60 - 4); // frames 56..59: 2 s in, at 29.97
     CHECK(pacer.due(2.0 + 1.0 / 30) == 1);
+    CHECK(pacer.first() == 60);
     CHECK(pacer.due(NAN) == 0);
 }
 

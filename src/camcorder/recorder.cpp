@@ -317,7 +317,7 @@ void bgra_to_nv12(const Image &image, std::vector<std::uint8_t> &out) {
 
 void FramePacer::start(double seconds) noexcept {
     start_ = seconds;
-    emitted_ = 0;
+    emitted_ = first_ = 0;
     started_ = true;
 }
 
@@ -331,6 +331,7 @@ int FramePacer::due(double seconds) noexcept {
     const int count = static_cast<int>(std::min<std::int64_t>(missing, max_repeat_));
     // A long stall (a load, a pause) is not filled with a frozen frame: what is beyond the repeats is let go.
     emitted_ = missing > max_repeat_ ? wanted : emitted_ + count;
+    first_ = emitted_ - count;
     return count;
 }
 

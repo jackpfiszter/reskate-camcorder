@@ -111,7 +111,12 @@ With a friend:
 REC writes an MP4 of the 4:3 picture to **Videos\ReSkate Camcorder** ("ReSkate 2026-10-12 14-03-22
 clip 01.mp4"); STBY closes it and a notice says where it went. 29.97 frames a second, H.264, the
 fisheye's round corners included, the readouts and hints not. HD (1440 x 1080) by default;
-`camcorder quality dv` (or the menu) records at the VX1000's own 640 x 480. No sound yet.
+`camcorder quality dv` (or the menu) records at the VX1000's own 640 x 480.
+
+Sound: the game's own audio only (Windows' per-program capture, Windows 10 version 2004 or later),
+so Discord, music players and notifications stay out. `camcorder sound vx` (or the menu) puts it
+through the VX mic: thin low end, rolled-off top, the level control pumping, slams breaking up.
+`camcorder sound off` records picture only.
 
 - [ ] REC for ten seconds of skating, then STBY: a notice names the file; it plays in any video
       player, about ten seconds long, smooth, colours right, no REC or hint text in it.
@@ -119,13 +124,17 @@ fisheye's round corners included, the readouts and hints not. HD (1440 x 1080) b
 - [ ] Two clips in a row: two files. A clip shot in DV quality is 640 x 480.
 - [ ] HDR display on (if you have one): colours in the file look normal, not washed out or dark.
 - [ ] Watch the frame rate while recording, and `logs\ReSkate.log` for "frames were dropped".
+- [ ] The clip has the game's sound, in sync with the picture (a board slam lands on the frame).
+      Play music or a video on the PC while recording: it must not be in the clip.
+- [ ] Skate into a quiet moment and out again: the sound stays in sync after it.
+- [ ] VX mic: the same line sounds thinner, more compressed, and breaks up on a hard landing.
+- [ ] If the notice says "No sound: ...", send that text.
 
 ### Known gaps (expected)
 
 - Tripods keep the height they were placed at; they don't follow the ground yet.
 - Hand shake always uses the on-board kind (wheel buzz), even on foot.
 - The fisheye is the wide angle plus round corners; straight lines don't bend yet.
-- Clips have no sound yet.
 - The recording is of what is on screen: it records the camcorder's picture only while you look
   through it.
 

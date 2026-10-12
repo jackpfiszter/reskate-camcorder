@@ -70,11 +70,14 @@ public:
     void start(double seconds) noexcept;
     // How many video frames the frame shown at `seconds` should become (0: none).
     int due(double seconds) noexcept;
+    // The video frame number (from 0 at the start) of the first of those: after a stall the clip
+    // skips ahead, so the picture stays on the clock, and on the sound.
+    std::int64_t first() const noexcept { return first_; }
     std::int64_t frames() const noexcept { return emitted_; }
 
 private:
     double start_{};
-    std::int64_t emitted_{};
+    std::int64_t emitted_{}, first_{};
     int max_repeat_;
     bool started_{};
 };

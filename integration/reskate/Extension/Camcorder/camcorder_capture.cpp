@@ -29,6 +29,7 @@ struct Slot {
     DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
     UINT64 fence{};
     int repeats{};
+    std::int64_t index{}; // the clip's frame number of the first of them
     float vignette{};
     SourceFormat source{};
 };
@@ -101,6 +102,7 @@ void collect(Capture &c) {
         frame.white_nits = hdr_white_nits;
         frame.vignette = slot.vignette;
         frame.repeats = slot.repeats;
+        frame.index = slot.index;
         void *data{};
         const D3D12_RANGE read{0, static_cast<SIZE_T>(slot.bytes)};
         if (SUCCEEDED(slot.buffer->Map(0, &read, &data)) && data) {
@@ -136,7 +138,8 @@ bool camcorder_capture_poll() {
     }
     if (auto result = c.writer.take_result()) {
         if (result->ok) {
-            say(NoticeLevel::info, "Clip saved.", narrow(result->path));
+            say(result->warning.empty() ? NoticeLevel::info : NoticeLevel::warning, "Clip saved.",
+                narrow(result->path) + (result->warning.empty() ? "" : " " + result->warning));
             if (const auto dropped = c.writer.dropped())
                 logging::printf(logging::Level::warning, logging::Channel::graphics,
                                 "Camcorder: %llu frames were dropped (the encoder fell behind).",
@@ -173,13 +176,17 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
         const auto folder = camcorder_video::clip_folder();
         std::string error = "Windows did not say where the Videos folder is.";
         bool started = false;
+        double origin = 0;
         if (!folder.empty()) {
             const auto time = std::time(nullptr);
             std::tm local{};
             localtime_s(&local, &time);
             const auto name = clip_file_name(status.clip, local);
             const auto path = folder + L"\\" + std::wstring(name.begin(), name.end());
-            started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box), error);
+            // The picture's pacer and the sound share this start, so they stay together.
+            origin = now_seconds();
+            started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box), published.sound,
+                                     origin, error);
         }
         if (!started) {
             c.failed_clip = status.clip;
@@ -188,7 +195,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
         }
         c.failed_clip = 0;
         c.recording = true;
-        c.pacer.start(now_seconds());
+        c.pacer.start(origin);
     }
     const int due = c.pacer.due(now_seconds());
     if (due <= 0) return;
@@ -255,6 +262,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
     slot->stage = Slot::Stage::recorded;
     slot->source = *source;
     slot->repeats = due;
+    slot->index = c.pacer.first();
     slot->vignette = published.frame.optics.fisheye ? published.frame.optics.vignette_radius : 0.0f;
     c.recorded = slot;
 }

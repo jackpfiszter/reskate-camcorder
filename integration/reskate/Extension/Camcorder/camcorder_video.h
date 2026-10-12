@@ -2,6 +2,7 @@
 // Writes the camcorder's clips to MP4 with Windows' own H.264 encoder (Media Foundation), on a thread
 // of its own: the render thread only hands it the picture's pixels as they came off the GPU, and
 // the converting (camcorder/recorder.h) and encoding happen here.
+#include "camcorder/audio.h"
 #include "camcorder/recorder.h"
 #include <cstdint>
 #include <memory>
@@ -19,6 +20,7 @@ struct RawFrame {
     float white_nits{200};
     float vignette{};  // the fisheye housing's shadow, camcorder::Optics::vignette_radius
     int repeats{1};    // how many video frames it becomes (camcorder::FramePacer)
+    std::int64_t index{}; // the first of them, from 0 at the clip's start (FramePacer::first)
 };
 
 struct Result {
@@ -26,6 +28,7 @@ struct Result {
     std::wstring path;   // the file
     std::int64_t frames{};
     std::string error;   // why not, when not ok
+    std::string warning; // saved, but something is missing (the sound, and why)
 };
 
 class Writer {
@@ -34,8 +37,11 @@ public:
     ~Writer();
     Writer(const Writer &) = delete;
     Writer &operator=(const Writer &) = delete;
-    // Opens `path` for a clip of `size` and starts the encoding thread. False and why when it cannot.
-    bool start(const std::wstring &path, camcorder::VideoSize size, std::string &error);
+    // Opens `path` for a clip of `size` and starts the encoding thread, and the game's sound unless
+    // `sound` is off. `origin_seconds` is the clip's start on the steady clock (the pacer's). False
+    // and why when it cannot.
+    bool start(const std::wstring &path, camcorder::VideoSize size, camcorder::Sound sound, double origin_seconds,
+               std::string &error);
     // Queues a picture; drops it (and counts it) when the encoder is too far behind.
     void push(RawFrame frame);
     // No more pictures: the thread encodes what is queued, closes the file and leaves a Result.

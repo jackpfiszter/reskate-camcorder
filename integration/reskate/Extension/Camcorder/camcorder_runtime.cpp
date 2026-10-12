@@ -32,6 +32,7 @@ struct State {
     bool owned{};            // update_party_camera holds the screen for us
     bool clean_feed{};
     bool dv{};
+    Sound sound{Sound::game};
     bool was_powered{};
     std::string last_detail;
     std::string refused; // why the game has not handed over its camera, while it has not
@@ -132,6 +133,7 @@ void publish(State &s, const Frame &frame) {
     s.published.clean_feed = s.clean_feed;
     s.published.operating = s.operating;
     s.published.dv = s.dv;
+    s.published.sound = s.sound;
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
     const auto &status = frame.status;
@@ -267,6 +269,16 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         if (!words.empty() && (words[0] == "dv" || words[0] == "hd")) s.dv = words[0] == "dv";
         else if (!words.empty()) return "Usage: camcorder quality hd|dv";
         return s.dv ? "Recording at 640 x 480, the VX1000's own size." : "Recording in HD (1440 x 1080).";
+    }
+    if (verb == "sound") {
+        const auto word = words.empty() ? std::string() : words[0];
+        if (word == "off") s.sound = Sound::off;
+        else if (word == "game" || word == "on") s.sound = Sound::game;
+        else if (word == "vx" || word == "mic") s.sound = Sound::vx_mic;
+        else if (!word.empty()) return "Usage: camcorder sound off|game|vx";
+        return s.sound == Sound::off    ? "Clips without sound."
+               : s.sound == Sound::game ? "Clips with the game's sound."
+                                        : "Clips with the game's sound through the VX mic.";
     }
     if (verb == "clean") {
         s.clean_feed = words.empty() || words[0] == "toggle" ? !s.clean_feed : words[0] == "on" || words[0] == "1";

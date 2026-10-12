@@ -410,15 +410,16 @@ index eb18b43..4e700cc 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  dingosdk_version_info(dingosdk_runtime "ReSkate mod runtime" "ReSkate.dll" VFT_DLL)
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 34634f2..f2a6eaf 100644
+index 34634f2..936c988 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
-@@ -2,6 +2,17 @@
+@@ -2,6 +2,18 @@
  add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
  target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
  
 +# The camcorder's model (Extension/Camcorder/Model): no game types, shared by the overlay and the runtime.
 +add_library(dingosdk_camcorder_model STATIC
++    Extension/Camcorder/Model/camcorder/audio.cpp
 +    Extension/Camcorder/Model/camcorder/camcorder.cpp
 +    Extension/Camcorder/Model/camcorder/commands.cpp
 +    Extension/Camcorder/Model/camcorder/recorder.cpp
@@ -431,7 +432,7 @@ index 34634f2..f2a6eaf 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -41,8 +52,12 @@ add_library(dingosdk_overlay STATIC
+@@ -41,8 +53,13 @@ add_library(dingosdk_overlay STATIC
      Extension/Trainer/trainer_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp
@@ -439,9 +440,10 @@ index 34634f2..f2a6eaf 100644
 +    Extension/Camcorder/camcorder_page.cpp
 +    Extension/Camcorder/camcorder_capture.cpp
 +    Extension/Camcorder/camcorder_video.cpp
++    Extension/Camcorder/camcorder_audio.cpp
  )
 -target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
-+target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model mfplat mfreadwrite mfuuid dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
++target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model mfplat mfreadwrite mfuuid mmdevapi dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
  
  # The window shown from the moment ReSkate loads until the game's own window appears.
  add_library(dingosdk_startup_window STATIC Extension/UI/Startup/startup_window.cpp)

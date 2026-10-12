@@ -99,8 +99,10 @@ What "record" can mean, from cheapest to most real:
    buffer before it draws the readouts (`camcorder_capture.cpp`, a ring of readback buffers, never
    waiting on the GPU), and a worker thread crops, scales, adds the fisheye's corners, converts to
    NV12 and encodes H.264 to MP4 with Windows' own Media Foundation (`camcorder_video.cpp`). The
-   pixel work and the 29.97 pacing are in the tested model (`recorder.h`). Picture only for now;
-   sound would be WASAPI loopback of the game's audio, muxed into the same file.
+   pixel work and the 29.97 pacing are in the tested model (`recorder.h`). Sound is the game's
+   process only (WASAPI process loopback, `camcorder_audio.cpp`), placed on the picture's clock
+   (gaps filled, overlaps trimmed: `audio.h`) and encoded as AAC beside the H.264; the VX mic
+   colours it like the camera's own microphone and level control.
 3. **Tape as data, re-filmed from replays (later).** Keep each clip's camera path, and play it
    back through the game's replay with the replay editor's own encoder
    (`addr::replay_export::submit_frame`). That is how a tripod could film while the player skates
