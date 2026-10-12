@@ -161,7 +161,9 @@ through the VX mic: thin low end, rolled-off top, the level control pumping, sla
 - [ ] The clip has the game's sound, in sync with the picture (a board slam lands on the frame).
       Play music or a video on the PC while recording: it must not be in the clip.
 - [ ] Skate into a quiet moment and out again: the sound stays in sync after it.
-- [ ] VX mic: the same line sounds thinner, more compressed, and breaks up on a hard landing.
+- [ ] VX mic: the same line sounds thinner and more compressed; a hard landing rounds off, not crunches.
+- [ ] With a friend doing tricks nearby (or several skaters at once): pops and slams are loud but
+      clean in the clip, no clicks or crackle, in both game sound and VX mic.
 - [ ] If the notice says "No sound: ...", send that text.
 - [ ] Three short clips, then `camcorder tape capture` (or CAPTURE THE TAPE): "Tape captured." and
       one file, "ReSkate ... tape 1 (3 clips).mp4", with the clips back to back, sound in step at

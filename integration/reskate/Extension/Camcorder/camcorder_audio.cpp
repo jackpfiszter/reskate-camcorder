@@ -43,6 +43,21 @@ std::string failed(const char *what, HRESULT result) {
                   static_cast<unsigned long>(result));
     return text;
 }
+#ifndef WAVE_FORMAT_IEEE_FLOAT
+#define WAVE_FORMAT_IEEE_FLOAT 0x0003
+#endif
+// The clip's rate and channels, as 32-bit floats (the game's mix before anything clips it) or,
+// where Windows will not give those, 16-bit samples.
+WAVEFORMATEX clip_format(bool floating) {
+    WAVEFORMATEX format{};
+    format.wFormatTag = floating ? WAVE_FORMAT_IEEE_FLOAT : WAVE_FORMAT_PCM;
+    format.nChannels = audio_channels;
+    format.nSamplesPerSec = audio_rate;
+    format.wBitsPerSample = floating ? 32 : 16;
+    format.nBlockAlign = static_cast<WORD>(audio_channels * format.wBitsPerSample / 8);
+    format.nAvgBytesPerSec = audio_rate * format.nBlockAlign;
+    return format;
+}
 double now_seconds() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -55,14 +70,17 @@ struct Capture::Impl {
     std::thread thread;
     HANDLE stop_event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
 
-    void run(double origin, Sound sound) {
+    void run(double origin, Sound mode) {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         const auto fail = [&](std::string why) {
             std::lock_guard lock(mutex);
             error = std::move(why);
         };
         HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        SoundTrack track;
         [&] {
+          // Floats first; a client whose Initialize failed is not used again, so 16-bit gets a new one.
+          for (const bool floating : {true, false}) {
             // Only this process (the game) and what it starts: no Discord, no music player, no notifications.
             AUDIOCLIENT_ACTIVATION_PARAMS params{};
             params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
@@ -82,24 +100,20 @@ struct Capture::Impl {
             if (FAILED(handler->result)) return fail(failed("Starting the game's sound capture", handler->result));
             auto client = handler->client;
             // The loopback device has no format of its own: ask for the clip's.
-            WAVEFORMATEX format{};
-            format.wFormatTag = WAVE_FORMAT_PCM;
-            format.nChannels = audio_channels;
-            format.nSamplesPerSec = audio_rate;
-            format.wBitsPerSample = 16;
-            format.nBlockAlign = static_cast<WORD>(audio_channels * 2);
-            format.nAvgBytesPerSec = audio_rate * format.nBlockAlign;
+            const auto format = clip_format(floating);
             constexpr REFERENCE_TIME second = 10'000'000;
             hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
                                     second, 0, &format, nullptr);
+            if (FAILED(hr) && floating) continue;
             ComPtr<IAudioCaptureClient> capture;
             if (SUCCEEDED(hr)) hr = client->SetEventHandle(ready);
             if (SUCCEEDED(hr)) hr = client->GetService(IID_PPV_ARGS(&capture));
             if (SUCCEEDED(hr)) hr = client->Start();
             if (FAILED(hr)) return fail(failed("Setting up the game's sound capture", hr));
-            AudioTimeline timeline;
-            timeline.start(origin);
+            track.start(origin);
             VxMic mic;
+            Limiter limiter;
+            std::vector<float> sound;
             std::vector<std::int16_t> packet;
             const HANDLE waits[]{stop_event, ready};
             for (;;) {
@@ -111,23 +125,42 @@ struct Capture::Impl {
                     DWORD flags{};
                     UINT64 device_position{}, qpc_position{};
                     if (FAILED(capture->GetBuffer(&data, &frames, &flags, &device_position, &qpc_position))) break;
-                    packet.assign(static_cast<std::size_t>(frames) * audio_channels, 0);
-                    if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data)
-                        std::memcpy(packet.data(), data, packet.size() * sizeof(std::int16_t));
+                    const std::size_t count = static_cast<std::size_t>(frames) * audio_channels;
+                    sound.assign(count, 0.0f);
+                    if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data) {
+                        if (floating) {
+                            std::memcpy(sound.data(), data, count * sizeof(float));
+                        } else {
+                            const auto *pcm = reinterpret_cast<const std::int16_t *>(data);
+                            for (std::size_t i = 0; i < count; ++i) sound[i] = pcm[i] / 32768.0f;
+                        }
+                    }
                     capture->ReleaseBuffer(frames);
-                    if (sound == Sound::vx_mic) mic.process(packet.data(), frames);
+                    if (mode == Sound::vx_mic) mic.process(sound.data(), frames);
+                    // Loud moments (several skaters at once) come down smoothly instead of clipping.
+                    limiter.process(sound.data(), frames);
+                    packet.resize(count);
+                    to_pcm16(sound.data(), count, packet.data());
                     // When it was played: the packet's own clock time (100 ns units of the
                     // performance counter, the steady clock's), or now when it has none.
                     const bool timed = qpc_position && !(flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR);
-                    const double at = timed ? static_cast<double>(qpc_position) / 1e7
-                                            : now_seconds() - static_cast<double>(frames) / audio_rate;
+                    const double played = timed ? static_cast<double>(qpc_position) / 1e7
+                                                : now_seconds() - static_cast<double>(frames) / audio_rate;
+                    // The limiter hands each frame on its lookahead later than it came.
+                    const double at = played - static_cast<double>(Limiter::lookahead) / audio_rate;
                     std::lock_guard lock(mutex);
-                    place_packet(timeline, at, packet.data(), frames, pending);
+                    track.add(at, packet.data(), frames, pending);
                 }
                 if (woke == WAIT_OBJECT_0) break;
             }
             client->Stop();
+            return;
+          }
         }();
+        {
+            std::lock_guard lock(mutex);
+            track.flush(pending); // the last couple of milliseconds, held back for a fade
+        }
         CloseHandle(ready);
         if (SUCCEEDED(com)) CoUninitialize();
     }
