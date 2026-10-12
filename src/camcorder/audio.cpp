@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "camera_math.h"
 #include <algorithm>
 #include <cmath>
 
@@ -38,7 +39,7 @@ void place_packet(AudioTimeline &timeline, double seconds, const std::int16_t *s
 
 void VxMic::process(float *interleaved, std::size_t frames) noexcept {
     if (!interleaved) return;
-    constexpr float pi = 3.14159265f, rate = static_cast<float>(audio_rate);
+    constexpr float rate = static_cast<float>(audio_rate);
     const auto coefficient = [](float seconds) { return 1 - std::exp(-1 / (std::max(seconds, 1e-4f) * rate)); };
     // A small capsule: little below the high cut, rolled off above the low cut.
     const float high_cut = std::clamp(mic_.high_cut, 10.0f, 2000.0f), low_cut = std::clamp(mic_.low_cut, 1000.0f, 23000.0f);
@@ -154,7 +155,7 @@ void SoundTrack::flush(std::vector<std::int16_t> &out) {
     out.insert(out.end(), tail_.begin(), tail_.end());
     tail_.clear();
 }
-EarPlacement ear_placement(const Matrix &camera, Vec3 skater) noexcept {
+EarPlacement ear_placement(const std::array<float, 16> &camera, const std::array<float, 3> &skater) noexcept {
     const auto to = sub(skater, matrix_position(camera));
     const float distance = length(to);
     if (!std::isfinite(distance)) return {};

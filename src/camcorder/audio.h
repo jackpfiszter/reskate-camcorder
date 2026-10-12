@@ -9,7 +9,6 @@
 // silent and packets come a little early or late, so the timeline fills gaps with silence and trims
 // overlaps: the sound never drifts off the picture. Each such jump is faded over two milliseconds
 // either side, or it would click (SoundTrack).
-#include "camera_math.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -124,7 +123,8 @@ struct EarPlacement {
     float side{};     // -1 hard left of the picture, 1 hard right
     bool operator==(const EarPlacement &) const = default;
 };
-EarPlacement ear_placement(const Matrix &camera, Vec3 skater) noexcept;
+// `camera` a camera matrix (camera_math.h: right, up, back, position), `skater` a position.
+EarPlacement ear_placement(const std::array<float, 16> &camera, const std::array<float, 3> &skater) noexcept;
 
 // The game's sound as the camera would hear it: further off it is quieter and duller (the air takes
 // the highs), and it comes from the skater's side of the picture. Close to the skater (handheld) it

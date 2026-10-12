@@ -1,4 +1,5 @@
 #include "camcorder/audio.h"
+#include "camcorder/camera_math.h"
 #include "check.h"
 #include <cmath>
 
