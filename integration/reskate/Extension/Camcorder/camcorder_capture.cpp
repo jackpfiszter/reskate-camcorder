@@ -14,6 +14,8 @@
 #include <atomic>
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <sstream>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -79,6 +81,7 @@ struct Capture {
     std::uint32_t still_served{}, capture_served{};
     StillJob still;
     TapeLog tape_log;
+    bool tape_loaded{}; // last game's clip list read back
     camcorder_tape::Capture tape;
     std::mutex last_mutex;
     std::string last;
@@ -265,6 +268,37 @@ void camcorder_capture_output(DXGI_FORMAT format, int transfer) {
     c.transfer = transfer;
 }
 
+namespace {
+// The tape's clip list, kept between games beside the settings: the clips stay on the disk, and
+// so does the tape (until `camcorder tape new`). Clips deleted since are left out.
+std::wstring tape_list_path() {
+    const auto folder = camcorder_media::folder(FOLDERID_LocalAppData);
+    return folder.empty() ? folder : folder + L"\\tape.txt";
+}
+void save_tape_list(const TapeLog &log) {
+    const auto path = tape_list_path();
+    if (path.empty()) return;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    for (const auto &clip : log.clips()) file << camcorder_media::narrow(clip) << '\n';
+}
+std::vector<std::wstring> load_tape_list() {
+    std::vector<std::wstring> clips;
+    const auto path = tape_list_path();
+    if (path.empty()) return clips;
+    std::ifstream file(path, std::ios::binary);
+    for (std::string line; std::getline(file, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        const int size = MultiByteToWideChar(CP_UTF8, 0, line.c_str(), static_cast<int>(line.size()), nullptr, 0);
+        if (size <= 0) continue;
+        std::wstring clip(static_cast<std::size_t>(size), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, line.c_str(), static_cast<int>(line.size()), clip.data(), size);
+        if (GetFileAttributesW(clip.c_str()) != INVALID_FILE_ATTRIBUTES) clips.push_back(std::move(clip));
+    }
+    return clips;
+}
+} // namespace
+
 bool camcorder_capture_poll() {
     auto &c = capture();
     collect(c);
@@ -278,10 +312,17 @@ bool camcorder_capture_poll() {
         c.stopping = false;
         c.writer.finish();
     }
-    c.tape_log.tape(published.tape);
+    if (!c.tape_loaded) {
+        c.tape_loaded = true;
+        c.tape_log.restore(published.tape, load_tape_list());
+    } else if (published.tape != c.tape_log.number()) {
+        c.tape_log.tape(published.tape); // a new tape: an empty list
+        save_tape_list(c.tape_log);
+    }
     if (auto result = c.writer.take_result()) {
         if (result->ok) {
             c.tape_log.saved(result->path);
+            save_tape_list(c.tape_log);
             {
                 std::lock_guard lock(c.last_mutex);
                 c.last_clip = result->path;
@@ -310,9 +351,12 @@ bool camcorder_capture_poll() {
         say(NoticeLevel::warning, "No still taken.", "Turn the camcorder on first.");
     }
     // Capturing the tape.
-    if (published.capture_tape != c.capture_served) {
+    // (Asked for straight after STBY, it waits for that clip to be saved, so it is on the tape.)
+    if (published.capture_tape != c.capture_served && !c.stopping && !c.writer.running() && !in_flight(c)) {
         c.capture_served = published.capture_tape;
-        if (c.tape_log.clips().empty()) {
+        if (c.recording) {
+            say(NoticeLevel::warning, "Not while recording.", "Press STBY, then capture the tape.");
+        } else if (c.tape_log.clips().empty()) {
             say(NoticeLevel::warning, "Nothing to capture.", "Record some clips on this tape first.");
         } else if (c.tape.running()) {
             say(NoticeLevel::warning, "Already capturing a tape.", "");
@@ -462,7 +506,12 @@ std::string camcorder_capture_last() {
 }
 
 std::wstring camcorder_capture_last_clip() {
-    std::lock_guard lock(capture().last_mutex);
-    return capture().last_clip;
+    auto &c = capture();
+    {
+        std::lock_guard lock(c.last_mutex);
+        if (!c.last_clip.empty()) return c.last_clip;
+    }
+    // None yet this game: the tape's last, from last game (render thread, as the tape list is).
+    return c.tape_log.clips().empty() ? std::wstring() : c.tape_log.clips().back();
 }
 } // namespace dingosdk::overlay

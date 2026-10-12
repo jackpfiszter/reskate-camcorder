@@ -1,5 +1,5 @@
 diff --git a/Engine/Game/Input/controller_bindings.h b/Engine/Game/Input/controller_bindings.h
-index 639ed1e..ed9daaf 100644
+index 639ed1e..2938c5d 100644
 --- a/Engine/Game/Input/controller_bindings.h
 +++ b/Engine/Game/Input/controller_bindings.h
 @@ -89,7 +89,7 @@ struct ControllerInput {
@@ -18,7 +18,7 @@ index 639ed1e..ed9daaf 100644
 +    {"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"},
 +    {"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"},
 +    {"camcorder_operate", "camoperate", "Camcorder: pad to camera", "camcorder operate toggle"},
-+    {"camcorder_aim", "camaim", "Camcorder: steer while filming", "camcorder aim toggle"},
++    {"camcorder_aim", "camaim", "Camcorder: aim while filming", "camcorder aim toggle"},
 +    {"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"},
 +    {"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"},
 +    {"camcorder_still", "camstill", "Camcorder: take a still", "camcorder still"},
@@ -217,7 +217,7 @@ index 4130fa7..829ab35 100644
              s.last_skater_bones = local.pose.skater.size();
              s.last_board_bones = local.pose.board.empty() ? 0 : local.pose.board.size() - 1;
 diff --git a/Extension/UI/Overlay/input_capture.cpp b/Extension/UI/Overlay/input_capture.cpp
-index a3e4896..eb83763 100644
+index a3e4896..11d36b1 100644
 --- a/Extension/UI/Overlay/input_capture.cpp
 +++ b/Extension/UI/Overlay/input_capture.cpp
 @@ -36,6 +36,17 @@ bool block_polled_input() {
@@ -359,7 +359,25 @@ index a3e4896..eb83763 100644
      }
      return capture ? 0 : result;
  }
-@@ -564,7 +607,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
+@@ -548,13 +591,15 @@ BOOL WINAPI captured_release_capture() {
+     return original<BOOL(WINAPI*)()>(input_hooks().release_capture)();
+ }
+ HCURSOR WINAPI captured_cursor(HCURSOR cursor) {
+-    if (block_polled_input()) return GetCursor();
++    // Only the menu's pointer is ours. While Freecam or the camcorder hold the input the game keeps
++    // hiding its cursor (SetCursor(nullptr) on each WM_SETCURSOR), or Windows' arrow shows over the picture.
++    if (block_polled_input() && owns_menu_cursor(state())) return GetCursor();
+     return original<HCURSOR(WINAPI*)(HCURSOR)>(input_hooks().cursor)(cursor);
+ }
+ int WINAPI captured_show_cursor(BOOL show) {
+     // ImGui draws the menu cursor. Do not let the game change the OS display
+     // counter while it is open; the counter resumes unchanged on close.
+-    if (block_polled_input()) return show ? 0 : -1;
++    if (block_polled_input() && owns_menu_cursor(state())) return show ? 0 : -1;
+     return original<int(WINAPI*)(BOOL)>(input_hooks().show_cursor)(show);
+ }
+ BOOL WINAPI captured_physical_cursor(int x, int y) {
+@@ -564,7 +609,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
  BOOL WINAPI captured_cursor_position(LPPOINT output) {
      thread_local POINT last{};
      thread_local bool sampled = false;
@@ -368,7 +386,7 @@ index a3e4896..eb83763 100644
      const auto result = original<BOOL(WINAPI*)(LPPOINT)>(input_hooks().cursor_position)(output);
      if (result && output && !overlay_input_access) { last = *output; sampled = true; }
      return result;
-@@ -584,6 +627,8 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
+@@ -584,6 +629,8 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
          // The game must notice a neutral state even if the physical packet did
          // not change between opening the menu and its next controller poll.
          output->dwPacketNumber ^= 0x80000000u;
@@ -377,7 +395,7 @@ index a3e4896..eb83763 100644
      }
      return result;
  }
-@@ -768,6 +813,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -768,6 +815,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) buttons |= 4u;
      if (flags & RI_MOUSE_MIDDLE_BUTTON_UP) buttons &= ~4u;
      s.raw_mouse_buttons.store(buttons);

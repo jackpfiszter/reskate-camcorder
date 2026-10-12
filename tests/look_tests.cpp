@@ -53,7 +53,7 @@ TEST(dv_look_off_leaves_the_picture_alone) {
 TEST(a_field_fills_the_other_lines_from_its_own) {
     DvLook look;
     look.on = true;
-    look.highlights = look.white_balance = look.sharpen = look.chroma = false;
+    look.highlights = look.white_balance = look.sharpen = look.chroma = look.grain = false;
     for (int parity = 0; parity < 2; ++parity) {
         auto image = gradient(32, 24);
         const auto before = image;
@@ -73,7 +73,7 @@ TEST(a_field_fills_the_other_lines_from_its_own) {
 TEST(highlights_clip_white_early_and_blacks_get_dense) {
     DvLook look;
     look.on = true;
-    look.fields = look.white_balance = look.sharpen = look.chroma = false;
+    look.fields = look.white_balance = look.sharpen = look.chroma = look.grain = false;
     Image image;
     image.resize(3, 1);
     const std::uint8_t values[3][3] = {{8, 8, 8}, {240, 240, 240}, {120, 160, 250}};
@@ -90,7 +90,7 @@ TEST(highlights_clip_white_early_and_blacks_get_dense) {
 TEST(white_balance_wanders_over_a_clip) {
     DvLook look;
     look.on = true;
-    look.fields = look.highlights = look.sharpen = look.chroma = false;
+    look.fields = look.highlights = look.sharpen = look.chroma = look.grain = false;
     Image grey;
     grey.resize(4, 4);
     std::fill(grey.pixels.begin(), grey.pixels.end(), std::uint8_t{128});
@@ -110,7 +110,7 @@ TEST(white_balance_wanders_over_a_clip) {
 TEST(sharpening_rings_on_an_edge) {
     DvLook look;
     look.on = true;
-    look.fields = look.highlights = look.white_balance = look.chroma = false;
+    look.fields = look.highlights = look.white_balance = look.chroma = look.grain = false;
     Image image;
     image.resize(16, 1);
     for (int x = 0; x < 16; ++x) std::fill_n(image.pixels.begin() + x * 4, 3, static_cast<std::uint8_t>(x < 8 ? 60 : 180));
@@ -123,7 +123,7 @@ TEST(sharpening_rings_on_an_edge) {
 TEST(chroma_smears_colour_but_keeps_brightness) {
     DvLook look;
     look.on = true;
-    look.fields = look.highlights = look.white_balance = look.sharpen = false;
+    look.fields = look.highlights = look.white_balance = look.sharpen = look.grain = false;
     Image image;
     image.resize(40, 1);
     for (int x = 0; x < 40; ++x) {
@@ -195,9 +195,9 @@ TEST(the_screen_look_follows_the_camera_and_the_switches) {
     auto s = screen_look(finish, {0.2f}, 5);
     CHECK(s.on);
     CHECK_NEAR(s.black_crush, finish.look.black_crush, 1e-6);
-    CHECK_NEAR(s.highlight_gain, 1.1, 1e-6);
+    CHECK_NEAR(s.highlight_gain, 1.15, 1e-6);
     CHECK(s.highlight_bleed);
-    CHECK_NEAR(s.sharpen, 0.44, 1e-6);
+    CHECK_NEAR(s.sharpen, 0.6, 1e-6);
     CHECK_NEAR(s.grain, 0.3, 1e-6);
     CHECK_NEAR(s.chroma_width, 4, 1e-6);
     CHECK_NEAR(s.softness, 1.5, 1e-6);

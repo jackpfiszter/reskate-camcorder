@@ -65,7 +65,7 @@ The camera rides on your skater, held in your right hand.
   triggers zoom. Off again, the pad is the skater's and lock on keeps filming. This is the
   main trade-off to test in play; a chord (hold LB + RB for camera controls, as the Trainer's
   pad shortcuts do) is the alternative if a toggle feels clumsy.
-- **Steer while filming.** Following a friend's line you need both: `camcorder aim` splits the
+- **Aim while filming.** Following a friend's line you need both: `camcorder aim` splits the
   input instead of taking all of it. The game keeps the keyboard, the left stick and the
   buttons; the camera takes the right stick, the triggers and the mouse (the wheel zooms, a
   notch at a time like a thumb on the rocker). ReSkate's overlay does the split where it already
@@ -153,7 +153,7 @@ best done with the ReSkate developers, who keep their own notes on it.
 
 A cheap stand-in, alternating frames (game camera, camcorder, game camera...), would halve the
 frame rate of both, flicker, and upset the game's temporal anti-aliasing and motion blur, so it
-is not built. Until there is a real second view, "steer while filming" is the answer: you look
+is not built. Until there is a real second view, "aim while filming" is the answer: you look
 through the camcorder and steer by it, as real filmers do.
 
 ## The look
@@ -190,7 +190,7 @@ action is also a console command.
 | Camera on / off | `camcorder power toggle` |
 | REC / STBY | `camcorder rec` |
 | Pad to camera / to skater | `camcorder operate toggle` |
-| Steer while filming | `camcorder aim toggle` |
+| Aim while filming | `camcorder aim toggle` |
 | Take a still | `camcorder still` |
 | Capture the tape | `camcorder tape capture` |
 | Set up a tripod here | `camcorder tripod place` |

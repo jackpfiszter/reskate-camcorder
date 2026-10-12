@@ -18,11 +18,12 @@ and skate the line.
   degrees across), the servo's real speeds (4.1 s end to end flat out, 20 s creeping), a 4:3
   picture, and the Century Optics 0.3x fisheye: about 125 degrees, straight lines bending as
   through the real glass, with round black corners at full wide that clear with a touch of zoom.
-- **Handheld.** You are the filmer; the camera rides with your skater on a long grip (low, the
-  fisheye follow shot), at the hip or at eye level. Lock on to a friend and the camera keeps
-  them framed by itself, a little late like a real operator, so you can keep both hands on
-  skating, or steer while filming: skate on the keys or left stick, aim with the mouse or right
-  stick. Hand shake comes from breathing, the board's wheels and, on foot, footsteps.
+- **Handheld.** You are the filmer; the camera rides with your skater, low on a long grip (the
+  fisheye follow shot), at the hip or at eye level, raised and lowered on the fly. Lock on to a
+  friend (or whoever is closest) and the camera keeps them framed by itself, a little late like a
+  real operator, so you can keep both hands on skating, or aim while filming: skate on the keys
+  or left stick, aim with the mouse or right stick. Hand shake wanders like real hands (no loop
+  to it), with the board's wheels and, on foot, footsteps.
 - **Tripods.** Set up to four at a spot: carry each over the ground (it stands on what's under
   it), set the height (ground pod
   to 2 m) and aim, then lock it off, pan it by hand against a fluid head's drag, or let it follow
@@ -33,18 +34,20 @@ and skate the line.
   Videos\ReSkate Camcorder, at 29.97 frames a second, in HD or the VX1000's own 640 x 480, with
   the game's own sound (nothing else on the PC), clean or through the VX mic. Stills go to
   Pictures\ReSkate Camcorder as JPEGs.
-- **The tape look.** Optionally, clips and stills look like MiniDV: 60 fields of video motion,
-  a CCD's hard white, drifting colour, sharpened edges, smeared colour, and the camcorder's date
-  stamp (any year you like).
-- **Everything about a camera is data, from mods.** Cameras, lenses and grips are small JSON files
+- **The tape look.** On screen, in clips and in stills: the camera's 480 lines, 60 fields of
+  video motion, a CCD's hard white, drifting colour, sharpened edges, smeared colour, a little
+  noise, and the camcorder's date stamp (any year you like). A camera light for night sessions.
+- **Sound from where the camera is.** On a tripod across the spot, the skater gets quieter and
+  duller further off, and sounds from their side of the picture.
+- **Everything about a camera is data, from mods.** Cameras, lenses and rigs are small JSON files
   in an ordinary ReSkate mod: zoom, sensor, frame rate (60i, 50i, 30p, 25p, 24p, Super 8's 18),
-  tape length, the look, the date stamp, the mic; a grip's height and reach; and a `handling.json`
+  tape length, the look, the date stamp, the mic; a rig's height and reach; and a `handling.json`
   for how it all feels (aim speed, operator lag, shake, tripods, mouse). ReSkate.dll keeps only
   the workings, so the camcorder can change through the mod browser with no ReSkate update.
   `examples/mods/Camcorder Extras` adds a VX2000, a Hi8 handycam, Super 8 film, a wide converter,
   a pole cam and a board cam; [docs/MODDING.md](docs/MODDING.md) has every field.
 - **Easy to use.** One click binds the keys (F5 to F10); a quick menu over the viewfinder changes
-  the camera, lens and grip or records without opening the ReSkate menu; a short guide the first
+  the camera, lens, look, light and height or records without opening the ReSkate menu; a short guide the first
   time; aim speed and invert; and review: the last clip plays back in the viewfinder, so you know
   you got the trick.
 - **The tape.** 29.97 drop-frame timecode, a 60-minute MiniDV cassette that runs out, and a
@@ -85,7 +88,7 @@ is set for MSVC, as ReSkate uses.
 ## Console commands
 
 Every action is a console command (`~` in game), so players can bind them to buttons:
-`camcorder power|rec|stop|still|review|quick|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|sensitivity|invert|guide|open|mods|export|status`.
+`camcorder power|rec|stop|still|review|quick|mode|camera|lens|warp|grip|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|rig|sensitivity|invert|guide|open|mods|export|status`.
 Settings are kept between games in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 See [docs/DESIGN.md](docs/DESIGN.md#controls-proposed).
 

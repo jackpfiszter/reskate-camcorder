@@ -35,6 +35,7 @@ struct PicturePass {
     float colour[4]{}; // red gain, blue gain, sharpen, grain
     float tape[4]{};   // chroma width, softness (in 720ths), screen pixels per 720th, frame
     float output[4]{}; // transfer, white (nits), highlight bleed (0 / 1), 0
+    float camera[4]{}; // the camera's lines (0: the screen's own), light strength (0 off), light reach, 0
 };
 // Whether the picture pass can be drawn (built on first ask; false for good if it cannot be).
 bool camcorder_picture_pass_ready();

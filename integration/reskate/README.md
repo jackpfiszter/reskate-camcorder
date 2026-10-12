@@ -64,7 +64,7 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
    `{"camcorder_tripod", "tripod", "Camcorder: set up a tripod", "camcorder tripod place"}`,
    `{"camcorder_cut", "cut", "Camcorder: next tripod", "camcorder tripod next"}`.
 
-   (The patch has the full list: steer while filming and take a still too.)
+   (The patch has the full list: aim while filming and take a still too.)
 
 8. **Menu** (`Extension/UI/Overlay/skate_menu.cpp`): a CAMCORDER page that only sends
    `camcorder ...` commands, as the Trainer page does.
@@ -73,7 +73,7 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
    present path, before the readouts are drawn (`camcorder_capture.cpp`); Media Foundation and
    process-loopback audio are linked in `cmake/UI.cmake`.
 
-10. **Steer while filming** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
+10. **Aim while filming** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
     partial hold beside Freecam's full one. `DingoSDKOverlaySetCameraAimCapture` keeps the right
     stick, the triggers and the mouse from the game (XInput, PlayStation HID reports, raw mouse
     records, mouse messages, the cursor) and leaves it the keyboard, the left stick and the

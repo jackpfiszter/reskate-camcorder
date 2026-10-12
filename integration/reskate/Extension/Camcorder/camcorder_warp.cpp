@@ -1,6 +1,7 @@
 #include "camcorder_warp.h"
 #include "camcorder_runtime.h"
 #include "Engine/Core/Log/logging.h"
+#include "Extension/UI/Overlay/overlay.h"
 #include <backends/imgui_impl_dx12.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
@@ -59,6 +60,7 @@ cbuffer Pass : register(b0) {
     float4 colour;  // red gain, blue gain, sharpen, grain
     float4 tape;    // chroma width, softness (both in pixels of a 720-wide picture), screen pixels per such pixel, frame
     float4 output;  // transfer (0 SDR, 1 scRGB, 2 HDR10), white (nits), highlight bleed (0 / 1), unused
+    float4 camera;  // the camera's lines (0: the screen's own), light strength (0 off), light reach (picture half widths), unused
 };
 Texture2D picture : register(t0);
 SamplerState linear_clamp : register(s0);
@@ -118,8 +120,34 @@ float3 out_of_look(float3 e) {
 }
 
 float luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+float3 game_at(float2 pixel) { return into_look(picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb); }
+// The picture as the camera's sensor and tape hold it: `camera.x` lines from top to bottom, each the
+// average of its height, and the screen's rows in between them a blend of the two nearest (a tape
+// line is 2 to 3 screen rows on a 1080p or 1440p screen: the camera's softness and its stair-steps).
 float3 sample_at(float2 pixel, float along) {
-    return into_look(picture.SampleLevel(linear_clamp, source_uv(pixel + float2(along, 0)), 0).rgb);
+    pixel.x += along;
+    if (camera.x < 1) return game_at(pixel);
+    float cell = rect.w / camera.x;
+    float row = (pixel.y - rect.y) / cell - 0.5;
+    float first = floor(row);
+    float y0 = rect.y + (first + 0.5) * cell, y1 = y0 + cell;
+    float3 a = 0.5 * (game_at(float2(pixel.x, y0 - cell * 0.25)) + game_at(float2(pixel.x, y0 + cell * 0.25)));
+    float3 b = 0.5 * (game_at(float2(pixel.x, y1 - cell * 0.25)) + game_at(float2(pixel.x, y1 + cell * 0.25)));
+    return lerp(a, b, row - first);
+}
+// A light on the camera, pointing where it points: what is in the middle of the frame is lit most,
+// falling off to the edges. Without the scene's depth it can only scale the light already there
+// (a lamp lifts what the game lights a little; a black sky stays black), in linear light, so the
+// middle of a night shot comes up and its brightest parts burn out as under a real camera light.
+float3 camera_light(float3 c, float2 pixel) {
+    if (camera.y <= 0) return c;
+    float2 p = picture_point(pixel);
+    float r = length(p) / max(camera.z, 0.05);
+    float beam = exp(-r * r * 1.6);
+    float3 lin = srgb_decode(c);
+    float3 warm = float3(1.0, 0.96, 0.88); // a halogen lamp on a camera balanced for daylight
+    lin *= 1 + camera.y * beam * warm;
+    return srgb_encode(lin);
 }
 // Noise for one 720-wide pixel and frame, about -1 to 1 (two draws added, as in look.cpp).
 float grain_noise(float2 cell, float frame) {
@@ -132,7 +160,10 @@ float grain_noise(float2 cell, float frame) {
 
 float4 ps(float4 position : SV_Position) : SV_Target {
     float2 pixel = position.xy;
-    if (tone.x < 0.5) return float4(picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb, 1);
+    if (tone.x < 0.5) {
+        if (camera.y <= 0) return float4(picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb, 1);
+        return float4(out_of_look(camera_light(game_at(pixel), pixel)), 1);
+    }
     float step_px = tape.z; // screen pixels in one pixel of a 720-wide picture
     float3 centre = sample_at(pixel, 0);
     // The tape: brightness softened over `softness`, colour averaged over `chroma width`, along the line.
@@ -151,7 +182,7 @@ float4 ps(float4 position : SV_Position) : SV_Target {
     // The camera's edge enhancement, on brightness, a 720-wide pixel either side.
     float detail = 2 * luma(centre) - luma(sample_at(pixel, -step_px)) - luma(sample_at(pixel, step_px));
     y += detail * colour.z * 0.5;
-    float3 c = y + chroma / chroma_count;
+    float3 c = camera_light(y + chroma / chroma_count, pixel);
     // White balance, dense blacks, early white, saturation, and blown highlights going white.
     c *= float3(colour.x, 1, colour.y);
     c = max(c - tone.y, 0) / (1 - tone.y) * tone.z;
@@ -206,9 +237,13 @@ bool build_pass(Warp &w) {
     description.NumStaticSamplers = 1;
     description.pStaticSamplers = &sampler;
     ComPtr<ID3DBlob> serialized, errors;
-    if (FAILED(D3D12SerializeRootSignature(&description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors)) ||
-        FAILED(w.device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&w.root))))
+    HRESULT hr = D3D12SerializeRootSignature(&description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors);
+    if (SUCCEEDED(hr)) hr = w.device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&w.root));
+    if (FAILED(hr)) {
+        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture pass's root signature failed (0x%08lx).",
+                        static_cast<unsigned long>(hr));
         return false;
+    }
     D3D12_GRAPHICS_PIPELINE_STATE_DESC state{};
     state.pRootSignature = w.root.Get();
     state.VS = {vertex->GetBufferPointer(), vertex->GetBufferSize()};
@@ -222,7 +257,11 @@ bool build_pass(Warp &w) {
     state.NumRenderTargets = 1;
     state.RTVFormats[0] = w.output;
     state.SampleDesc.Count = 1;
-    return SUCCEEDED(w.device->CreateGraphicsPipelineState(&state, IID_PPV_ARGS(&w.pipeline)));
+    hr = w.device->CreateGraphicsPipelineState(&state, IID_PPV_ARGS(&w.pipeline));
+    if (FAILED(hr))
+        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture pass's pipeline failed (0x%08lx).",
+                        static_cast<unsigned long>(hr));
+    return SUCCEEDED(hr);
 }
 
 // The draw callback: the picture pass, in the middle of the overlay's draws (ImGui's own state is
@@ -301,6 +340,9 @@ bool camcorder_picture_pass_ready() {
         logging::write(w.pass_ready ? logging::Level::info : logging::Level::warning, logging::Channel::graphics,
                        w.pass_ready ? "Camcorder: picture pass ready (the look shows on screen)."
                                     : "Camcorder: no picture pass; the fisheye is drawn as a mesh and the look is left to clips.");
+        if (!w.pass_ready)
+            notify(NoticeLevel::warning, "The camcorder's look can't be shown on screen here.",
+                   "Clips and stills still get it; the camera light needs it. logs\\ReSkate.log says why.");
     }
     return w.pass_ready;
 }

@@ -395,3 +395,30 @@ TEST(a_flick_of_the_aim_carries_on_a_little_and_settles) {
     CHECK(furthest < settled - 0.01f); // it swung past where the hands stopped
     CHECK(std::abs(rig.aim().yaw - settled) < 1e-3f);
 }
+
+TEST(closest_skater_is_filmed_without_flicking_between_two) {
+    const std::vector<Vec3> skaters{{10, 0, 0}, {4, 0, 0}, {-5.5f, 0, 0}};
+    CHECK(closest_skater({0, 0, 0}, skaters, -1) == 1);
+    CHECK(closest_skater({0, 0, 0}, {}, -1) == -1);
+    // Filming the one at 5.5 m: the one at 4 m is not 2 m nearer, so the camera stays.
+    CHECK(closest_skater({0, 0, 0}, skaters, 2) == 2);
+    CHECK(closest_skater({0, 0, 0}, {{10, 0, 0}, {3, 0, 0}, {-6, 0, 0}}, 2) == 1); // 3 m clearly is
+    CHECK(closest_skater({0, 0, 0}, skaters, 7) == 1);                             // gone: the nearest
+}
+
+TEST(handheld_shake_does_not_repeat) {
+    // A sum of sines comes back to where it was; noise doesn't. Compare a second of shake with
+    // every later second over two minutes: none matches it closely.
+    HandShake shake(11);
+    std::vector<float> yaw;
+    for (int i = 0; i < 60 * 120; ++i) yaw.push_back(shake.step(1.0f / 60, 0, false, 0.5f).yaw);
+    float closest = 1e9f;
+    for (std::size_t start = 60; start + 60 <= yaw.size(); start += 7) {
+        float difference = 0;
+        for (std::size_t i = 0; i < 60; ++i) difference += std::abs(yaw[start + i] - yaw[i]);
+        closest = std::min(closest, difference / 60);
+    }
+    float size = 0;
+    for (std::size_t i = 0; i < 60; ++i) size += std::abs(yaw[i]);
+    CHECK(closest > 0.15f * size / 60);
+}

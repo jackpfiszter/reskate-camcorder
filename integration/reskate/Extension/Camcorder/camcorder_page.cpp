@@ -32,7 +32,7 @@ struct Recommended {
 };
 constexpr Recommended recommended[]{
     {"camcorder", "on / off", 0x74}, {"camrec", "REC / STBY", 0x75}, {"camquick", "quick menu", 0x76},
-    {"camstill", "still", 0x77},     {"camaim", "steer while filming", 0x78}, {"camtripod", "set up a tripod", 0x79},
+    {"camstill", "still", 0x77},     {"camaim", "aim while filming", 0x78}, {"camtripod", "tripod: set up / done", 0x79},
 };
 int bind_index(std::string_view name) {
     for (std::size_t i = 0; i < action_binds.size(); ++i)
@@ -65,9 +65,10 @@ void pick(SkateMenu &menu, const CallbacksV3 &callbacks, const char *id,
 void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks) {
     const auto published = camcorder_runtime::published();
     const auto &s = published.frame.status;
+    const auto &finish = published.finish;
     ImGui::BeginChild("camcorder-body", ImVec2(0, page_body_height(menu)));
 
-    // The camera itself: what most visits are for.
+    // What most visits are for, on one card: the camera, rolling, how it films, and who.
     begin_card(menu, "camcorder-camera", "CAMCORDER", "Film yourself and your friends, 90s skate video style.");
     info(menu, "Now", describe(s));
     if (primary_button(menu, s.powered ? "TURN THE CAMERA OFF" : "TURN THE CAMERA ON"))
@@ -77,59 +78,47 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (s.powered) {
         if (small_button("TAKE A STILL")) run(menu, callbacks, "still");
         ImGui::SameLine();
-        if (small_button("REVIEW THE LAST CLIP")) run(menu, callbacks, "review");
+        if (small_button("PLAY THE LAST CLIP")) run(menu, callbacks, "review");
         ImGui::SameLine();
     }
-    if (small_button("OPEN CLIPS")) run(menu, callbacks, "open clips");
-    ImGui::SameLine();
-    if (small_button("OPEN STILLS")) run(menu, callbacks, "open stills");
+    if (small_button("OPEN MY CLIPS")) run(menu, callbacks, "open clips");
     if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last", last);
-    end_card();
 
-    begin_card(menu, "camcorder-shooting", "SHOOTING");
-    field(menu, "Filming", "Hold the camera yourself, or film from a tripod you set up.");
-    int mode = s.mode == Mode::tripod ? 1 : 0;
-    if (choice(menu, "camcorder-mode", mode, {"HANDHELD", "TRIPOD"}))
-        run(menu, callbacks, mode ? "mode tripod" : "mode handheld");
     field(menu, "Camera", "Its zoom, tape, frame rate, look, date stamp and mic. Mods add cameras (hover for which).");
     pick(menu, callbacks, "camcorder-cameras", published.cameras, s.camera_id, "camera", nullptr);
     field(menu, "Lens", "The Century 0.3x fisheye of every 90s part, the camera's own lens, or a mod's.");
     pick(menu, callbacks, "camcorder-lenses", published.lenses, s.lens_id, "lens", "STOCK LENS");
-    if (s.fisheye) {
-        bool bend = published.warp;
-        if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
-            run(menu, callbacks, bend ? "warp on" : "warp off");
-    }
-    field(menu, "Grip", "Low on a long grip (the fisheye follow shot), at the hip, at your eye, or a mod's. LB / RB or R / F move it up and down.");
-    pick(menu, callbacks, "camcorder-grips", published.grips, s.grip_id, "grip", nullptr);
+    bool dv_look = finish.dv.on;
+    const std::string look_label = finish.look.format + " look";
+    if (toggle_row(menu, look_label.c_str(), "The camera's picture: its lines, hard whites, sharpened edges, colour and grain. Each camera has its own.", dv_look))
+        run(menu, callbacks, dv_look ? "look dv" : "look clean");
+    bool light = published.light;
+    if (toggle_row(menu, "Camera light", "A lamp on the camera for night filming: what it points at is lit, the edges fall off.", light))
+        run(menu, callbacks, light ? "light on" : "light off");
     bool aim = published.aiming;
-    if (toggle_row(menu, "Steer while filming",
-                   "You keep skating (keys, left stick); the mouse or right stick aims, the wheel or triggers zoom, LB / RB the height.", aim))
+    if (toggle_row(menu, "Aim while filming",
+                   "The mouse or right stick aims the camera, the wheel or triggers zoom, while you skate. Off: they are the skater's again (flick-it tricks).", aim))
         run(menu, callbacks, aim ? "aim on" : "aim off");
-    bool operate = published.operating;
-    if (toggle_row(menu, "Camera controls", "You stand still and work the camera: mouse aims, Q / E zoom, R / F height.", operate))
-        run(menu, callbacks, operate ? "operate on" : "operate off");
-    bool lock_on = s.lock_on;
-    if (toggle_row(menu, "Lock on", "Keep the person you film framed by yourself while you skate.", lock_on))
-        run(menu, callbacks, lock_on ? "lockon on" : "lockon off");
-    end_card();
 
-    begin_card(menu, "camcorder-subject", "WHO TO FILM", "In a session: the camera can lock on to another skater.");
-    if (published.players.empty()) {
-        note("Nobody else is here. Solo, a tripod follows you.");
-    } else {
-        if (small_button("NOBODY", published.subject.empty())) run(menu, callbacks, "subject none");
-        for (const auto &name : published.players) {
-            ImGui::SameLine();
-            ImGui::PushID(name.c_str());
-            if (small_button(name.c_str(), name == published.subject)) run(menu, callbacks, "subject " + name);
-            ImGui::PopID();
-        }
+    field(menu, "Who to film", "Handheld: the camera keeps them framed. A tripod: it pans after them. Closest: whoever is nearest the camera, you too.");
+    if (small_button("ME / NOBODY", published.subject.empty() && !published.closest)) run(menu, callbacks, "subject none");
+    ImGui::SameLine();
+    if (small_button("CLOSEST", published.closest)) run(menu, callbacks, "subject closest");
+    if (ImGui::IsItemHovered() && published.closest && !published.subject.empty())
+        ImGui::SetTooltip("Filming %s now.", published.subject.c_str());
+    for (const auto &name : published.players) {
+        ImGui::SameLine();
+        ImGui::PushID(name.c_str());
+        if (small_button(name.c_str(), !published.closest && name == published.subject)) run(menu, callbacks, "subject " + name);
+        ImGui::PopID();
     }
     end_card();
 
-    begin_card(menu, "camcorder-tripods", "TRIPODS", "Up to four at a spot. Set one up, aim it, press REC, go skate.");
-    if (primary_button(menu, "SET UP A TRIPOD HERE")) run(menu, callbacks, "tripod place");
+    // Tripods: what to do, in order, on the card.
+    begin_card(menu, "camcorder-tripods", "TRIPODS",
+               "1 Set one up where you stand.  2 Carry it (WASD), aim it (mouse), zoom (Q / E), height (R / F).  3 The tripod key again, or REC: it's set.  4 Skate: it films you.");
+    if (primary_button(menu, s.tripod_setup ? "DONE SETTING UP" : "SET UP A TRIPOD HERE"))
+        run(menu, callbacks, s.tripod_setup ? "tripod done" : "tripod place");
     bool any = false;
     for (int i = 0; i < static_cast<int>(tripod_slots); ++i) {
         if (!s.tripods[static_cast<std::size_t>(i)]) continue;
@@ -138,58 +127,74 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         const auto label = "TRIPOD " + std::to_string(i + 1);
         if (small_button(label.c_str(), s.mode == Mode::tripod && s.active_tripod == i))
             run(menu, callbacks, "tripod " + std::to_string(i + 1));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Look through this tripod (up to four stand at once: cut between them).");
     }
     if (any) {
         ImGui::SameLine();
-        if (small_button("MOVE IT", s.tripod_setup)) run(menu, callbacks, s.tripod_setup ? "tripod setup off" : "tripod setup on");
+        if (small_button("HANDHELD", s.mode == Mode::handheld)) run(menu, callbacks, "mode handheld");
+        if (small_button("MOVE IT", s.tripod_setup)) run(menu, callbacks, s.tripod_setup ? "tripod done" : "tripod setup on");
         ImGui::SameLine();
         if (small_button("TAKE IT DOWN")) run(menu, callbacks, "tripod remove");
-        field(menu, "Head", "Locked off: nothing moves. Manual: you pan it. Follow: it pans after the skater.");
+        field(menu, "Head", "Follow: it pans after who it films. Locked off: nothing moves. Manual: you pan it with camera controls.");
         int head = static_cast<int>(s.head);
         if (choice(menu, "camcorder-head", head, {"LOCKED OFF", "MANUAL", "FOLLOW"}))
             run(menu, callbacks, head == 0 ? "head locked" : head == 1 ? "head manual" : "head follow");
     }
     end_card();
 
-    begin_card(menu, "camcorder-tape", "TAPE", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
+    // The rest, out of the way until wanted.
+    static bool more = false;
+    if (small_button(more ? "FEWER SETTINGS" : "MORE SETTINGS")) more = !more;
+    if (!more) {
+        ImGui::EndChild();
+        return;
+    }
+
+    begin_card(menu, "camcorder-handheld", "HANDHELD");
+    field(menu, "Height", "Where your hands hold it. LB / RB (R / F with camera controls) move it on the fly.");
+    if (small_button("LOW")) run(menu, callbacks, "height low");
+    ImGui::SameLine();
+    if (small_button("HIP")) run(menu, callbacks, "height hip");
+    ImGui::SameLine();
+    if (small_button("EYE LEVEL")) run(menu, callbacks, "height eye");
+    if (published.grips.size() > 1) {
+        field(menu, "Rig", "In your hands, or a mod's rig: a pole cam, a board cam.");
+        pick(menu, callbacks, "camcorder-rigs", published.grips, s.grip_id, "rig", nullptr);
+    }
+    bool lock_on = s.lock_on;
+    if (toggle_row(menu, "Keep them framed", "Handheld, the camera stays on who you film by itself; the mouse or stick nudges it.", lock_on))
+        run(menu, callbacks, lock_on ? "lockon on" : "lockon off");
+    bool operate = published.operating;
+    if (toggle_row(menu, "Camera controls", "Stand still and work the camera with everything: mouse aims, Q / E zoom, R / F height. Esc to skate again.", operate))
+        run(menu, callbacks, operate ? "operate on" : "operate off");
+    if (s.fisheye) {
+        bool bend = published.warp;
+        if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
+            run(menu, callbacks, bend ? "warp on" : "warp off");
+    }
+    end_card();
+
+    begin_card(menu, "camcorder-tape", "TAPE AND SOUND", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
     field(menu, "Quality", "HD for sharing, or the camera's own size.");
     int quality = published.dv ? 1 : 0;
     const std::string own = "OWN " + std::to_string(published.own_lines * 4 / 3) + " x " + std::to_string(published.own_lines);
     if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", own.c_str()}))
         run(menu, callbacks, quality ? "quality dv" : "quality hd");
-    field(menu, "Sound", "The game's own sound (nothing else on your PC), or as the camera's own mic heard it. Turn the game's music down for clean session sound.");
+    field(menu, "Sound", "The game's own sound as the camera hears it from where it stands (nothing else on your PC), or through the camera's mic. Turn the game's music down for clean session sound.");
     int sound = static_cast<int>(published.sound);
     if (choice(menu, "camcorder-sound", sound, {"OFF", "GAME", "CAMERA MIC"}))
         run(menu, callbacks, sound == 0 ? "sound off" : sound == 1 ? "sound game" : "sound vx");
+    if (small_button("CAPTURE THE TAPE")) run(menu, callbacks, "tape capture");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("This tape's clips, back to back in one MP4, as a MiniDV tape went into the computer.");
+    ImGui::SameLine();
     if (small_button("LIST CLIPS")) run(menu, callbacks, "tape clips");
     ImGui::SameLine();
-    if (small_button("CAPTURE THE TAPE")) run(menu, callbacks, "tape capture");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("This tape's clips, back to back in one file, as a MiniDV tape went into the computer.");
-    ImGui::SameLine();
     if (small_button("NEW TAPE")) run(menu, callbacks, "tape new");
+    ImGui::SameLine();
+    if (small_button("OPEN STILLS")) run(menu, callbacks, "open stills");
     end_card();
 
-    const auto &finish = published.finish;
-    const std::string format = finish.look.format;
-    begin_card(menu, "camcorder-look", "LOOK", ("What " + format + " did to the picture: on screen, in clips and in stills.").c_str());
-    bool dv_look = finish.dv.on;
-    const std::string look_label = format + " look";
-    if (toggle_row(menu, look_label.c_str(), "The camera's highlights, colour drift, sharpening, grain, tape smear and motion. Each camera has its own.", dv_look))
-        run(menu, callbacks, dv_look ? "look dv" : "look clean");
-    static bool fine_tune = false;
-    if (finish.dv.on) toggle_row(menu, "Fine-tune the look", "Turn single parts of the look off.", fine_tune);
-    if (finish.dv.on && fine_tune) {
-        const auto part = [&](const char *label, const char *detail, bool on, const char *word) {
-            bool value = on;
-            if (toggle_row(menu, label, detail, value)) run(menu, callbacks, std::string("dv ") + word + (value ? " on" : " off"));
-        };
-        if (interlaced(finish.motion)) part("Fields", "60 (or 50) a second: smooth video motion in clips, half the lines each.", finish.dv.fields, "fields");
-        part("Highlights", "White clips early and hard; blacks are dense.", finish.dv.highlights, "highlights");
-        part("White balance", "The colour drifts warm and cool.", finish.dv.white_balance, "balance");
-        part("Sharpening", "Bright and dark halos on hard edges.", finish.dv.sharpen, "sharpen");
-        part("Tape smear", "Colour bleeds sideways (DV's 4:1:1), and analogue tape softens.", finish.dv.chroma, "chroma");
-        if (finish.look.grain > 0) part("Grain", "Sensor noise or film grain.", finish.dv.grain, "grain");
-    }
+    begin_card(menu, "camcorder-look", "LOOK DETAILS");
     bool stamp = finish.date_stamp;
     if (toggle_row(menu, "Date stamp", "The camera's date and time in the corner.", stamp))
         run(menu, callbacks, stamp ? "date on" : "date off");
@@ -205,6 +210,18 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     bool clean = published.clean_feed;
     if (toggle_row(menu, "Clean viewfinder", "Hide REC, the counter and the hints; keep the frame and the lens.", clean))
         run(menu, callbacks, clean ? "clean on" : "clean off");
+    if (finish.dv.on) {
+        const auto part = [&](const char *label, const char *detail, bool on, const char *word) {
+            bool value = on;
+            if (toggle_row(menu, label, detail, value)) run(menu, callbacks, std::string("dv ") + word + (value ? " on" : " off"));
+        };
+        if (interlaced(finish.motion)) part("Fields", "60 (or 50) a second: smooth video motion in clips, half the lines each.", finish.dv.fields, "fields");
+        part("Highlights", "White clips early and hard; blacks are dense.", finish.dv.highlights, "highlights");
+        part("White balance", "The colour drifts warm and cool.", finish.dv.white_balance, "balance");
+        part("Sharpening", "Bright and dark halos on hard edges.", finish.dv.sharpen, "sharpen");
+        part("Lines and smear", "The camera's own lines (480 on a VX1000), colour bleeding sideways, analogue tape's softness.", finish.dv.chroma, "chroma");
+        part("Grain", "Sensor noise or film grain.", finish.dv.grain, "grain");
+    }
     end_card();
 
     begin_card(menu, "camcorder-controls", "CONTROLS", "Settings are kept between games.");
@@ -235,7 +252,7 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         const auto combo = model.bindings.action_combos[static_cast<std::size_t>(index)];
         info(menu, r.what, combo ? controller_combo_label(combo) : std::string("not bound"));
     }
-    note("Change any of them, or add pad buttons, in SETTINGS > CONTROLS.");
+    note("Change any of them, or add pad buttons, in SETTINGS > CONTROLS. Esc or Start backs out of camera controls and the quick menu.");
     static constexpr float speeds[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f};
     int speed = 2;
     for (int i = 0; i < 6; ++i)
@@ -252,18 +269,19 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (small_button("SHOW THE GUIDE")) run(menu, callbacks, "guide");
     end_card();
 
-    begin_card(menu, "camcorder-mods", "MODS", "Cameras, lenses, grips and the feel come from data mods too.");
-    info(menu, "Cameras", std::to_string(published.cameras.size()));
-    info(menu, "Lenses", std::to_string(published.lenses.size() + 1));
-    info(menu, "Grips", std::to_string(published.grips.size()));
-    if (published.mod_notes) warn((std::to_string(published.mod_notes) + " problem(s) in the mods' profiles: LIST shows them.").c_str());
-    if (small_button("LIST")) run(menu, callbacks, "mods");
+    begin_card(menu, "camcorder-mods", "MAKE YOUR OWN CAMERA",
+               "Cameras, lenses and rigs are small files in an ordinary mod: anyone can make one (MODDING.md).");
+    info(menu, "From mods", std::to_string(published.cameras.size()) + " cameras, " + std::to_string(published.lenses.size() + 1) +
+                                " lenses, " + std::to_string(published.grips.size()) + " rigs");
+    if (published.mod_notes) warn((std::to_string(published.mod_notes) + " problem(s) in the mods' files: LIST shows them.").c_str());
+    if (small_button("START FROM THIS CAMERA")) run(menu, callbacks, "export");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Copies the camera, lens, rig and feel you're using into a new mod, Mods/My Camcorder, with every\n"
+                          "setting written out. Change the numbers in its files, then RELOAD to try them.");
     ImGui::SameLine();
     if (small_button("RELOAD")) run(menu, callbacks, "mods reload");
     ImGui::SameLine();
-    if (small_button("START A MOD FROM THESE")) run(menu, callbacks, "export");
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Writes the camera, lens, grip and feel in use to Mods/My Camcorder, every field filled in.");
-    note("A mod's files go in Mods/<mod>/camcorders: *.camera.json, *.lens.json, *.grip.json, handling.json (see MODDING.md).");
+    if (small_button("LIST")) run(menu, callbacks, "mods");
     end_card();
 
     ImGui::EndChild();

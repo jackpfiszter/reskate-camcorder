@@ -1,4 +1,5 @@
 #include "camcorder_audio.h"
+#include "camcorder_runtime.h"
 #include <Windows.h>
 #include <Audioclient.h>
 #include <audioclientactivationparams.h>
@@ -112,6 +113,7 @@ struct Capture::Impl {
             if (FAILED(hr)) return fail(failed("Setting up the game's sound capture", hr));
             track.start(origin);
             VxMic mic(mic_profile);
+            CameraEar ear;
             Limiter limiter;
             std::vector<float> sound;
             std::vector<std::int16_t> packet;
@@ -136,6 +138,8 @@ struct Capture::Impl {
                         }
                     }
                     capture->ReleaseBuffer(frames);
+                    // Heard from where the camera stands, then (CAMERA MIC) through its mic.
+                    ear.process(sound.data(), frames, camcorder_runtime::ear());
                     if (mode == Sound::vx_mic) mic.process(sound.data(), frames);
                     // Loud moments (several skaters at once) come down smoothly instead of clipping.
                     limiter.process(sound.data(), frames);

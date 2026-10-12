@@ -9,6 +9,7 @@
 // silent and packets come a little early or late, so the timeline fills gaps with silence and trims
 // overlaps: the sound never drifts off the picture. Each such jump is faded over two milliseconds
 // either side, or it would click (SoundTrack).
+#include "camera_math.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -115,5 +116,31 @@ private:
     float level_{};    // the level control's envelope (of a smoothed level, not each sample)
     float detect_{};   // that smoothed level
     float gain_{1};    // the gain it sets, itself smoothed: a gain that moves within a wave distorts it
+};
+// Where the skater is from the camera, for the sound: the game mixes its sound for its own
+// listener, near the skater, so a camera across the spot hears it as if it stood there.
+struct EarPlacement {
+    float distance{}; // metres from the camera to the skater
+    float side{};     // -1 hard left of the picture, 1 hard right
+    bool operator==(const EarPlacement &) const = default;
+};
+EarPlacement ear_placement(const Matrix &camera, Vec3 skater) noexcept;
+
+// The game's sound as the camera would hear it: further off it is quieter and duller (the air takes
+// the highs), and it comes from the skater's side of the picture. Close to the skater (handheld) it
+// leaves the sound alone. Changes glide, so a cut between tripods or a fast pan doesn't click.
+class CameraEar {
+public:
+    // Interleaved stereo floats, in place, heard from `where`.
+    void process(float *interleaved, std::size_t frames, EarPlacement where) noexcept;
+    // What it does at a distance, at rest (for tests and the docs): the level and the top it keeps.
+    static float gain_at(float distance) noexcept;
+    static float cutoff_at(float distance) noexcept; // Hz
+    static float pan_amount_at(float distance) noexcept; // 0: the game's stereo, 1: all re-panned
+
+private:
+    bool started_{};
+    float gain_{1}, cutoff_{20000}, side_{}, amount_{};
+    float low_[audio_channels]{};
 };
 } // namespace dingosdk::camcorder

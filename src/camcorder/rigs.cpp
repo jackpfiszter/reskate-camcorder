@@ -17,9 +17,28 @@ float hash_phase(std::uint32_t seed, std::uint32_t i) {
     h ^= h >> 15;
     return static_cast<float>(h & 0xffff) / 65535.0f * 2 * pi;
 }
+// Smooth noise that never repeats: random values a step apart (one step a cycle of `rate`),
+// eased from one to the next. A hand's wobble, a wheel's buzz: no rhythm to notice, as sines had.
+float lattice(std::uint32_t seed, std::int64_t i) {
+    std::uint32_t h = seed * 0x9e3779b9u ^ static_cast<std::uint32_t>(i) * 0x85ebca6bu ^ static_cast<std::uint32_t>(i >> 32) * 0xc2b2ae35u;
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    h ^= h >> 16;
+    return static_cast<float>(h & 0xffffff) / 8388607.5f - 1.0f; // -1 to 1
+}
+float smooth_noise(std::uint32_t seed, double x) {
+    const double cell = std::floor(x);
+    const auto i = static_cast<std::int64_t>(cell);
+    const auto f = static_cast<float>(x - cell);
+    const float u = f * f * f * (f * (f * 6 - 15) + 10); // eased in and out: no kinks
+    const float a = lattice(seed, i), b = lattice(seed, i + 1);
+    return a + (b - a) * u;
+}
 } // namespace
 
-HandShake::HandShake(std::uint32_t seed) noexcept {
+HandShake::HandShake(std::uint32_t seed) noexcept : seed_(seed) {
     for (std::uint32_t i = 0; i < 12; ++i) phases_[i] = hash_phase(seed, i);
 }
 
@@ -29,11 +48,13 @@ HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float st
     const float t = time_;
     const float calm = 1.0f - 0.7f * std::clamp(std::isfinite(steadiness) ? steadiness : 0.5f, 0.0f, 1.0f);
     speed = std::isfinite(speed) ? std::clamp(speed, 0.0f, 30.0f) : 0.0f;
-    // Three incommensurate waves an axis: breathing, the arm, the wrist.
+    // Three bands of noise an axis, about as fast as breathing, the arm and the wrist (the noise
+    // swings about half as far as a sine of the same size: hence the 1.6).
+    const auto band = [&](int index, float rate) {
+        return 1.6f * smooth_noise(seed_ * 16 + static_cast<std::uint32_t>(index), static_cast<double>(t) * rate * 2 + phases_[index]);
+    };
     const auto wave = [&](int axis, float a, float b, float c) {
-        const float *p = phases_ + axis * 3;
-        return a * std::sin(t * 2 * pi * 0.31f + p[0]) + b * std::sin(t * 2 * pi * 0.87f + p[1]) +
-               c * std::sin(t * 2 * pi * 2.3f + p[2]);
+        return a * band(axis * 3, 0.31f) + b * band(axis * 3 + 1, 0.87f) + c * band(axis * 3 + 2, 2.3f);
     };
     Offset o;
     const float hands = calm * std::max(amounts.hands, 0.0f);
@@ -43,14 +64,15 @@ HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float st
     if (on_board) {
         // Wheels on concrete: a fast buzz that grows with speed.
         const float buzz = std::min(speed / 8.0f, 1.0f) * 0.0025f * (0.5f + calm) * std::max(amounts.wheels, 0.0f);
-        o.pitch += buzz * std::sin(t * 2 * pi * 11.0f + phases_[9]);
-        o.yaw += buzz * 0.6f * std::sin(t * 2 * pi * 13.7f + phases_[10]);
+        o.pitch += buzz * band(9, 11.0f);
+        o.yaw += buzz * 0.6f * band(10, 13.7f);
     } else if (speed > 0.3f) {
         // Footsteps: about two a second walking, three running; the camera dips with each.
         step_phase_ = std::fmod(step_phase_ + dt * std::clamp(1.2f + speed * 0.35f, 1.2f, 3.4f), 1.0f);
         const float bob = std::min(speed / 5.0f, 1.0f) * (0.5f + calm) * std::max(amounts.footsteps, 0.0f);
         o.position[1] = -0.025f * bob * std::abs(std::sin(step_phase_ * pi));
-        o.roll += 0.01f * bob * std::sin(step_phase_ * 2 * pi + phases_[11]);
+        // Each step a little different: how hard the foot lands sways the roll.
+        o.roll += 0.01f * bob * std::sin(step_phase_ * 2 * pi + phases_[11]) * (0.6f + 0.5f * band(11, 0.9f));
     }
     return o;
 }
@@ -269,5 +291,21 @@ Shot TripodRig::step(const Subject *subject, const OperatorInput &input, float d
     shot.camera = camera_matrix(lens(), yaw_.value, pitch_.value);
     shot.valid = valid_camera_matrix(shot.camera);
     return shot;
+}
+int closest_skater(const Vec3 &camera, const std::vector<Vec3> &skaters, int current, float margin) {
+    int best = -1;
+    float best_distance = 0;
+    for (std::size_t i = 0; i < skaters.size(); ++i) {
+        if (!finite(skaters[i])) continue;
+        const float d = length(sub(skaters[i], camera));
+        if (best < 0 || d < best_distance) {
+            best = static_cast<int>(i);
+            best_distance = d;
+        }
+    }
+    if (current >= 0 && current < static_cast<int>(skaters.size()) && current != best && finite(skaters[static_cast<std::size_t>(current)]) &&
+        length(sub(skaters[static_cast<std::size_t>(current)], camera)) < best_distance + std::max(margin, 0.0f))
+        return current;
+    return best;
 }
 } // namespace dingosdk::camcorder

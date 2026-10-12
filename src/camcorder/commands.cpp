@@ -1,4 +1,5 @@
 #include "commands.h"
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -38,8 +39,8 @@ std::string after(Camcorder &cam) { return describe(cam.status()); }
 } // namespace
 
 const std::vector<std::string_view> &command_verbs() {
-    static const std::vector<std::string_view> verbs{"status", "power", "rec", "stop", "mode", "camera", "lens", "grip",
-                                                     "lockon", "tripod", "head", "height", "tape"};
+    static const std::vector<std::string_view> verbs{"status", "power", "rec", "stop", "mode", "camera", "lens", "rig",
+                                                     "grip", "lockon", "tripod", "head", "height", "tape"};
     return verbs;
 }
 
@@ -49,7 +50,8 @@ std::string describe(const Status &s) {
     line += format_counter(s.counter_seconds);
     line += s.mode == Mode::tripod ? ", tripod " + std::to_string(s.active_tripod + 1) + " (" +
                                          std::string(head_word(s.head)) + (s.tripod_setup ? ", setup" : "") + ")"
-                                   : ", handheld (" + s.grip_name + (s.lock_on ? ", lock on" : "") + ")";
+                                   : ", handheld (" + (s.grip_id == long_grip().id ? std::string() : s.grip_name + ", ") +
+                                         (s.lock_on ? "lock on" : "free") + ")";
     line += ", " + s.camera_name + ", " + s.lens_name;
     char zoom[32];
     std::snprintf(zoom, sizeof(zoom), ", zoom %.1fx", static_cast<double>(s.zoom_ratio));
@@ -127,7 +129,16 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         cam.set_adapter(adapter ? std::optional<Adapter>(*adapter) : std::nullopt);
         return adapter ? adapter->name + "." : std::string("The camera's own lens.");
     }
-    if (same(verb, "grip")) {
+    // A height of the hand (`grip hip` before rigs: the settings files of older versions say it).
+    const auto hand_height = [&](std::string_view word) -> const GripProfile * {
+        return same(word, "low") ? &long_grip() : same(word, "hip") ? &hip_grip() : same(word, "eye") ? &eye_grip() : nullptr;
+    };
+    const auto hold_at = [&](const GripProfile &height) {
+        const auto &rig = cam.handheld();
+        const float base = rig.settings().grip.height_on(true);
+        cam.set_handheld_lift(std::clamp(height.height_on(true), rig.settings().lowest, std::max(rig.settings().highest, rig.settings().lowest)) - base);
+    };
+    if (same(verb, "grip") || same(verb, "rig")) {
         const auto current = cam.handheld().settings().grip.id;
         if (same(first, "list")) {
             std::string list;
@@ -139,7 +150,12 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         std::string id(first);
         for (auto &c : id) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         const GripProfile *grip = first.empty() || same(first, "next") ? &catalogue.next_grip(current) : catalogue.grip(id);
-        if (!grip) return "No grip called " + std::string(first) + " (camcorder grip list).";
+        if (!grip && hand_height(id)) {
+            cam.set_grip(*catalogue.grip(long_grip().id));
+            hold_at(*hand_height(id));
+            return "Handheld, at " + std::string(same(id, "low") ? "a skate's height" : same(id, "hip") ? "the hip" : "eye level") + ".";
+        }
+        if (!grip) return "No rig called " + std::string(first) + " (camcorder rig list).";
         cam.set_grip(*grip);
         return grip->name + ".";
     }
@@ -150,9 +166,15 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         return *on ? "Lock on: the filmer keeps the subject framed." : "Lock on off: the stick aims.";
     }
     if (same(verb, "tripod")) {
+        // The tripod key twice: set one up, then it is done (or REC: done, and rolling).
+        if (same(first, "done") || (same(first, "place") && cam.status().tripod_setup)) {
+            if (!cam.status().tripod_setup) return "No tripod being set up.";
+            cam.set_tripod_setup(false);
+            return "Tripod " + std::to_string(cam.status().active_tripod + 1) + " is set: REC rolls it, then skate.";
+        }
         if (same(first, "place")) {
             const int slot = cam.place_tripod(context.filmer);
-            return slot < 0 ? cam.status().message : cam.status().message + " Setting it up: move and aim it, then REC.";
+            return slot < 0 ? cam.status().message : cam.status().message + " Move and aim it, then press the tripod key again (or REC).";
         }
         if (first.empty() || same(first, "next")) {
             cam.next_tripod();
@@ -174,7 +196,7 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
             cam.select_tripod(*slot);
             return cam.status().message;
         }
-        return "Usage: camcorder tripod place|next|setup [on|off]|remove [1-4]|<1-4>";
+        return "Usage: camcorder tripod place|done|next|setup [on|off]|remove [1-4]|<1-4>";
     }
     if (same(verb, "head")) {
         TripodRig::Head head{};
@@ -190,11 +212,23 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
     if (same(verb, "height")) {
         // A step a press: bound to a key or a button, it moves the camera a hand's width.
         const float step = cam.handling().height_step;
+        // The next of the three heights up from where the camera is now (round to low).
+        std::string_view word = first;
+        if (same(first, "next") && cam.status().mode != Mode::tripod) {
+            const float now = cam.handheld().lens_height(true);
+            word = now < hip_grip().height_on(true) - 0.05f ? "hip" : now < eye_grip().height_on(true) - 0.05f ? "eye" : "low";
+        }
+        if (const auto *preset = hand_height(word); preset && cam.status().mode != Mode::tripod) {
+            hold_at(*preset);
+            char held[64];
+            std::snprintf(held, sizeof(held), "Camera held %.2f m up.", static_cast<double>(cam.handheld().lens_height(true)));
+            return held;
+        }
         const bool up = same(first, "up"), down = same(first, "down"), reset = same(first, "reset");
         float metres{};
         const auto [end, error] = std::from_chars(first.data(), first.data() + first.size(), metres);
         const bool number = !first.empty() && error == std::errc{} && end == first.data() + first.size() && std::isfinite(metres);
-        if (!up && !down && !reset && !number) return "Usage: camcorder height up|down|reset|<metres>";
+        if (!up && !down && !reset && !number) return "Usage: camcorder height up|down|low|hip|eye|next|reset|<metres>";
         char text[64];
         const auto status = cam.status();
         if (status.mode == Mode::tripod) {

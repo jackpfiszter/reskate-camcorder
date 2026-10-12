@@ -126,6 +126,10 @@ PicturePass pass_numbers(const camcorder_runtime::Published &p, const Rect &pict
     pass.output[0] = static_cast<float>(camcorder_warp_transfer());
     pass.output[1] = 200; // the white an HDR game's picture is taken to have, as the recording takes it
     pass.output[2] = look.highlight_bleed ? 1.0f : 0.0f;
+    // The camera's own lines (the look's softest, most visible part), and the light on top of it.
+    pass.camera[0] = look.on && p.finish.dv.chroma ? static_cast<float>(std::clamp(p.own_lines, 120, 1080)) : 0.0f;
+    pass.camera[1] = p.light ? 2.5f : 0.0f;
+    pass.camera[2] = 0.8f;
     return pass;
 }
 
@@ -136,9 +140,11 @@ void draw_stamp(ImDrawList *list, const camcorder_runtime::Published &p, const R
     localtime_s(&local, &time);
     const auto marks = stamp_marks(static_cast<int>(picture.width), static_cast<int>(picture.height), local,
                                    p.finish.stamp_year, p.finish.stamp);
+    // On whole screen pixels, so its dots are the same size in every frame.
+    const float left = std::round(picture.x), top = std::round(picture.y);
     const auto box = [&](const PixelBox &b, ImU32 colour) {
-        list->AddRectFilled({picture.x + static_cast<float>(b.x), picture.y + static_cast<float>(b.y)},
-                            {picture.x + static_cast<float>(b.x + b.width), picture.y + static_cast<float>(b.y + b.height)}, colour);
+        list->AddRectFilled({left + static_cast<float>(b.x), top + static_cast<float>(b.y)},
+                            {left + static_cast<float>(b.x + b.width), top + static_cast<float>(b.y + b.height)}, colour);
     };
     for (const auto &b : marks.edges) box(b, IM_COL32(16, 16, 16, 255));
     for (const auto &b : marks.dots) box(b, IM_COL32(marks.colour[0], marks.colour[1], marks.colour[2], 255));
@@ -176,12 +182,12 @@ void draw_quick(ImDrawList *list, ImFont *font, const camcorder_runtime::Publish
 void draw_guide(ImDrawList *list, ImFont *font, const Rect &picture) {
     static constexpr const char *lines[] = {
         "THE CAMCORDER, QUICKLY",
-        "REC / STBY: a key you bind (SET UP KEYS on the CAMCORDER page), or REC there",
-        "Aim: the mouse or right stick, with STEER WHILE FILMING (you keep skating)",
-        "     or CAMERA CONTROLS (you stand still and work the camera)",
-        "Zoom: wheel or triggers (Q / E with camera controls)",
-        "Height: LB / RB (R / F with camera controls)",
-        "Quick menu: its key (F7 after SET UP KEYS): camera, lens, grip, tripod, review",
+        "REC / STBY: F6 after SET UP KEYS (the CAMCORDER page), or REC there",
+        "Aim: the mouse or right stick with AIM WHILE FILMING on (you keep skating)",
+        "Zoom: wheel or triggers      Height: LB / RB",
+        "Quick menu: F7: camera, lens, look, light, height, tripod, play the last clip",
+        "Tripod: F10 sets one up; move and aim it; F10 again (or REC), then skate",
+        "Esc or Start: back out of camera controls and menus",
         "Everything else: the CAMCORDER page in the ReSkate menu",
     };
     const float size = std::clamp(picture.height / 34, 12.0f, 26.0f), line = size * 1.4f, pad = size * 0.9f;
@@ -267,7 +273,7 @@ void draw_camcorder() {
         if (copy) next_picture = (now - next_picture > 0.25 ? now : next_picture) + 1 / film_rate;
     }
     bool look_on_screen = false;
-    if ((warped || p.finish.dv.on || film_rate > 0) && height > 0 && camcorder_picture_pass_ready()) {
+    if ((warped || p.finish.dv.on || film_rate > 0 || p.light) && height > 0 && camcorder_picture_pass_ready()) {
         if (camcorder_warp_request(width, height, copy)) {
             if (copy) ++pictures; // the grain changes with the picture
             camcorder_picture_pass(list, pass_numbers(p, v.picture, io.DisplaySize.x, io.DisplaySize.y, pictures));
@@ -278,11 +284,15 @@ void draw_camcorder() {
         if (const auto texture = camcorder_warp_request(width, height))
             warp(list, *texture, p.frame.optics, v.picture, io.DisplaySize.x / io.DisplaySize.y);
     }
-    if (p.finish.date_stamp) draw_stamp(list, p, v.picture);
+    // With fields, a stamp in the copy would be split between them and twitter up and down in
+    // clips: the recording then burns its own after the fields, and the screen's comes after the copy.
+    const bool stamp_in_copy = p.finish.date_stamp && !p.finish.fields();
+    if (stamp_in_copy) draw_stamp(list, p, v.picture);
     // A clip's or a still's copy of the picture is made here: after the picture pass and the stamp,
     // before the readouts. It is told what the screen already did, so it is not done twice.
-    camcorder_capture_screen(look_on_screen, p.finish.date_stamp);
+    camcorder_capture_screen(look_on_screen, stamp_in_copy);
     list->AddCallback(camcorder_capture_draw, nullptr);
+    if (p.finish.date_stamp && !stamp_in_copy) draw_stamp(list, p, v.picture);
     if (v.vignette) shadow(list, *v.vignette, v.picture);
     for (const auto &bar : v.bars)
         list->AddRectFilled({bar.x, bar.y}, {bar.x + bar.width, bar.y + bar.height}, IM_COL32(0, 0, 0, 255));

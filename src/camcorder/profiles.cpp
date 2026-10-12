@@ -433,7 +433,7 @@ std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view
     return std::nullopt;
 }
 
-Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()}, grips_{long_grip(), hip_grip(), eye_grip()} {}
+Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()}, grips_{long_grip()} {}
 
 void Catalogue::add(GripProfile profile) {
     for (auto &g : grips_)

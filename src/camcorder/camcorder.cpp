@@ -181,7 +181,8 @@ std::string Camcorder::shot_label() const {
     if (mode_ == Mode::tripod && active_tripod_ >= 0 && tripods_[active_tripod_])
         return "Tripod " + std::to_string(active_tripod_ + 1) + ", " +
                std::string(head_name(tripods_[active_tripod_]->settings().head)) + ", " + lens;
-    return "Handheld, " + handheld_.settings().grip.name + ", " + lens;
+    const auto &grip = handheld_.settings().grip;
+    return grip.id == long_grip().id ? "Handheld, " + lens : "Handheld, " + grip.name + ", " + lens;
 }
 
 Frame Camcorder::tick(const TickInput &in) {

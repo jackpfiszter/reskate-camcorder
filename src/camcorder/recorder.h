@@ -97,6 +97,11 @@ public:
     // The tape in the camcorder (a number that changes with each new tape).
     void tape(std::uint32_t number);
     void saved(std::wstring path) { clips_.push_back(std::move(path)); }
+    // The tape as it was left last game (its clips are still on the disk).
+    void restore(std::uint32_t number, std::vector<std::wstring> clips) {
+        number_ = number;
+        clips_ = std::move(clips);
+    }
     std::uint32_t number() const noexcept { return number_; }
     const std::vector<std::wstring> &clips() const noexcept { return clips_; }
 

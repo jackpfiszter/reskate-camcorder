@@ -60,6 +60,8 @@ struct Published {
     float blink{};        // seconds, for blinking readouts
     std::string hint;     // the viewfinder's control hints, empty for none
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
+    bool closest{};                   // filming whoever is nearest (subject: who that is now)
+    bool light{};                     // the light on the camera (`camcorder light`)
     std::string subject;  // who is, empty for nobody
     bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
     camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`
@@ -84,6 +86,8 @@ struct Published {
     std::uint32_t review{}, review_stop{}; // count `camcorder review` and `review stop` requests
 };
 Published published() noexcept;
+// Any thread (the sound capture's): where the local skater is from the camera now, for the sound.
+camcorder::EarPlacement ear() noexcept;
 // Overlay, render thread: the back buffer's width over height (the fisheye warp's render needs it).
 void note_render_aspect(float aspect) noexcept;
 // Overlay, render thread: the fisheye warp cannot be drawn here; keep the flat stand-in.

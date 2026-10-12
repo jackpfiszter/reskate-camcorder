@@ -51,12 +51,12 @@ struct FrameRate {
 // How strongly a camera and its tape do each part of the look (profiles.h reads these).
 struct LookProfile {
     std::string format{"MiniDV"};   // what the menu calls the look ("MiniDV look")
-    float black_crush{0.035f};       // the share of the darkest range pushed to black
-    float highlight_gain{1.1f};      // >1: white arrives early (1.1 clips the top 10%)
+    float black_crush{0.05f};        // the share of the darkest range pushed to black
+    float highlight_gain{1.15f};     // >1: white arrives early (1.15 clips the top 13%)
     float saturation{1};             // 1 as the game draws it; Hi8 and VHS are lower
     float white_balance_drift{0.035f}; // how far red and blue wander, as a gain (0.035 is 3.5%)
-    float sharpen{0.44f};            // edge enhancement, 0 none
-    float grain{0};                  // noise, 0 none, 1 heavy
+    float sharpen{0.6f};             // edge enhancement, 0 none
+    float grain{0.04f};              // noise, 0 none, 1 heavy (a CCD in shade: a little)
     float chroma_width{4};           // colour averaged over this many pixels of a 720-wide picture
     float softness{0};               // blur, in pixels of a 720-wide picture (VHS about 1.5)
     bool operator==(const LookProfile &) const = default;

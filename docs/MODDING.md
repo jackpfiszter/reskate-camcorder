@@ -12,7 +12,7 @@ Mods/
       vx2000.camera.json           a camera
       hi8.camera.json              another
       wide-half.lens.json          a lens
-      pole.grip.json               a way of holding it
+      pole.grip.json               a rig (a way of holding it)
       handling.json                how it all feels (optional; one per mod)
 ```
 
@@ -23,7 +23,7 @@ update.
 
 `examples/mods/Camcorder Extras` in this repository is a complete one (the VX2000, a Hi8
 handycam, Super 8 film, a 0.5x wide converter, a pole cam and a board cam): copy it and change
-it. The quickest start is in the game: choose the camera, lens and grip closest to what you want,
+it. The quickest start is in the game: choose the camera, lens and rig closest to what you want,
 then type `camcorder export`. That writes them, and the handling in use, every field filled in,
 to `Mods/My Camcorder`.
 
@@ -33,7 +33,7 @@ to `Mods/My Camcorder`.
   (`camcorder camera vx2000`) and the settings file. Ids are lowercase letters, digits, `-` and
   `_`, up to 32.
 - **Every field is optional.** What a camera leaves out is the VX1000's, what a lens leaves out
-  is the Century fisheye's, and what a grip leaves out is the long grip's. So the VX2000 is just
+  is the Century fisheye's, and what a rig leaves out is the hand's (the built-in "Handheld"). So the VX2000 is just
   its name and its longer zoom.
 - `handling.json` is layered instead: each mod's changes only the numbers it gives, a higher
   mod's over a lower one's, over the camcorder's own.
@@ -61,18 +61,19 @@ to `Mods/My Camcorder`.
 
 ### `look`
 
-These apply to clips and stills when the player turns the look on (the TAPE LOOK card, or
-`camcorder look dv`). Each can also be switched off by the player (`camcorder dv <part> off`).
+These apply on screen, in clips and in stills while the player has the look on (the CAMCORDER
+card's look switch, or `camcorder look dv`). The camera's `lines` also show: the picture is drawn
+at that many lines from top to bottom. Each can also be switched off by the player (`camcorder dv <part> off`).
 
 | Field | Default | Range | What it is |
 |---|---|---|---|
 | `format` | `"MiniDV"` | up to 24 characters | What the menu calls the look ("MiniDV look") |
-| `black_crush` | `0.035` | 0 to 0.3 | The share of the darkest range pushed to black |
-| `highlight_gain` | `1.1` | 0.5 to 2 | Above 1, white comes early and clips hard (1.1 clips the top 10%) |
+| `black_crush` | `0.05` | 0 to 0.3 | The share of the darkest range pushed to black |
+| `highlight_gain` | `1.15` | 0.5 to 2 | Above 1, white comes early and clips hard (1.15 clips the top 13%) |
 | `saturation` | `1` | 0 to 2 | Colour strength; Hi8 and VHS were lower |
 | `white_balance_drift` | `0.035` | 0 to 0.2 | How far the colour wanders warm and cool |
-| `sharpen` | `0.44` | 0 to 2 | Edge enhancement: halos on hard edges. Film has none |
-| `grain` | `0` | 0 to 1 | Noise or film grain, new every frame |
+| `sharpen` | `0.6` | 0 to 2 | Edge enhancement: halos on hard edges. Film has none |
+| `grain` | `0.04` | 0 to 1 | Noise or film grain, new every frame |
 | `chroma_width` | `4` | 0 to 16 | Colour is smeared over this many pixels of a 720-wide picture (DV's 4:1:1 is 4); 0 for none |
 | `softness` | `0` | 0 to 8 | Sideways blur, in pixels of a 720-wide picture (analogue tape: 1 to 2) |
 
@@ -99,11 +100,14 @@ The camera's own microphone, used when the player records with `camcorder sound 
 | `release` | `0.4` | 0.02 to 5 | Seconds to bring the room back up |
 | `drive` | `1.2` | 0.1 to 5 | How hard it pushes into the converter: loud hits round off |
 
-## Grips (`<id>.grip.json`)
+## Rigs (`<id>.grip.json`)
 
-A way of holding the camera handheld, listed beside Long grip, Hip and Eye level.
+A way of holding the camera handheld: a pole cam, a board-mounted cam. The built-in rig is the
+hand ("Handheld", id `long`); the player moves it up and down on the fly (LB / RB, or the low, hip
+and eye presets), so a rig is for what differs in more than height: reach, tilt, shake. The menu
+shows a Rig choice once a mod adds one. (The files keep the name `.grip.json`.)
 
-| Field | Default (long grip) | Range | What it is |
+| Field | Default (Handheld) | Range | What it is |
 |---|---|---|---|
 | `name` | the id | up to 48 characters | What the menu shows |
 | `height` | `0.45` | 0.05 to 3 | The lens above the feet, standing, metres |

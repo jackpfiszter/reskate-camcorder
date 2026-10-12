@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace dingosdk::camcorder {
 // The person holding the camera: the local skater, as the game places them.
@@ -70,13 +71,15 @@ public:
 private:
     float time_{}, step_phase_{};
     float phases_[12]{};
+    std::uint32_t seed_{1};
 };
 
-// A way of holding the camera. The built-in three are below; mods add more (profiles.h:
-// <id>.grip.json), a pole cam, a skate-mounted follow cam.
+// A rig: a way of holding the camera. The built-in one is the hand (on a long grip); mods add
+// more (profiles.h: <id>.grip.json), a pole cam, a skate-mounted follow cam. How high the hand
+// holds it is the player's (LB / RB, or the heights below).
 struct GripProfile {
     std::string id{"long"};
-    std::string name{"Long grip"};
+    std::string name{"Handheld"};
     float height{0.45f}; // the lens above the feet, standing (metres)
     float side{0.35f};   // out to the right hand
     float ahead{0.55f};  // in front of the body
@@ -87,12 +90,11 @@ struct GripProfile {
     bool operator==(const GripProfile &) const = default;
     float height_on(bool on_board) const { return on_board ? height * crouch : height; }
 };
-// Low on a long handle: the fisheye follow shot.
+// In the hand, low on a long handle: the fisheye follow shot. The built-in rig.
 const GripProfile &long_grip();
-// Waist height, the camera hanging from the hand.
+// Where the hand can hold it (`camcorder height low|hip|eye`): these grips' heights. Hip: waist
+// height, the camera hanging from the hand. Eye: through the viewfinder, the long-lens shot.
 const GripProfile &hip_grip();
-// Through the viewfinder: the long-lens shot. Clear in front of the face: the filmer is the
-// player's own skater, whose head is drawn (from inside it the view would be the inside of the head).
 const GripProfile &eye_grip();
 
 class HandheldRig {
@@ -206,4 +208,9 @@ private:
     Spring yaw_, pitch_;
     float yaw_rate_{}, pitch_rate_{};
 };
+// Filming whoever is closest (`camcorder subject closest`): the index in `skaters` of the one
+// nearest `camera`, or -1 when there is nobody. The one filmed now (`current`) is kept until
+// another is clearly nearer, `margin` metres or more, so the camera doesn't flick between two
+// skaters side by side.
+int closest_skater(const Vec3 &camera, const std::vector<Vec3> &skaters, int current, float margin = 2.0f);
 } // namespace dingosdk::camcorder

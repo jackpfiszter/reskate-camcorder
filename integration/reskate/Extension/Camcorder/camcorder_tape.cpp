@@ -5,7 +5,10 @@
 #include <propidl.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
+#include <limits>
+#include <numeric>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -39,9 +42,18 @@ FrameRate reader_rate(IMFSourceReader *reader) {
     ComPtr<IMFMediaType> type;
     UINT32 numerator{}, denominator{};
     if (SUCCEEDED(reader->GetNativeMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, &type)) &&
-        SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator)) && numerator && denominator &&
-        numerator <= 1'000'000 && denominator <= 1'000'000)
-        return {static_cast<int>(numerator), static_cast<int>(denominator)};
+        SUCCEEDED(MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator)) && numerator && denominator) {
+        // An MP4 can say 30000/1001 as 10000000/333667: brought to lowest terms, or the nearest
+        // standard rate when that is still too big.
+        const UINT32 common = std::gcd(numerator, denominator);
+        numerator /= common;
+        denominator /= common;
+        if (numerator <= 1'000'000 && denominator <= 1'000'000) return {static_cast<int>(numerator), static_cast<int>(denominator)};
+        const double fps = static_cast<double>(numerator) / denominator;
+        for (const FrameRate standard : {FrameRate{60000, 1001}, FrameRate{50, 1}, FrameRate{30000, 1001}, FrameRate{25, 1},
+                                          FrameRate{24000, 1001}, FrameRate{18, 1}})
+            if (std::abs(fps - static_cast<double>(standard.numerator) / standard.denominator) < 0.05) return standard;
+    }
     return {};
 }
 bool has_sound(IMFSourceReader *reader) {
@@ -108,14 +120,15 @@ struct Capture::Impl {
         VideoSize size{};
         bool sound = false;
         FrameRate rate;
+        const bool media = camcorder_media::available(); // starts Media Foundation, before any clip is opened
         for (const auto &clip : clips)
-            if (auto reader = open_clip(clip)) {
+            if (auto reader = media ? open_clip(clip) : ComPtr<IMFSourceReader>{}) {
                 if (!size.width && clip_size(reader.Get(), size)) rate = reader_rate(reader.Get());
                 sound = sound || has_sound(reader.Get());
             }
         ComPtr<IMFSinkWriter> writer;
         DWORD video_stream{}, audio_stream{};
-        HRESULT hr = !camcorder_media::available() ? E_FAIL : size.width ? S_OK : E_INVALIDARG;
+        HRESULT hr = !media ? E_FAIL : size.width ? S_OK : E_INVALIDARG;
         if (SUCCEEDED(hr)) hr = camcorder_media::open_mp4(path, size, sound, rate, writer, video_stream, audio_stream);
         if (FAILED(hr)) {
             done.error = size.width ? camcorder_media::failed("Opening the tape file", hr) : "None of the clips could be read.";
@@ -153,22 +166,87 @@ struct Capture::Impl {
                     clip_sound = SUCCEEDED(r);
                 }
                 const LONGLONG length = duration(reader.Get());
+                // Both streams together, in the file's order: the writer interleaves them by time
+                // and holds the picture back when the sound falls behind (reading all of one first
+                // stalled it). Clips with no sound give silence as the picture goes.
+                reader->SetStreamSelection(static_cast<DWORD>(MF_SOURCE_READER_ALL_STREAMS), FALSE);
+                reader->SetStreamSelection(video, TRUE);
+                if (clip_sound) reader->SetStreamSelection(audio, TRUE);
+                // The sound written for this clip, in sample frames: times are made from the count,
+                // as the encoder counts them, so the next clip's sound is not pushed late.
+                LONGLONG frames_written = 0;
+                const auto frames_at = [](LONGLONG time) { return std::max<LONGLONG>(time, 0) * audio_rate / 10'000'000LL; };
+                const auto time_of = [](LONGLONG frames) { return frames * 10'000'000LL / audio_rate; };
+                std::vector<std::int16_t> quiet(static_cast<std::size_t>(audio_rate) * audio_channels / 10, 0); // 100 ms
+                const auto silence_to = [&](LONGLONG time) {
+                    const LONGLONG until = frames_at(time);
+                    while (frames_written < until) {
+                        const LONGLONG n = std::min<LONGLONG>(until - frames_written, static_cast<LONGLONG>(quiet.size()) / audio_channels);
+                        if (FAILED(camcorder_media::write_sample(writer.Get(), audio_stream, quiet.data(),
+                                                                  static_cast<std::size_t>(n) * audio_channels * sizeof(std::int16_t),
+                                                                  offset + time_of(frames_written), time_of(frames_written + n) - time_of(frames_written))))
+                            return false;
+                        frames_written += n;
+                    }
+                    return true;
+                };
+                // Sound is kept to the clip's length: past it, it would run into the next clip.
+                const LONGLONG sound_limit = length > 0 ? frames_at(length) : std::numeric_limits<LONGLONG>::max();
                 LONGLONG end = 0; // where this clip's picture ends, on the tape
-                bool broken = false;
-                // The picture, then the sound: the writer interleaves them by time.
-                for (bool reading = true; reading && !broken;) {
-                    DWORD flags{};
+                bool broken = false, video_done = false, audio_done = !clip_sound;
+                while (!broken && (!video_done || !audio_done)) {
+                    DWORD index{}, flags{};
                     LONGLONG time{};
                     ComPtr<IMFSample> sample;
-                    if (FAILED(reader->ReadSample(video, 0, nullptr, &flags, &time, &sample))) { broken = true; break; }
-                    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) reading = false;
-                    if (!sample) continue;
-                    LONGLONG span{};
-                    if (FAILED(sample->GetSampleDuration(&span)) || span <= 0) span = camcorder_media::frame_time(1, rate);
-                    if (!packed_nv12(sample.Get(), size, nv12)) { broken = true; break; }
-                    if (FAILED(camcorder_media::write_sample(writer.Get(), video_stream, nv12.data(), nv12.size(),
-                                                              offset + time, span))) { broken = true; break; }
-                    end = std::max(end, time + span);
+                    if (FAILED(reader->ReadSample(static_cast<DWORD>(MF_SOURCE_READER_ANY_STREAM), 0, &index, &flags, &time, &sample))) {
+                        broken = true;
+                        break;
+                    }
+                    ComPtr<IMFMediaType> type;
+                    GUID major{};
+                    const bool is_video = SUCCEEDED(reader->GetCurrentMediaType(index, &type)) &&
+                                          SUCCEEDED(type->GetGUID(MF_MT_MAJOR_TYPE, &major)) && major == MFMediaType_Video;
+                    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) (is_video ? video_done : audio_done) = true;
+                    if (flags & MF_SOURCE_READERF_ERROR) broken = true;
+                    if (!sample || broken) continue;
+                    if (is_video) {
+                        LONGLONG span{};
+                        if (FAILED(sample->GetSampleDuration(&span)) || span <= 0) span = camcorder_media::frame_time(1, rate);
+                        if (!packed_nv12(sample.Get(), size, nv12) ||
+                            FAILED(camcorder_media::write_sample(writer.Get(), video_stream, nv12.data(), nv12.size(), offset + time, span))) {
+                            broken = true;
+                            break;
+                        }
+                        end = std::max(end, time + span);
+                        if (sound && !clip_sound && !silence_to(time + span)) broken = true;
+                        continue;
+                    }
+                    // Sound: any gap before it filled, then only what fits in the clip.
+                    if (!silence_to(time)) {
+                        broken = true;
+                        break;
+                    }
+                    ComPtr<IMFMediaBuffer> buffer;
+                    BYTE *data{};
+                    DWORD bytes{};
+                    if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) || FAILED(buffer->Lock(&data, nullptr, &bytes))) continue;
+                    const LONGLONG first = frames_at(time), frames = bytes / (audio_channels * 2);
+                    // Overlap with what is written already (a gap fill, rounding) is skipped.
+                    const LONGLONG skip_frames = std::clamp<LONGLONG>(frames_written - first, 0, frames);
+                    const LONGLONG n = std::clamp<LONGLONG>(std::min(frames - skip_frames, sound_limit - frames_written), 0, frames);
+                    if (n > 0) {
+                        if (FAILED(camcorder_media::write_sample(writer.Get(), audio_stream, data + skip_frames * audio_channels * 2,
+                                                                  static_cast<std::size_t>(n) * audio_channels * 2, offset + time_of(frames_written),
+                                                                  time_of(frames_written + n) - time_of(frames_written))))
+                            broken = true;
+                        else
+                            frames_written += n;
+                    }
+                    buffer->Unlock();
+                    if (frames_written >= sound_limit) {
+                        audio_done = true;
+                        reader->SetStreamSelection(audio, FALSE); // the rest would be cut anyway
+                    }
                 }
                 if (broken) {
                     skip(clip, "it stopped decoding part way");
@@ -176,35 +254,11 @@ struct Capture::Impl {
                     break; // the tape's timeline is no longer whole
                 }
                 const LONGLONG clip_length = std::max(end, length);
-                if (sound) {
-                    LONGLONG written = 0;
-                    if (clip_sound) {
-                        for (bool reading = true; reading;) {
-                            DWORD flags{};
-                            LONGLONG time{};
-                            ComPtr<IMFSample> sample;
-                            if (FAILED(reader->ReadSample(audio, 0, nullptr, &flags, &time, &sample))) break;
-                            if (flags & MF_SOURCE_READERF_ENDOFSTREAM) reading = false;
-                            if (!sample) continue;
-                            ComPtr<IMFMediaBuffer> buffer;
-                            BYTE *data{};
-                            DWORD bytes{};
-                            if (FAILED(sample->ConvertToContiguousBuffer(&buffer)) || FAILED(buffer->Lock(&data, nullptr, &bytes))) break;
-                            const LONGLONG frames = bytes / (audio_channels * 2);
-                            const LONGLONG span = frames * 10'000'000LL / audio_rate;
-                            // Sound past the picture's end would push the next clip's sound late.
-                            if (time < clip_length)
-                                camcorder_media::write_sample(writer.Get(), audio_stream, data, bytes, offset + time, span);
-                            buffer->Unlock();
-                            written = std::max(written, time + span);
-                        }
-                    }
-                    // Silence for the rest of the clip (all of it when the clip had no sound).
-                    std::vector<std::int16_t> quiet(static_cast<std::size_t>(audio_rate) * audio_channels / 10, 0); // 100 ms
-                    const LONGLONG step = 1'000'000; // 100 ms
-                    for (LONGLONG at = written; at < clip_length; at += step)
-                        camcorder_media::write_sample(writer.Get(), audio_stream, quiet.data(), quiet.size() * sizeof(std::int16_t),
-                                                      offset + at, std::min(step, clip_length - at));
+                // Silence for the rest of the clip (all of it when the clip had no sound).
+                if (sound && !silence_to(clip_length)) {
+                    skip(clip, "its sound could not be written");
+                    hr = E_FAIL;
+                    break;
                 }
                 offset += clip_length;
                 ++done.clips;

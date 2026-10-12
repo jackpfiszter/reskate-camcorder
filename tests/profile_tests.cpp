@@ -210,7 +210,7 @@ TEST(grips_are_data) {
     CHECK(read_grip(R"({"height": 9})", "tall").profile->height == 3.0f);
     CHECK(profile_file("pole.grip.json")->first == ProfileKind::grip);
     CHECK(profile_file("handling.json")->first == ProfileKind::handling);
-    // Chosen by id, with mods' grips beside the built-in three.
+    // Chosen by id, with mods' rigs beside the built-in hand.
     Catalogue catalogue;
     catalogue.add(*pole.profile);
     Camcorder cam;
@@ -218,7 +218,7 @@ TEST(grips_are_data) {
     context.catalogue = &catalogue;
     CHECK(run_command(cam, "grip", {"pole"}, context) == "Pole cam.");
     CHECK(cam.status().grip_id == "pole");
-    CHECK(run_command(cam, "grip", {"next"}, context) == "Long grip."); // round to the first
+    CHECK(run_command(cam, "rig", {"next"}, context) == "Handheld."); // round to the first
     CHECK(run_command(cam, "grip", {"list"}, context).find("pole  Pole cam") != std::string::npos);
 }
 
