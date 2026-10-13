@@ -18,7 +18,8 @@ since).</sub>
   straight lines bending like through the real glass.
 - 🛹 **Film handheld while you skate.** Low for the classic follow shot or up high, raised and
   lowered as you go, or fixed to your board as a board cam. It keeps your friend in frame for you,
-  a beat late like a real filmer, and you nudge the framing and zoom without stopping.
+  a beat late like a real filmer, and you nudge the framing and zoom without stopping. Or stop and
+  take full control of the camera, roll and all.
 - 🔭 **Tripods.** Set up to four at a spot, aim them, and cut between angles.
 - 📼 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, and a date stamp set to
   any day you like.
@@ -40,12 +41,16 @@ You need skate. on Steam and
    [Releases](https://github.com/jackpfiszter/reskate-camcorder/releases/latest).
 2. **Swap two files.** Close the game. In your skate. folder (beside `Skate.exe`), back up
    `ReSkate.dll` and `ReSkateLauncher.exe`, then put the two from the zip there.
-3. **Play.** Start the game with that `ReSkateLauncher.exe` (if it says an update is available,
-   ignore it). Load a map, press **Insert** for the ReSkate menu, open **CAMCORDER**
-   and click **SET UP KEYS**.
+3. **Play.** Start the game with that `ReSkateLauncher.exe`. If it offers a ReSkate update, skip it:
+   updating puts the official `ReSkate.dll` back (no camcorder). Load a map, press **Insert** for
+   the ReSkate menu, open **CAMCORDER** and click **SET UP KEYS**.
 
 Now **F5** turns the camera on and **F6** records. To go back to normal ReSkate, put your two
 backed-up files back.
+
+Each release is ReSkate's newest code at the time with the camcorder added, and nothing else of
+ReSkate's changed (the release notes say which ReSkate commit). When ReSkate puts out something
+newer, the next camcorder release catches up.
 
 The extra cameras are a normal ReSkate mod: unzip `Camcorder-Extras-mod-…zip` from the same
 release into your `Mods` folder.
@@ -88,8 +93,8 @@ picture as a stack of effects, its viewfinder, its date stamp. [docs/MODDING.md]
   with what you did and, if you can, `logs\ReSkate.log` from beside `Skate.exe`.
 - [docs/TESTING.md](docs/TESTING.md) has the full checklist of what should work, and what's known
   not to yet.
-- Playing online: your friends don't need the camcorder to be filmed. Friends on the same build
-  see a little camcorder by your name, with a red light while you're recording.
+- Playing online: your friends don't need the camcorder to be filmed, and nothing extra goes over
+  the network: your camera is on your screen only.
 
 <details>
 <summary><b>For developers</b></summary>
@@ -101,6 +106,28 @@ ReSkate mods can only change game data. Moving the camera every frame takes nati
 ReSkate (`integration/reskate/reskate.patch`, plus its own files), meant to be offered to ReSkate
 itself. Everything about a particular camera is data, so cameras can still change through mods
 with no ReSkate update.
+
+### What it changes in ReSkate
+
+Its own code lives in `Extension/Camcorder/` (copied in by `install.ps1`, built by its own
+`camcorder.cmake`). `reskate.patch` is what touches ReSkate's files, against the commit in
+`integration/reskate/reskate.commit`: about 280 lines added across 15 files, and nothing of
+ReSkate's taken out (every line it replaces comes back extended).
+
+| Where | What for |
+|---|---|
+| `cmake/Runtime.cmake` | one line: include `camcorder.cmake` |
+| `Runtime/client_tick.cpp` | the camcorder's tick after Spectate's; holding the pad while it needs it; skate.'s HUD off while filming |
+| `Extension/Multiplayer/Session/session.cpp` | where the skaters are (the local one, with their board a few times a second, and the others) |
+| `Extension/Multiplayer/Hud/native_party*` | whether Spectate has the camera (they share it, never both) |
+| `Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`, `overlay_internal.h`, `overlay.h` | filming while skating: the mouse, right stick, triggers, bumpers and Q / E / R / F to the camera, the rest to the skater; mouse look and wheel for the camera |
+| `Extension/UI/Overlay/overlay_render.cpp` | two descriptor slots, and the picture, clip and review hooks around the overlay's draw |
+| `Extension/UI/Overlay/skate_menu.cpp` | the CAMCORDER page |
+| `Extension/Console/commands.*`, `Engine/Game/Input/controller_bindings.h` | the `camcorder` commands and seven bindable actions |
+| `Extension/Multiplayer/Voice/voice_chat.cpp` | push-to-talk read past the input hold (it was blanked while Freecam held the keys too) |
+
+The cursor hooks also stop swallowing the game's own cursor hiding while the input is held, so
+Windows' arrow no longer shows over a held picture (Freecam's too).
 
 ### Layout
 
@@ -135,7 +162,7 @@ Settings are kept in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 
 Each version on the [Releases page](https://github.com/jackpfiszter/reskate-camcorder/releases) is a
 zip with `ReSkate.dll` and `ReSkateLauncher.exe`, plus the example camera mod. To publish the newest
-green build: Actions > **release** > Run workflow, with a version like `v0.12.0`. The zip holds a
+green build: Actions > **release** > Run workflow, with a version like `v0.19.0`. The zip holds a
 modified `ReSkate.dll`, so under the GPL its source is this repository at that version plus
 ReSkate at the commit in `integration/reskate/reskate.commit`.
 

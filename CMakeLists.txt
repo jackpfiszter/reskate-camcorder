@@ -14,7 +14,6 @@ add_library(camcorder STATIC
     src/camcorder/json.cpp
     src/camcorder/look.cpp
     src/camcorder/preferences.cpp
-    src/camcorder/presence.cpp
     src/camcorder/profiles.cpp
     src/camcorder/recorder.cpp
     src/camcorder/rigs.cpp
@@ -41,7 +40,6 @@ if(BUILD_TESTING)
         tests/effect_tests.cpp
         tests/look_tests.cpp
         tests/preference_tests.cpp
-        tests/presence_tests.cpp
         tests/profile_tests.cpp
         tests/recorder_tests.cpp
         tests/rig_tests.cpp

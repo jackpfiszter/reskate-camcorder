@@ -196,11 +196,8 @@ With a friend:
 - [ ] WHO TO FILM > CLOSEST, on a tripod, two of you skating past it in turns: it pans to whoever
       is nearest, you included, and doesn't flick between two side by side (hover CLOSEST: who).
       Handheld, CLOSEST follows the nearest other player.
-- [ ] Both on this build: turn your camcorder on. Your friend sees a small white camcorder after your
-      name; REC and it gets a blinking red light and "REC". STBY: the light goes; power off: the
-      camcorder goes. If your friend joins after you started, it shows within 10 seconds.
-- [ ] A friend on the official ReSkate build still plays with you normally (their log gets an
-      "unreadable message" line now and then while you film; nothing else).
+- [ ] A friend on the official ReSkate build plays with you normally while you film (nothing new in
+      their log).
 - [ ] Party Spectate while the camcorder is on: the camcorder turns off ("stop spectating to film"),
       and Spectate works.
 
