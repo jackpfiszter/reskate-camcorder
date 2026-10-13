@@ -25,8 +25,10 @@ have come on since).</sub>
   PC gets in.
 - 💾 **Clips straight to your Videos folder** as MP4s, ready to edit. Or join a whole "tape" into
   one file.
-- 🧩 **Make your own cameras.** Hi8, Super 8, a VX2000, a pole cam: every camera is a small mod
-  anyone can make. A few come with it.
+- 🧩 **Make your own cameras.** Hi8, a worn VHS camcorder, Super 8, a 16:9 HVX200, a pole cam:
+  every camera is a small mod anyone can make. Its picture is built from 34 effects (VHS tracking,
+  film dust and light leaks, bloom, colour grades from a `.cube`...), and its viewfinder and
+  picture shape are its own. A few come with it.
 
 ## Try it
 
@@ -71,8 +73,8 @@ on the CAMCORDER page takes you there.
 
 ## Make your own camera
 
-A camera is a few lines of JSON in an ordinary ReSkate mod: zoom, frame rate, how its picture
-looks, its date stamp, its mic. [docs/MODDING.md](docs/MODDING.md) explains every setting, and
+A camera is a few lines of JSON in an ordinary ReSkate mod: zoom, frame rate, picture shape, its
+picture as a stack of effects, its viewfinder, its date stamp, its mic. [docs/MODDING.md](docs/MODDING.md) explains every setting, and
 [examples/mods/Camcorder Extras](examples/mods/Camcorder%20Extras) is one to copy.
 
 ## Help and feedback

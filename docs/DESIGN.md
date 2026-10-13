@@ -159,12 +159,12 @@ through the camcorder and steer by it, as real filmers do.
 ## The look
 
 1. **First milestone: geometry.** The lens's angle of view (from 44 down to 4.7 degrees across
-   on the stock lens), 4:3 pillarbox bars, and the fisheye's round shadow drawn over the
+   on the stock lens), pillarbox bars, and the fisheye's round shadow drawn over the
    picture. A flat game camera cannot bend lines, so the fisheye is approximated by giving the
    flat camera its coverage (about 94 degrees vertical).
 2. **The warp (built).** The game camera is opened just wide enough that every visible point has
    picture behind it (`FisheyeRender::warp`). The overlay copies the frame into a texture and
-   draws it back over the 4:3 picture through a 64 x 48 mesh whose texture coordinates follow the
+   draws it back over the picture through a 64 x 48 mesh whose texture coordinates follow the
    equidistant fisheye (`warp_uv`, tested), with ImGui's own pipeline: no new shader, and a draw
    callback switches off the HDR conversion for the mesh. Clips and stills are copied in another
    draw callback after the mesh, so they bend exactly as the screen does. The cost is softness in
@@ -172,13 +172,29 @@ through the camcorder and steer by it, as real filmers do.
    fisheye is about half the resolution of the screen.
 3. **The look (built, on screen).** `look.h`: a small CCD's hard white and dense blacks, a
    wandering auto white balance, edge enhancement, grain, tape softness and colour smear, each
-   switchable, in the amounts the camera's profile gives. The overlay draws it with the fisheye
-   in one pixel shader pass (`camcorder_warp.cpp`), so the viewfinder shows what the tape gets;
-   clips and stills copy the result. The date stamp is drawn over it, the same marks the CPU
-   would burn (`stamp_marks`). Film cameras (24p, 18p) hold each picture on screen for their
-   frame time. The 60 fields stay with the recording (clips at 59.94, each frame one field),
-   because they follow the clip's frames, not the screen's. Where the shader cannot be built, the
-   fisheye falls back to an ImGui mesh and the look to the CPU in the encoder (`recorded_finish`).
+   switchable, in the amounts the camera's profile gives. The date stamp is drawn over it, the
+   same marks the CPU would burn (`stamp_marks`). Film cameras (24p, 18p) hold each picture on
+   screen for their frame time. The 60 fields stay with the recording (clips at 59.94, each frame
+   one field), because they follow the clip's frames, not the screen's. Where the shader cannot
+   be built, the fisheye falls back to an ImGui mesh and the look to the CPU in the encoder
+   (`recorded_finish`).
+4. **Effects as data (built).** A camera's picture is a stack of blocks from a fixed library
+   (`effects.h`: 34 of them, from tone and colour tables to VHS tracking and film dust), in the
+   order its file lists them; a camera with no stack gets one from its look's numbers. Mods stay
+   data: the blocks are the camcorder's own code, one pixel shader whose programs they are
+   (`camcorder_shader.h`). Before the overlay draws, `camcorder_warp.cpp` copies the game's
+   frame and draws the picture back over it pass by pass: the lens, the camera light, each block
+   (a block may take several passes, through spare textures: a two-way blur, bloom), then out to
+   the screen, through 16-bit float textures. What moves over time (white balance drift, gate
+   weave, flicker, a tracking band's roll) is worked out per frame in the model
+   (`plan_effects`, tested); the shader only draws. It all lives in the camcorder's own files:
+   ReSkate's overlay already rebinds its render target and descriptor heap after the copy hook.
+5. **The viewfinder as data (built).** The readouts are a layout of elements
+   (`viewfinder_layout.h`): text with live fields, the battery, the zoom bar, boxes, guides, each
+   anchored to the picture and shown under conditions. The model lays them out as plain text and
+   shapes (`layout_viewfinder`, tested); the overlay only draws them. The VX1000's is a layout too.
+6. **Any picture shape (built).** The picture is the sensor's shape (a camera's `aspect`): the
+   lens maths, the viewfinder, the warp and the clip sizes all take it.
 
 ## Controls (proposed)
 
