@@ -33,6 +33,7 @@ void register_camcorder_commands(Commands &registry) {
         {"sound", "Clips without sound, with the game's, or through the camera's own mic", "off|game|mic"},
         {"camera", "The camera: the VX1000, or one a mod adds", "<id>|next|list"},
         {"mods", "The cameras and lenses mods add, and what is wrong with any", "[reload]"},
+        {"effects", "The camera's effects, in order, or every effect a camera can use", "[list]"},
         {"export", "Start your own camera mod: the camera, lens, rig and feel in use, written to Mods/My Camcorder", nullptr},
         {"warp", "The true fisheye (lines bend) or the flat stand-in", "[on|off|toggle]"},
         {"quick", "The quick menu over the viewfinder", "[toggle|open|close]"},

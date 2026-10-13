@@ -379,37 +379,6 @@ std::array<float, 2> white_balance(const LookProfile &profile, const DvClip &cli
     return {static_cast<float>(1 + cast), static_cast<float>(1 - cast)};
 }
 
-ScreenLook screen_look(const Finish &finish, const DvClip &clip, double seconds) {
-    ScreenLook s;
-    const auto &look = finish.dv;
-    const auto &p = finish.look;
-    if (!look.on) return s;
-    s.on = true;
-    if (look.highlights) {
-        s.black_crush = std::clamp(p.black_crush, 0.0f, 0.5f);
-        s.highlight_gain = std::clamp(p.highlight_gain, 0.5f, 2.0f);
-        s.saturation = std::clamp(p.saturation, 0.0f, 2.0f);
-        s.highlight_bleed = s.highlight_gain > 1;
-    }
-    if (look.white_balance) {
-        const auto gains = white_balance(p, clip, seconds);
-        s.red_gain = gains[0];
-        s.blue_gain = gains[1];
-    }
-    s.highlight_knee = std::clamp(p.highlight_knee, 0.5f, 1.0f);
-    s.highlight_spread = std::clamp(p.highlight_spread, 0.005f, 0.5f);
-    s.grain_size = std::clamp(p.grain_size, 0.25f, 8.0f);
-    s.grain_colour = std::clamp(p.grain_colour, 0.0f, 1.0f);
-    s.sharpen_radius = std::clamp(p.sharpen_radius, 0.25f, 8.0f);
-    if (look.sharpen) s.sharpen = std::clamp(p.sharpen, 0.0f, 2.0f);
-    if (look.grain) s.grain = std::clamp(p.grain, 0.0f, 1.0f);
-    if (look.chroma) {
-        s.chroma_width = p.chroma_width > 1 ? std::clamp(p.chroma_width, 0.0f, 16.0f) : 0.0f;
-        s.softness = std::clamp(p.softness, 0.0f, 8.0f);
-    }
-    return s;
-}
-
 double screen_frame_rate(const Finish &finish) noexcept {
     // Film-like cameras (24p, Super 8's 18) show their own cadence; video's 25 to 60 is left to the game.
     return finish.motion == Motion::p24 || finish.motion == Motion::p18 ? clip_rate(finish).fps() : 0;

@@ -1,20 +1,22 @@
 #pragma once
-// The camcorder's picture on screen: the fisheye's bend and the camera's look. The game renders a
-// flat picture (opened wide enough for the warp: camcorder/vx1000.h, FisheyeRender::warp); the
-// overlay copies that frame into a texture and draws it back over the picture through a pixel
-// shader (the picture pass) that bends it as the fisheye did and gives it the camera's tone,
-// colour, sharpening, grain and tape smear (camcorder/look.h, ScreenLook). Clips and stills are
-// copied after the pass is drawn (camcorder_capture.h), so they have what the screen has.
+// The camcorder's picture on screen: the lens's bend, the camera light and the camera's effects
+// (camcorder/effects.h). The game renders a flat picture (opened wide enough for the bend:
+// camcorder/vx1000.h, FisheyeRender::warp); before the overlay draws, that frame is copied, and the
+// picture is drawn back over it pass by pass through the picture shader (camcorder_shader.h): the
+// lens, the light, each effect, then out to the screen. The overlay's readouts go over the result,
+// and clips and stills are copied after it (camcorder_capture.h), so they have what the screen has.
 //
 // Where the shader cannot be built, the bend alone is drawn through a fine ImGui mesh, and the
 // look is left to the recording (the old way).
 //
 // Render thread only (Extension/UI/Overlay/overlay_render.cpp, under the overlay's render lock).
+#include "camcorder/effects.h"
 #include <d3d12.h>
 #include <dxgi.h>
 #include <imgui.h>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace dingosdk::overlay {
 // Graphics setup: the device, the SRV heap slot the copy is drawn from, and the back buffer's
@@ -29,28 +31,27 @@ std::optional<ImTextureID> camcorder_warp_request(bool copy = true);
 // Why the last request had no picture (empty when it had one), for the player.
 std::string camcorder_warp_why_not();
 
-// The picture pass's numbers (the shader's constant buffer, camcorder_warp.cpp).
-struct PicturePass {
-    float rect[4]{};   // the picture on screen: left, top, width, height
-    float screen[4]{}; // the copy: width, height, 1 / width, 1 / height
-    float lens[4]{};   // warped (0 / 1), half the picture's width (radians), tan(half the render's height), render aspect
-    float tone[4]{};   // look on (0 / 1), black crush, highlight gain, saturation
-    float colour[4]{}; // red gain, blue gain, sharpen, grain
-    float tape[4]{};   // chroma width, softness (in 720ths), screen pixels per 720th, frame
-    float output[4]{}; // transfer, white (nits), highlight bleed (0 / 1), 0
-    float camera[4]{}; // the camera's lines (0: the screen's own), light strength (0 off), light reach, sharpen radius (720ths)
-    float detail[4]{}; // highlight knee, highlight spread, grain size (720ths), grain colour (0 the same on each channel, 1 its own)
-    float lamp[4]{};   // the light's colour (red, green, blue, 1 white), 0
-    float bend[4]{};   // the fisheye's projection (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic), 0, 0, 0
+// This frame's picture: where it is, the lens, the light and the effects' passes.
+struct PictureChain {
+    float rect[4]{};   // the picture on screen: left, top, width, height (the overlay's units)
+    float screen[2]{}; // the overlay's width and height
+    float lens[4]{};   // bent (0 / 1), half the picture's width (radians), tan(half the render's height), render aspect
+    float projection{}; // the fisheye's (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic)
+    bool look{};       // the look is on: the picture goes into the look's values and back out
+    float light[8]{};  // strength (0: no light), reach, 0, 0, red, green, blue, 0
+    float frame{}, seconds{};
+    std::vector<camcorder::EffectPass> passes; // camcorder::plan_effects
 };
-// Whether the picture pass can be drawn (built on first ask; false for good if it cannot be).
+// Whether the picture shader is ready (it is built on the first ask, away from the render thread:
+// false until then), and whether it failed for good.
 bool camcorder_picture_pass_ready();
-// The back buffer's transfer (0 SDR, 1 scRGB, 2 HDR10), for the pass's numbers.
+bool camcorder_picture_pass_failed();
+// The back buffer's transfer (0 SDR, 1 scRGB, 2 HDR10).
 int camcorder_warp_transfer();
-// Draws the pass on `list` with these numbers (once a frame), from the texture camcorder_warp_request gave.
-void camcorder_picture_pass(ImDrawList *list, const PicturePass &pass);
+// Frame building: draw `chain` over the copy camcorder_warp_request gave, before the overlay draws.
+void camcorder_picture_chain(PictureChain chain);
 // With the frame's command list open, before the overlay draws (the back buffer in PRESENT):
-// copies the game's picture when it was asked for this frame.
+// copies the game's picture when it was asked for this frame, and draws the picture chain over it.
 void camcorder_warp_copy(ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer);
 // After the frame's commands were submitted and `signal` set on `fence`.
 void camcorder_warp_submitted(ID3D12Fence *fence, UINT64 signal);

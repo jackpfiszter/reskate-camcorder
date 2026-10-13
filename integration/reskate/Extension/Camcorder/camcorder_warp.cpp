@@ -1,40 +1,90 @@
 #include "camcorder_warp.h"
 #include "camcorder_runtime.h"
+#include "camcorder_shader.h"
 #include "Engine/Core/Log/logging.h"
 #include "Extension/UI/Overlay/overlay.h"
-#include <backends/imgui_impl_dx12.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
 #include <climits>
+#include <cmath>
+#include <cstring>
+#include <future>
 #include <string>
 #include <utility>
 
 namespace dingosdk::overlay {
 namespace {
 using Microsoft::WRL::ComPtr;
+using camcorder::EffectPass;
+using camcorder::Slot;
+
+// The picture's textures, after the copy: two for the picture as it goes (each pass reads one and
+// writes the other), two spares (blocks drawn in several passes), and the picture a moment ago.
+enum Target : int { picture_a, picture_b, spare_a, spare_b, history, targets };
+// Our own descriptor heap: the copy's view, an empty 3D view, then a ring the targets' and colour
+// tables' views are made in. A view is made anew in the ring's next slot rather than over an old
+// one a frame still on the GPU may read; the ring comes round again only after hundreds of new views
+// (each a resize or a new colour table), long after those frames are done.
+constexpr UINT copy_view = 0, no_table_view = 1, first_ring_view = 2, views = 256;
+constexpr int tables = 4;
+constexpr DXGI_FORMAT picture_format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+// The shader's constant buffer (camcorder_shader.h, Constants).
+struct Constants {
+    float rect[4]{}, screen[4]{}, clock[4]{}, job[4]{};
+    float v[camcorder::effect_values]{};
+};
+static_assert(sizeof(Constants) == 48 * 4, "48 root constants");
+
+struct Table {
+    std::uint64_t hash{};
+    ComPtr<ID3D12Resource> texture, upload;
+    std::uint64_t used{}; // the chain number that last used it
+    UINT view{};          // its view's slot
+};
 
 struct Warp {
     ID3D12Device *device{};
     D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
     D3D12_GPU_DESCRIPTOR_HANDLE gpu{};
-    ComPtr<ID3D12Resource> texture;
+    ComPtr<ID3D12Resource> texture; // the copy
     UINT64 width{};
     UINT height{};
     DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
     bool requested{}, copy_wanted{}, drawn{}, copied{};
     DXGI_FORMAT output{DXGI_FORMAT_UNKNOWN};
     int transfer{};
-    // The picture pass (built on first ask).
-    ComPtr<ID3D12RootSignature> root;
-    ComPtr<ID3D12PipelineState> pipeline;
-    bool pass_tried{}, pass_ready{};
-    PicturePass pass{}; // this frame's numbers, for the draw callback
-    ComPtr<ID3D12Fence> fence;
-    UINT64 last_use{}; // the newest frame that drew from (or copied into) the texture
-    bool working{}, failure_said{};
+    // The picture shader (compiled once a game, away from the render thread) and its pipelines.
+    std::future<std::pair<ComPtr<ID3DBlob>, ComPtr<ID3DBlob>>> compiling;
     ComPtr<ID3DBlob> vertex_code, pixel_code; // kept across swap chains
-    bool compile_failed{}, pass_failure_said{};
-    std::string why_not; // why the screen has no picture pass this frame, for the notice
+    bool compile_started{}, compile_failed{}, pass_failure_said{};
+    ComPtr<ID3D12RootSignature> root;
+    ComPtr<ID3D12PipelineState> to_picture, to_screen; // into our textures, and onto the back buffer
+    bool pass_tried{}, pass_ready{};
+    // Our descriptor heaps, textures and colour tables.
+    ComPtr<ID3D12DescriptorHeap> views, outputs;
+    UINT view_step{}, output_step{};
+    std::array<ComPtr<ID3D12Resource>, targets> target{};
+    std::array<D3D12_RESOURCE_STATES, targets> state{};
+    std::array<UINT, targets> target_view{}; // their views' slots
+    UINT next_view{first_ring_view};
+    UINT64 target_width{};
+    UINT target_height{};
+    bool history_valid{};
+    std::array<Table, tables> table{};
+    std::vector<std::pair<UINT64, ComPtr<ID3D12Resource>>> retired; // freed once the GPU is past them
+    // This frame's chain, from frame building.
+    PictureChain chain;
+    bool chain_wanted{};
+    std::uint64_t chains{}; // chains drawn
+    UINT64 history_at{};    // the frame before the one the history was kept in (its last_signal then)
+    ComPtr<ID3D12Fence> fence;
+    UINT64 last_use{}, last_signal{}; // the newest frame that used our textures; the newest submitted
+    bool working{}, failure_said{};
+    std::string why_not; // why the screen has no picture chain this frame, for the notice
 };
 Warp &warp() {
     static auto *value = new Warp;
@@ -51,191 +101,20 @@ void transition(ID3D12GraphicsCommandList *commands, ID3D12Resource *resource, D
     commands->ResourceBarrier(1, &barrier);
 }
 bool idle(const Warp &w) { return !w.fence || w.fence->GetCompletedValue() >= w.last_use; }
-
-// The picture pass's shader (checked with Microsoft's dxc in development; compiled here as SM 5.0).
-constexpr char picture_shader[] = R"hlsl(
-// The camcorder's picture: the game's frame (a copy, t0) bent through the fisheye and given the
-// camera's look, drawn over the picture. camcorder_warp.cpp fills the constants.
-// (Named Constants: "pass" is a keyword to the D3DCompile compiler, which takes "Pass" for it too.)
-cbuffer Constants : register(b0) {
-    float4 rect;    // the picture on screen: left, top, width, height (pixels)
-    float4 screen;  // the copy: width, height, 1 / width, 1 / height
-    float4 lens;    // warped (0 / 1), half the picture's width in radians, tan(half the render's height), render aspect
-    float4 tone;    // look on (0 / 1), black crush, highlight gain, saturation
-    float4 colour;  // red gain, blue gain, sharpen, grain
-    float4 tape;    // chroma width, softness (both in pixels of a 720-wide picture), screen pixels per such pixel, frame
-    float4 output;  // transfer (0 SDR, 1 scRGB, 2 HDR10), white (nits), highlight bleed (0 / 1), unused
-    float4 camera;  // the camera's lines (0: the screen's own), light strength (0 off), light reach (picture half widths), sharpen radius (720ths)
-    float4 detail;  // highlight knee, highlight spread, grain size (720ths), grain colour (0 the same on each channel, 1 its own)
-    float4 lamp;    // the light's colour (red, green, blue), unused
-    float4 bend;    // the fisheye's projection (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic), unused
-};
-Texture2D picture : register(t0);
-SamplerState linear_clamp : register(s0);
-
-float4 picture_vs(uint id : SV_VertexID) : SV_Position {
-    // One triangle over the whole screen; the scissor keeps it to the picture.
-    float2 uv = float2((id << 1) & 2, id & 2);
-    return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
+// A texture the GPU may still be drawing with, let go of once it is done.
+void retire(Warp &w, ComPtr<ID3D12Resource> &resource) {
+    if (resource) w.retired.emplace_back(w.last_signal + 1, std::move(resource));
+    resource.Reset();
 }
-
-// A screen pixel as a point of the picture, in half picture widths: x right in [-1, 1], y up (to
-// 0.75 at a 4:3 picture's top, 0.5625 at a 16:9's).
-float2 picture_point(float2 pixel) {
-    return float2((pixel.x - rect.x) / rect.z * 2 - 1, (0.5 - (pixel.y - rect.y) / rect.w) * 2 * rect.w / rect.z);
+void free_retired(Warp &w) {
+    const UINT64 done = w.fence ? w.fence->GetCompletedValue() : UINT64_MAX;
+    std::erase_if(w.retired, [&](const auto &r) { return r.first <= done; });
 }
-// Where that point is in the game's frame: through the equidistant fisheye (vx1000.h,
-// fisheye_source and warp_uv), or straight across for a flat lens.
-float2 source_uv(float2 pixel) {
-    if (lens.x < 0.5) return pixel * screen.zw;
-    float2 p = picture_point(pixel);
-    float rho = length(p);
-    // The angle off-axis there, by the fisheye's projection (vx1000.cpp fisheye_angle).
-    float angle = rho * lens.y;
-    if (bend.x > 2.5) angle = asin(min(rho * sin(min(lens.y, 1.5707963)), 1));
-    else if (bend.x > 1.5) angle = 2 * atan(rho * tan(lens.y * 0.5));
-    else if (bend.x > 0.5) angle = 2 * asin(min(rho * sin(lens.y * 0.5), 1));
-    float2 t = rho > 1e-6 ? p * (tan(min(angle, 1.4835298)) / rho) : float2(0, 0);
-    return float2(0.5 + 0.5 * t.x / (lens.z * lens.w), 0.5 - 0.5 * t.y / lens.z);
-}
-
-float3 srgb_encode(float3 l) {
-    l = saturate(l);
-    return lerp(12.92 * l, 1.055 * pow(l, 1 / 2.4) - 0.055, step(0.0031308, l));
-}
-float3 srgb_decode(float3 e) {
-    e = saturate(e);
-    return lerp(e / 12.92, pow((e + 0.055) / 1.055, 2.4), step(0.04045, e));
-}
-static const float pq_m1 = 0.1593017578125, pq_m2 = 78.84375, pq_c1 = 0.8359375, pq_c2 = 18.8515625, pq_c3 = 18.6875;
-// The look works on picture values as an SDR camera's (sRGB, white 1); HDR is brought into that and back.
-float3 into_look(float3 c) {
-    if (output.x < 0.5) return c;
-    float3 lin;
-    if (output.x < 1.5) {
-        lin = c * (80 / output.y); // scRGB: 1 is 80 nits
-    } else {
-        float3 p = pow(saturate(c), 1 / pq_m2);
-        float3 nits = 10000 * pow(max(p - pq_c1, 0) / (pq_c2 - pq_c3 * p), 1 / pq_m1);
-        float3 wide = nits / output.y;
-        lin = float3(dot(wide, float3(1.6605, -0.5876, -0.0728)), dot(wide, float3(-0.1246, 1.1329, -0.0083)),
-                     dot(wide, float3(-0.0182, -0.1006, 1.1187)));
-    }
-    return srgb_encode(lin);
-}
-float3 out_of_look(float3 e) {
-    if (output.x < 0.5) return e;
-    float3 lin = srgb_decode(e);
-    if (output.x < 1.5) return lin * (output.y / 80);
-    float3 wide = float3(dot(lin, float3(0.6274, 0.3293, 0.0433)), dot(lin, float3(0.0691, 0.9195, 0.0114)),
-                         dot(lin, float3(0.0164, 0.0880, 0.8956)));
-    float3 y = pow(saturate(wide * (output.y / 10000)), pq_m1);
-    return pow((pq_c1 + pq_c2 * y) / (1 + pq_c3 * y), pq_m2);
-}
-
-float luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-float3 game_at(float2 pixel) { return into_look(picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb); }
-// The picture as the camera's sensor and tape hold it: `camera.x` lines from top to bottom, each the
-// average of its height, and the screen's rows in between them a blend of the two nearest (a tape
-// line is 2 to 3 screen rows on a 1080p or 1440p screen: the camera's softness and its stair-steps).
-float3 sample_at(float2 pixel, float along) {
-    pixel.x += along;
-    float3 seen;
-    if (camera.x < 1) {
-        seen = game_at(pixel);
-    } else {
-        float cell = rect.w / camera.x;
-        float row = (pixel.y - rect.y) / cell - 0.5;
-        float first = floor(row);
-        float y0 = rect.y + (first + 0.5) * cell, y1 = y0 + cell;
-        float3 a = 0.5 * (game_at(float2(pixel.x, y0 - cell * 0.25)) + game_at(float2(pixel.x, y0 + cell * 0.25)));
-        float3 b = 0.5 * (game_at(float2(pixel.x, y1 - cell * 0.25)) + game_at(float2(pixel.x, y1 + cell * 0.25)));
-        seen = lerp(a, b, row - first);
-    }
-    return seen;
-}
-// A light on the camera, pointing where it points: what is in the middle of the frame is lit most,
-// falling off to the edges. Without the scene's depth it can only scale the light already there
-// (a lamp lifts what the game lights a little; a black sky stays black), in linear light, so the
-// middle of a night shot comes up and its brightest parts burn out as under a real camera light.
-float3 camera_light(float3 c, float2 pixel) {
-    if (camera.y <= 0) return c;
-    float2 p = picture_point(pixel);
-    float r = length(p) / max(camera.z, 0.05);
-    float beam = exp(-r * r * 1.6);
-    float3 lin = srgb_decode(c);
-    lin *= 1 + camera.y * beam * lamp.rgb; // the lamp's colour: a halogen's is warm on a daylight-balanced camera
-    return srgb_encode(lin);
-}
-// Noise for one grain cell and frame, about -1 to 1 (two draws added, as in look.cpp); `salt` an
-// independent draw (a colour channel's own).
-float grain_noise(float2 cell, float frame, uint salt) {
-    uint h = (uint)cell.x * 0x85EBCA6Bu ^ (uint)cell.y * 0xC2B2AE35u ^ (uint)frame * 0x9E3779B9u ^ salt * 0x27D4EB2Fu;
-    h ^= h >> 15;
-    h *= 0x2C1B3C6Du;
-    h ^= h >> 12;
-    return ((float)(h & 255u) + (float)((h >> 8) & 255u) - 255.0) / 255.0;
-}
-
-// A gain for the camera light alone (the look off), in the output's own light: no detour through
-// an SDR camera's range, which would clip an HDR picture's highlights everywhere.
-float3 light_gain(float2 pixel) {
-    float r = length(picture_point(pixel)) / max(camera.z, 0.05);
-    return 1 + camera.y * exp(-r * r * 1.6) * lamp.rgb;
-}
-
-float4 picture_ps(float4 position : SV_Position) : SV_Target {
-    float2 pixel = position.xy;
-    if (tone.x < 0.5) {
-        float3 raw = picture.SampleLevel(linear_clamp, source_uv(pixel), 0).rgb;
-        if (camera.y <= 0) return float4(raw, 1);
-        if (output.x < 0.5) return float4(camera_light(raw, pixel), 1); // SDR: through linear light and back
-        if (output.x < 1.5) return float4(raw * light_gain(pixel), 1);  // scRGB is linear already
-        float3 p = pow(saturate(raw), 1 / pq_m2);                       // HDR10: to nits, lit, and back
-        float3 nits = 10000 * pow(max(p - pq_c1, 0) / (pq_c2 - pq_c3 * p), 1 / pq_m1) * light_gain(pixel);
-        float3 y = pow(saturate(nits / 10000), pq_m1);
-        return float4(pow((pq_c1 + pq_c2 * y) / (1 + pq_c3 * y), pq_m2), 1);
-    }
-    float step_px = tape.z; // screen pixels in one pixel of a 720-wide picture
-    float3 centre = sample_at(pixel, 0);
-    // The tape: brightness softened over `softness`, colour averaged over `chroma width`, along the line.
-    float chroma_half = tape.x * 0.5 * step_px, soft = tape.y * step_px;
-    float reach = max(chroma_half, soft);
-    float3 chroma = 0;
-    float chroma_count = 0, bright = 0, bright_count = 0;
-    [unroll] for (int i = -4; i <= 4; ++i) {
-        float along = reach * i / 4.0;
-        float3 c = i == 0 ? centre : sample_at(pixel, along);
-        float y = luma(c);
-        if (abs(along) <= chroma_half + 0.01) { chroma += c - y; chroma_count += 1; }
-        if (abs(along) <= soft + 0.01) { bright += y; bright_count += 1; }
-    }
-    float y = bright / bright_count;
-    // The camera's edge enhancement, on brightness, a 720-wide pixel either side.
-    float halo = step_px * max(camera.w, 0.25); // the sharpening's reach
-    float edges = 2 * luma(centre) - luma(sample_at(pixel, -halo)) - luma(sample_at(pixel, halo));
-    y += edges * colour.z * 0.5;
-    float3 c = camera_light(y + chroma / chroma_count, pixel);
-    // White balance, dense blacks, early white, saturation, and blown highlights going white.
-    c *= float3(colour.x, 1, colour.y);
-    c = max(c - tone.y, 0) / (1 - tone.y) * tone.z;
-    float l = luma(c);
-    c = l + (c - l) * tone.w;
-    float top = max(c.r, max(c.g, c.b));
-    if (output.z > 0.5 && top > detail.x) c += (1 - c) * saturate((top - detail.x) / max(detail.y, 0.005));
-    // Grain: the same on every channel (a CCD's), or partly each channel's own.
-    float2 cell = floor((pixel - rect.xy) / max(step_px * max(detail.z, 0.25), 1e-3));
-    float common_noise = grain_noise(cell, tape.w, 0);
-    float3 own = float3(grain_noise(cell, tape.w, 1), grain_noise(cell, tape.w, 2), grain_noise(cell, tape.w, 3));
-    c += lerp(float3(common_noise, common_noise, common_noise), own, saturate(detail.w)) * colour.w * (56.0 / 255);
-    return float4(out_of_look(saturate(c)), 1);
-}
-)hlsl";
 
 ComPtr<ID3DBlob> compile(const char *entry, const char *target) {
     ComPtr<ID3DBlob> code, errors;
-    if (FAILED(D3DCompile(picture_shader, sizeof(picture_shader) - 1, "camcorder_picture", nullptr, nullptr, entry, target,
-                          D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors))) {
+    if (FAILED(D3DCompile(camcorder_picture_shader, sizeof(camcorder_picture_shader) - 1, "camcorder_picture", nullptr, nullptr,
+                          entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors))) {
         logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture shader (%s) did not compile: %s",
                         entry, errors ? static_cast<const char *>(errors->GetBufferPointer()) : "no reason given");
         return {};
@@ -243,92 +122,396 @@ ComPtr<ID3DBlob> compile(const char *entry, const char *target) {
     return code;
 }
 
-// The root signature (the numbers as root constants, the copy as one SRV, a linear clamped sampler)
-// and the pipeline, writing straight to the back buffer.
+D3D12_CPU_DESCRIPTOR_HANDLE view_cpu(const Warp &w, UINT slot) {
+    auto h = w.views->GetCPUDescriptorHandleForHeapStart();
+    h.ptr += static_cast<SIZE_T>(slot) * w.view_step;
+    return h;
+}
+D3D12_GPU_DESCRIPTOR_HANDLE view_gpu(const Warp &w, UINT slot) {
+    auto h = w.views->GetGPUDescriptorHandleForHeapStart();
+    h.ptr += static_cast<UINT64>(slot) * w.view_step;
+    return h;
+}
+D3D12_CPU_DESCRIPTOR_HANDLE output_cpu(const Warp &w, UINT slot) {
+    auto h = w.outputs->GetCPUDescriptorHandleForHeapStart();
+    h.ptr += static_cast<SIZE_T>(slot) * w.output_step;
+    return h;
+}
+UINT new_view(Warp &w) {
+    const UINT slot = w.next_view;
+    w.next_view = slot + 1 < views ? slot + 1 : first_ring_view;
+    return slot;
+}
+// A view of the copy in our heap (the overlay's own slot has the other, for the ImGui mesh).
+void view_copy(Warp &w) {
+    if (!w.views || !w.texture) return;
+    D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+    view.Format = w.format;
+    view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    view.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+        D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_0, D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_1,
+        D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_2, D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1);
+    view.Texture2D.MipLevels = 1;
+    w.device->CreateShaderResourceView(w.texture.Get(), &view, view_cpu(w, copy_view));
+}
+
+// The root signature (the numbers as 48 root constants; three textures, each its own table: what
+// a pass reads, the other picture it may need, and a colour table; a smooth and a nearest sampler)
+// and the two pipelines.
 bool build_pass(Warp &w) {
-    // Compiled once a game (a slow compile, on the render thread): a new swap chain needs only a new
-    // pipeline. A shader that would not compile won't the next time either.
-    if (w.compile_failed) return false;
-    if (!w.vertex_code) w.vertex_code = compile("picture_vs", "vs_5_0");
-    if (!w.pixel_code) w.pixel_code = compile("picture_ps", "ps_5_0");
-    if (!w.vertex_code || !w.pixel_code) {
-        w.compile_failed = true;
-        return false;
-    }
-    const auto &vertex = w.vertex_code, &pixel = w.pixel_code;
-    D3D12_DESCRIPTOR_RANGE range{};
-    range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    range.NumDescriptors = 1;
-    range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    D3D12_ROOT_PARAMETER parameters[2]{};
+    D3D12_DESCRIPTOR_RANGE ranges[3]{};
+    D3D12_ROOT_PARAMETER parameters[4]{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    parameters[0].Constants.Num32BitValues = sizeof(PicturePass) / 4;
+    parameters[0].Constants.Num32BitValues = sizeof(Constants) / 4;
     parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    parameters[1].DescriptorTable.NumDescriptorRanges = 1;
-    parameters[1].DescriptorTable.pDescriptorRanges = &range;
-    parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    D3D12_STATIC_SAMPLER_DESC sampler{};
-    sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-    sampler.MaxLOD = D3D12_FLOAT32_MAX;
-    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    for (UINT i = 0; i < 3; ++i) {
+        ranges[i].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        ranges[i].NumDescriptors = 1;
+        ranges[i].BaseShaderRegister = i;
+        ranges[i].OffsetInDescriptorsFromTableStart = 0;
+        parameters[i + 1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[i + 1].DescriptorTable.NumDescriptorRanges = 1;
+        parameters[i + 1].DescriptorTable.pDescriptorRanges = &ranges[i];
+        parameters[i + 1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    }
+    D3D12_STATIC_SAMPLER_DESC samplers[2]{};
+    for (UINT i = 0; i < 2; ++i) {
+        samplers[i].Filter = i == 0 ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT;
+        samplers[i].AddressU = samplers[i].AddressV = samplers[i].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplers[i].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+        samplers[i].MaxLOD = D3D12_FLOAT32_MAX;
+        samplers[i].ShaderRegister = i;
+        samplers[i].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    }
     D3D12_ROOT_SIGNATURE_DESC description{};
-    description.NumParameters = 2;
+    description.NumParameters = 4;
     description.pParameters = parameters;
-    description.NumStaticSamplers = 1;
-    description.pStaticSamplers = &sampler;
+    description.NumStaticSamplers = 2;
+    description.pStaticSamplers = samplers;
     ComPtr<ID3DBlob> serialized, errors;
     HRESULT hr = D3D12SerializeRootSignature(&description, D3D_ROOT_SIGNATURE_VERSION_1, &serialized, &errors);
     if (SUCCEEDED(hr)) hr = w.device->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(), IID_PPV_ARGS(&w.root));
     if (FAILED(hr)) {
-        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture pass's root signature failed (0x%08lx).",
+        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture shader's root signature failed (0x%08lx).",
                         static_cast<unsigned long>(hr));
         return false;
     }
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC state{};
-    state.pRootSignature = w.root.Get();
-    state.VS = {vertex->GetBufferPointer(), vertex->GetBufferSize()};
-    state.PS = {pixel->GetBufferPointer(), pixel->GetBufferSize()};
-    state.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-    state.SampleMask = UINT_MAX;
-    state.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-    state.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-    state.RasterizerState.DepthClipEnable = TRUE;
-    state.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    state.NumRenderTargets = 1;
-    state.RTVFormats[0] = w.output;
-    state.SampleDesc.Count = 1;
-    hr = w.device->CreateGraphicsPipelineState(&state, IID_PPV_ARGS(&w.pipeline));
-    if (FAILED(hr))
-        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture pass's pipeline failed (0x%08lx).",
+    const auto pipeline = [&](DXGI_FORMAT format, ComPtr<ID3D12PipelineState> &out) {
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC state{};
+        state.pRootSignature = w.root.Get();
+        state.VS = {w.vertex_code->GetBufferPointer(), w.vertex_code->GetBufferSize()};
+        state.PS = {w.pixel_code->GetBufferPointer(), w.pixel_code->GetBufferSize()};
+        state.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        state.SampleMask = UINT_MAX;
+        state.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        state.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        state.RasterizerState.DepthClipEnable = TRUE;
+        state.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        state.NumRenderTargets = 1;
+        state.RTVFormats[0] = format;
+        state.SampleDesc.Count = 1;
+        const HRESULT made = w.device->CreateGraphicsPipelineState(&state, IID_PPV_ARGS(&out));
+        if (FAILED(made))
+            logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture shader's pipeline (format %d) failed (0x%08lx).",
+                            static_cast<int>(format), static_cast<unsigned long>(made));
+        return SUCCEEDED(made);
+    };
+    if (!pipeline(picture_format, w.to_picture) || !pipeline(w.output, w.to_screen)) return false;
+    // Our own heaps: the shader's views of our textures, and their render target views (and the
+    // back buffer's, made each frame). Made once: a new swap chain keeps them.
+    if (w.views) return true;
+    D3D12_DESCRIPTOR_HEAP_DESC heap{};
+    heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heap.NumDescriptors = views;
+    heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    hr = w.device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&w.views));
+    heap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    heap.NumDescriptors = targets + 1;
+    heap.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    if (SUCCEEDED(hr)) hr = w.device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&w.outputs));
+    if (FAILED(hr)) {
+        logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: the picture shader's descriptor heaps failed (0x%08lx).",
                         static_cast<unsigned long>(hr));
-    return SUCCEEDED(hr);
+        return false;
+    }
+    w.view_step = w.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    w.output_step = w.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    // The empty 3D view, for passes with no colour table (and the copy's, until there is a copy).
+    for (const UINT i : {copy_view, no_table_view}) {
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        if (i == no_table_view) {
+            view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+            view.Texture3D.MipLevels = 1;
+        } else {
+            view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            view.Texture2D.MipLevels = 1;
+        }
+        w.device->CreateShaderResourceView(nullptr, &view, view_cpu(w, i));
+    }
+    view_copy(w);
+    return true;
 }
 
-// The draw callback: the picture pass, in the middle of the overlay's draws (ImGui's own state is
-// put back by the ImDrawCallback_ResetRenderState that follows it).
-void draw_pass(const ImDrawList *, const ImDrawCmd *) {
-    auto &w = warp();
-    const auto *render = static_cast<ImGui_ImplDX12_RenderState *>(ImGui::GetPlatformIO().Renderer_RenderState);
-    if (!render || !render->CommandList || !w.pipeline) return;
-    auto *commands = render->CommandList;
+// The picture's textures at the back buffer's size (made again when it changes).
+bool make_targets(Warp &w, UINT64 width, UINT height) {
+    if (w.target_width == width && w.target_height == height && w.target[picture_a]) return true;
+    for (auto &t : w.target) retire(w, t);
+    w.history_valid = false;
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Width = width;
+    desc.Height = height;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = picture_format;
+    desc.SampleDesc = {1, 0};
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    for (int i = 0; i < targets; ++i) {
+        const HRESULT hr = w.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                             nullptr, IID_PPV_ARGS(&w.target[static_cast<std::size_t>(i)]));
+        if (FAILED(hr)) {
+            logging::printf(logging::Level::warning, logging::Channel::graphics, "Camcorder: no texture for the picture's effects (0x%08lx).",
+                            static_cast<unsigned long>(hr));
+            for (auto &t : w.target) t.Reset();
+            w.target_width = 0;
+            return false;
+        }
+        w.state[static_cast<std::size_t>(i)] = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.Format = picture_format;
+        view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.Texture2D.MipLevels = 1;
+        w.target_view[static_cast<std::size_t>(i)] = new_view(w);
+        w.device->CreateShaderResourceView(w.target[static_cast<std::size_t>(i)].Get(), &view, view_cpu(w, w.target_view[static_cast<std::size_t>(i)]));
+        w.device->CreateRenderTargetView(w.target[static_cast<std::size_t>(i)].Get(), nullptr, output_cpu(w, static_cast<UINT>(i)));
+    }
+    w.target_width = width;
+    w.target_height = height;
+    return true;
+}
+
+// A .cube's table as a 3D texture in one of the table slots (the least lately used gives way).
+int table_slot(Warp &w, ID3D12GraphicsCommandList *commands, const camcorder::Lut3d &lut) {
+    for (int i = 0; i < tables; ++i)
+        if (w.table[static_cast<std::size_t>(i)].texture && w.table[static_cast<std::size_t>(i)].hash == lut.hash) {
+            w.table[static_cast<std::size_t>(i)].used = w.chains;
+            return i;
+        }
+    int slot = 0;
+    for (int i = 1; i < tables; ++i)
+        if (w.table[static_cast<std::size_t>(i)].used < w.table[static_cast<std::size_t>(slot)].used) slot = i;
+    auto &t = w.table[static_cast<std::size_t>(slot)];
+    retire(w, t.texture);
+    retire(w, t.upload);
+    t.hash = 0;
+    const auto n = static_cast<UINT>(lut.size);
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+    desc.Width = n;
+    desc.Height = n;
+    desc.DepthOrArraySize = static_cast<UINT16>(n);
+    desc.MipLevels = 1;
+    desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    desc.SampleDesc = {1, 0};
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    if (FAILED(w.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                 IID_PPV_ARGS(&t.texture))))
+        return -1;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT rows{};
+    UINT64 row_size{}, total{};
+    w.device->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, &rows, &row_size, &total);
+    D3D12_RESOURCE_DESC buffer{};
+    buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    buffer.Width = total;
+    buffer.Height = 1;
+    buffer.DepthOrArraySize = 1;
+    buffer.MipLevels = 1;
+    buffer.SampleDesc = {1, 0};
+    buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    void *mapped = nullptr;
+    if (FAILED(w.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                 IID_PPV_ARGS(&t.upload))) ||
+        FAILED(t.upload->Map(0, nullptr, &mapped))) {
+        t.texture.Reset();
+        t.upload.Reset();
+        return -1;
+    }
+    auto *base = static_cast<std::uint8_t *>(mapped) + footprint.Offset;
+    const std::size_t pitch = footprint.Footprint.RowPitch, slice = pitch * footprint.Footprint.Height;
+    for (UINT z = 0; z < n; ++z)
+        for (UINT y = 0; y < n; ++y) {
+            auto *row = reinterpret_cast<float *>(base + z * slice + y * pitch);
+            for (UINT x = 0; x < n; ++x) {
+                const std::size_t at = ((static_cast<std::size_t>(z) * n + y) * n + x) * 3;
+                row[x * 4 + 0] = lut.rgb[at];
+                row[x * 4 + 1] = lut.rgb[at + 1];
+                row[x * 4 + 2] = lut.rgb[at + 2];
+                row[x * 4 + 3] = 1;
+            }
+        }
+    t.upload->Unmap(0, nullptr);
+    D3D12_TEXTURE_COPY_LOCATION to{}, from{};
+    to.pResource = t.texture.Get();
+    to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    from.pResource = t.upload.Get();
+    from.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    from.PlacedFootprint = footprint;
+    commands->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+    transition(commands, t.texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+    view.Format = desc.Format;
+    view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    view.Texture3D.MipLevels = 1;
+    t.view = new_view(w);
+    w.device->CreateShaderResourceView(t.texture.Get(), &view, view_cpu(w, t.view));
+    t.hash = lut.hash;
+    t.used = w.chains;
+    return slot;
+}
+
+// The chain: the lens from the copy, the light, each effect, then out onto the back buffer.
+void draw_chain(Warp &w, ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer) {
+    const auto back = back_buffer->GetDesc();
+    if (!make_targets(w, back.Width, back.Height)) return;
+    ++w.chains;
+    // The picture a moment ago is only that if the chain kept it the frame before.
+    if (w.history_at + 1 != w.last_signal) w.history_valid = false;
+    const auto &c = w.chain;
+    // The overlay lays out in its own units (the window's); the passes draw in the back buffer's
+    // pixels, which can be more or fewer (display scaling, an upscaler, a render size of its own).
+    const float sx = c.screen[0] > 0 ? static_cast<float>(back.Width) / c.screen[0] : 1;
+    const float sy = c.screen[1] > 0 ? static_cast<float>(back.Height) / c.screen[1] : 1;
+    Constants k;
+    k.rect[0] = c.rect[0] * sx;
+    k.rect[1] = c.rect[1] * sy;
+    k.rect[2] = c.rect[2] * sx;
+    k.rect[3] = c.rect[3] * sy;
+    k.screen[0] = static_cast<float>(back.Width);
+    k.screen[1] = static_cast<float>(back.Height);
+    k.screen[2] = 1 / k.screen[0];
+    k.screen[3] = 1 / k.screen[1];
+    k.clock[0] = c.frame;
+    k.clock[1] = c.seconds;
+    k.clock[2] = k.rect[2] / 720;
+    k.clock[3] = static_cast<float>(w.transfer);
+    k.job[3] = 200; // the white an HDR game's picture is taken to have, as the recording takes it
+    if (!(k.rect[2] >= 1) || !(k.rect[3] >= 1)) return;
+
+    // The back buffer's render target view, in our heap's last slot.
+    const auto screen_view = output_cpu(w, targets);
+    w.device->CreateRenderTargetView(back_buffer, nullptr, screen_view);
+
+    ID3D12DescriptorHeap *heaps[]{w.views.Get()};
+    commands->SetDescriptorHeaps(1, heaps);
     commands->SetGraphicsRootSignature(w.root.Get());
-    commands->SetPipelineState(w.pipeline.Get());
-    commands->SetGraphicsRoot32BitConstants(0, sizeof(PicturePass) / 4, &w.pass, 0);
-    commands->SetGraphicsRootDescriptorTable(1, w.gpu);
-    const D3D12_VIEWPORT viewport{0, 0, w.pass.screen[0], w.pass.screen[1], 0, 1};
+    const D3D12_VIEWPORT viewport{0, 0, k.screen[0], k.screen[1], 0, 1};
     commands->RSSetViewports(1, &viewport);
-    const D3D12_RECT scissor{static_cast<LONG>(w.pass.rect[0]), static_cast<LONG>(w.pass.rect[1]),
-                             static_cast<LONG>(w.pass.rect[0] + w.pass.rect[2] + 0.5f),
-                             static_cast<LONG>(w.pass.rect[1] + w.pass.rect[3] + 0.5f)};
+    const D3D12_RECT scissor{static_cast<LONG>(std::floor(k.rect[0])), static_cast<LONG>(std::floor(k.rect[1])),
+                             static_cast<LONG>(std::ceil(k.rect[0] + k.rect[2])), static_cast<LONG>(std::ceil(k.rect[1] + k.rect[3]))};
     commands->RSSetScissorRects(1, &scissor);
     commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commands->DrawInstanced(3, 1, 0, 0);
+
+    const auto use = [&](int t, D3D12_RESOURCE_STATES to) {
+        auto &from = w.state[static_cast<std::size_t>(t)];
+        if (from != to) {
+            transition(commands, w.target[static_cast<std::size_t>(t)].Get(), from, to);
+            from = to;
+        }
+    };
+    int current = picture_a;
+    ID3D12PipelineState *bound = nullptr;
+    // One pass: `program` with `values`, reading `read` (a target, or -1 the copy) and `other`, into
+    // `write` (a target, or -1 the back buffer).
+    const auto draw = [&](int program, int read, int other, int write, float mix, bool mix_with_other,
+                          const std::array<float, camcorder::effect_values> &values, int table) {
+        if (read >= 0) use(read, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        if (other >= 0) use(other, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        if (write >= 0) use(write, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        auto *pipeline = write >= 0 ? w.to_picture.Get() : w.to_screen.Get();
+        if (pipeline != bound) {
+            commands->SetPipelineState(pipeline);
+            bound = pipeline;
+        }
+        k.job[0] = static_cast<float>(program);
+        k.job[1] = mix;
+        k.job[2] = mix_with_other ? 1.0f : 0.0f;
+        std::copy(values.begin(), values.end(), k.v);
+        commands->SetGraphicsRoot32BitConstants(0, sizeof(Constants) / 4, &k, 0);
+        const auto view_of = [&](int t) { return t >= 0 ? w.target_view[static_cast<std::size_t>(t)] : copy_view; };
+        commands->SetGraphicsRootDescriptorTable(1, view_gpu(w, view_of(read)));
+        commands->SetGraphicsRootDescriptorTable(2, view_gpu(w, view_of(other >= 0 ? other : read)));
+        commands->SetGraphicsRootDescriptorTable(3, view_gpu(w, table >= 0 ? w.table[static_cast<std::size_t>(table)].view : no_table_view));
+        const auto target = write >= 0 ? output_cpu(w, static_cast<UINT>(write)) : screen_view;
+        commands->OMSetRenderTargets(1, &target, FALSE, nullptr);
+        commands->DrawInstanced(3, 1, 0, 0);
+    };
+
+    const bool light = c.light[0] > 0;
+    const bool direct = !c.look && !light && c.passes.empty();
+    if (direct) transition(commands, back_buffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    // The lens.
+    std::array<float, camcorder::effect_values> values{};
+    std::copy(std::begin(c.lens), std::end(c.lens), values.begin());
+    values[4] = c.projection;
+    values[5] = c.look ? 1.0f : 0.0f;
+    draw(0, -1, -1, direct ? -1 : current, 1, false, values, -1);
+    if (!direct) {
+        const auto next = [&]() -> int { return current == picture_a ? picture_b : picture_a; };
+        if (light) {
+            values = {};
+            std::copy(std::begin(c.light), std::end(c.light), values.begin());
+            values[7] = c.look ? 1.0f : 0.0f;
+            draw(1, current, -1, next(), 1, false, values, -1);
+            current = next();
+        }
+        for (const auto &pass : c.passes) {
+            const auto slot = [&](Slot s) {
+                switch (s) {
+                case Slot::scratch_a: return static_cast<int>(spare_a);
+                case Slot::scratch_b: return static_cast<int>(spare_b);
+                case Slot::history: return w.history_valid ? static_cast<int>(history) : current;
+                case Slot::next: return next();
+                case Slot::current: break;
+                }
+                return current;
+            };
+            int table = -1;
+            if (pass.lut) {
+                table = table_slot(w, commands, *pass.lut);
+                if (table < 0) continue;
+            }
+            const int write = slot(pass.write);
+            draw(pass.program, slot(pass.read), slot(pass.other), write, pass.mix, pass.mix_with_other, pass.values, table);
+            if (pass.write == Slot::next) current = write;
+            if (pass.keep) {
+                use(write, D3D12_RESOURCE_STATE_COPY_SOURCE);
+                use(history, D3D12_RESOURCE_STATE_COPY_DEST);
+                commands->CopyResource(w.target[history].Get(), w.target[static_cast<std::size_t>(write)].Get());
+                w.history_valid = true;
+                w.history_at = w.last_signal;
+            }
+        }
+        // Out onto the screen.
+        transition(commands, back_buffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        values = {};
+        values[0] = c.look ? 1.0f : 0.0f;
+        draw(2, current, -1, -1, 1, false, values, -1);
+    }
+    transition(commands, back_buffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    w.drawn = true;
 }
-// A texture like the back buffer, in COPY_DEST, with its view in the heap slot. The view reads
-// alpha as 1: what the game leaves in its back buffer's alpha means nothing.
+
+// A texture like the back buffer, in COPY_DEST, with its view in the overlay's heap slot. The view
+// reads alpha as 1: what the game leaves in its back buffer's alpha means nothing.
 bool make_texture(Warp &w, const D3D12_RESOURCE_DESC &back) {
     D3D12_RESOURCE_DESC desc{};
     desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -356,6 +539,7 @@ bool make_texture(Warp &w, const D3D12_RESOURCE_DESC &back) {
     w.width = desc.Width;
     w.height = desc.Height;
     w.format = desc.Format;
+    view_copy(w);
     return true;
 }
 } // namespace
@@ -366,8 +550,9 @@ void camcorder_warp_heap(ID3D12Device *device, D3D12_CPU_DESCRIPTOR_HANDLE cpu, 
     w.device = device;
     w.cpu = cpu;
     w.gpu = gpu;
-    if (format != w.output) { // a new swap chain format needs a new pipeline
-        w.pipeline.Reset();
+    if (format != w.output) { // a new swap chain format needs new pipelines
+        w.to_picture.Reset();
+        w.to_screen.Reset();
         w.root.Reset();
         w.pass_tried = w.pass_ready = false;
     }
@@ -377,40 +562,47 @@ void camcorder_warp_heap(ID3D12Device *device, D3D12_CPU_DESCRIPTOR_HANDLE cpu, 
 
 bool camcorder_picture_pass_ready() {
     auto &w = warp();
-    if (!w.pass_tried && w.device && w.output != DXGI_FORMAT_UNKNOWN) {
-        w.pass_tried = true;
-        w.pass_ready = build_pass(w);
-        logging::write(w.pass_ready ? logging::Level::info : logging::Level::warning, logging::Channel::graphics,
-                       w.pass_ready ? "Camcorder: picture pass ready (the look shows on screen)."
-                                    : "Camcorder: no picture pass; the fisheye is drawn as a mesh and the look is left to clips.");
-        if (!w.pass_ready && !std::exchange(w.pass_failure_said, true))
-            notify(NoticeLevel::warning, "The camcorder's look can't be shown on screen here.",
-                   "Clips and stills still get it; the camera light needs it. logs\\ReSkate.log says why.");
+    if (w.pass_tried || !w.device || w.output == DXGI_FORMAT_UNKNOWN) return w.pass_ready;
+    // The shader is compiled once a game, on a thread of its own (a big shader takes the compiler a
+    // moment); a new swap chain needs only new pipelines.
+    if (!w.vertex_code && !w.compile_failed) {
+        if (!w.compile_started) {
+            w.compile_started = true;
+            w.compiling = std::async(std::launch::async, [] { return std::pair{compile("picture_vs", "vs_5_0"), compile("picture_ps", "ps_5_0")}; });
+            return false;
+        }
+        if (w.compiling.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+        auto [vertex, pixel] = w.compiling.get();
+        if (vertex && pixel) {
+            w.vertex_code = std::move(vertex);
+            w.pixel_code = std::move(pixel);
+        } else {
+            w.compile_failed = true;
+        }
     }
+    w.pass_tried = true;
+    w.pass_ready = !w.compile_failed && build_pass(w);
+    logging::write(w.pass_ready ? logging::Level::info : logging::Level::warning, logging::Channel::graphics,
+                   w.pass_ready ? "Camcorder: picture shader ready (the look shows on screen)."
+                                : "Camcorder: no picture shader; the fisheye is drawn as a mesh and the look is left to clips.");
+    if (!w.pass_ready && !std::exchange(w.pass_failure_said, true))
+        notify(NoticeLevel::warning, "The camcorder's look can't be shown on screen here.",
+               "Clips and stills still get it; the camera light needs it. logs\\ReSkate.log says why.");
     return w.pass_ready;
+}
+
+bool camcorder_picture_pass_failed() {
+    const auto &w = warp();
+    return w.compile_failed || (w.pass_tried && !w.pass_ready);
 }
 
 int camcorder_warp_transfer() { return warp().transfer; }
 
-void camcorder_picture_pass(ImDrawList *list, const PicturePass &pass) {
+void camcorder_picture_chain(PictureChain chain) {
     auto &w = warp();
-    if (!w.pass_ready || !w.texture || pass.screen[0] <= 0 || pass.screen[1] <= 0) return;
-    // The overlay lays out in its own units (the window's); the pass draws in the back buffer's
-    // pixels, which can be more or fewer (display scaling, an upscaler, a render size of its own).
-    const float sx = static_cast<float>(w.width) / pass.screen[0], sy = static_cast<float>(w.height) / pass.screen[1];
-    w.pass = pass;
-    w.pass.rect[0] *= sx;
-    w.pass.rect[1] *= sy;
-    w.pass.rect[2] *= sx;
-    w.pass.rect[3] *= sy;
-    w.pass.screen[0] = static_cast<float>(w.width);
-    w.pass.screen[1] = static_cast<float>(w.height);
-    w.pass.screen[2] = 1 / w.pass.screen[0];
-    w.pass.screen[3] = 1 / w.pass.screen[1];
-    w.pass.tape[2] *= sx;
-    w.drawn = true;
-    list->AddCallback(draw_pass, nullptr);
-    list->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    if (!w.pass_ready || !w.texture || chain.screen[0] <= 0 || chain.screen[1] <= 0) return;
+    w.chain = std::move(chain);
+    w.chain_wanted = true;
 }
 
 std::optional<ImTextureID> camcorder_warp_request(bool copy) {
@@ -436,44 +628,51 @@ std::string camcorder_warp_why_not() { return warp().why_not; }
 
 void camcorder_warp_copy(ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer) {
     auto &w = warp();
-    if (!std::exchange(w.requested, false) || !std::exchange(w.copy_wanted, false) || !commands || !back_buffer || !w.device)
-        return;
+    const bool requested = std::exchange(w.requested, false), copy = std::exchange(w.copy_wanted, false);
+    const bool chain = std::exchange(w.chain_wanted, false);
+    if (!requested || !commands || !back_buffer || !w.device) return;
+    free_retired(w);
     const auto back = back_buffer->GetDesc();
     if (back.SampleDesc.Count != 1) {
         w.why_not = "the game's picture is multisampled";
         camcorder_runtime::note_warp_failed();
         return;
     }
-    bool fresh = false;
-    if (!w.texture || w.width != back.Width || w.height != back.Height || w.format != back.Format) {
-        // The old texture (and its view) may still be in use by frames on the GPU.
-        if (!idle(w)) return;
-        w.texture.Reset();
-        if (!make_texture(w, back)) {
-            w.why_not = "no texture could be made for the copy";
-            if (!std::exchange(w.failure_said, true))
-                logging::write(logging::Level::warning, logging::Channel::graphics,
-                               "Camcorder: no texture for the fisheye warp; the picture stays flat.");
-            camcorder_runtime::note_warp_failed();
-            return;
+    if (copy) {
+        bool fresh = false;
+        if (!w.texture || w.width != back.Width || w.height != back.Height || w.format != back.Format) {
+            // The old texture (and its view) may still be in use by frames on the GPU.
+            if (!idle(w)) return;
+            w.texture.Reset();
+            if (!make_texture(w, back)) {
+                w.why_not = "no texture could be made for the copy";
+                if (!std::exchange(w.failure_said, true))
+                    logging::write(logging::Level::warning, logging::Channel::graphics,
+                                   "Camcorder: no texture for the fisheye warp; the picture stays flat.");
+                camcorder_runtime::note_warp_failed();
+                return;
+            }
+            fresh = true;
         }
-        fresh = true;
+        if (!fresh) transition(commands, w.texture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+        transition(commands, back_buffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        commands->CopyResource(w.texture.Get(), back_buffer);
+        transition(commands, back_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT);
+        transition(commands, w.texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        w.copied = true;
     }
-    if (!fresh) transition(commands, w.texture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
-    transition(commands, back_buffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    commands->CopyResource(w.texture.Get(), back_buffer);
-    transition(commands, back_buffer, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT);
-    transition(commands, w.texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    w.copied = true;
+    // The copy is the back buffer's size; one of another size (it changed this frame) waits a frame.
+    if (chain && w.pass_ready && w.texture && w.width == back.Width && w.height == back.Height) draw_chain(w, commands, back_buffer);
 }
 
 void camcorder_warp_submitted(ID3D12Fence *fence, UINT64 signal) {
     auto &w = warp();
+    w.last_signal = signal;
     if (w.copied || w.drawn) {
         w.fence = fence;
         w.last_use = signal;
         if (w.drawn && !std::exchange(w.working, true))
-            logging::write(logging::Level::info, logging::Channel::graphics, "Camcorder: fisheye warp drawing.");
+            logging::write(logging::Level::info, logging::Channel::graphics, "Camcorder: picture drawing.");
     }
     w.copied = w.drawn = false;
 }
@@ -482,14 +681,24 @@ void camcorder_warp_release() {
     auto &w = warp();
     for (int waited = 0; waited < 500 && !idle(w); ++waited) Sleep(1);
     w.texture.Reset();
+    for (auto &t : w.target) t.Reset();
+    for (auto &t : w.table) t = {};
+    w.retired.clear();
+    w.target_width = 0;
+    w.target_height = 0;
+    w.history_valid = false;
+    w.views.Reset();
+    w.outputs.Reset();
+    w.next_view = first_ring_view;
     w.fence.Reset();
-    w.pipeline.Reset();
+    w.to_picture.Reset();
+    w.to_screen.Reset();
     w.root.Reset();
     w.pass_tried = w.pass_ready = false;
     w.width = 0;
     w.height = 0;
     w.format = DXGI_FORMAT_UNKNOWN;
-    w.requested = w.copy_wanted = w.drawn = w.copied = false;
+    w.requested = w.copy_wanted = w.drawn = w.copied = w.chain_wanted = false;
     w.device = nullptr;
     w.cpu = {};
     w.gpu = {};

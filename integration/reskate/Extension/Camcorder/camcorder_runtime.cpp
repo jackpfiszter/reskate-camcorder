@@ -277,8 +277,20 @@ void scan_profiles(State &s) {
                 catalogue.add(std::move(*reading.profile));
                 ++found;
             };
+            // What a camera names beside itself (a lut's .cube), from the same folder.
+            const ProfileFiles beside = [&](std::string_view file_name) -> std::optional<std::string> {
+                // (The name is checked to be plain ASCII: profiles.cpp, plain_file_name.)
+                const auto path = folder / std::filesystem::path(std::string(file_name));
+                std::error_code missing;
+                if (!std::filesystem::is_regular_file(path, missing) || std::filesystem::file_size(path, missing) > 16u * 1024 * 1024)
+                    return std::nullopt;
+                std::ifstream in(path, std::ios::binary);
+                std::stringstream text;
+                text << in.rdbuf();
+                return in ? std::optional<std::string>(text.str()) : std::nullopt;
+            };
             switch (kind->first) {
-            case ProfileKind::camera: take(read_camera(text.str(), kind->second)); break;
+            case ProfileKind::camera: take(read_camera(text.str(), kind->second, beside)); break;
             case ProfileKind::lens: take(read_adapter(text.str(), kind->second)); break;
             case ProfileKind::grip: take(read_grip(text.str(), kind->second)); break;
             case ProfileKind::handling: {
@@ -563,6 +575,7 @@ void publish(State &s, const Frame &frame) {
         finish.light = camera.light;
         finish.ear = s.camcorder.handling().sound;
         s.published.finish = finish;
+        s.published.effects = camera_effects(camera);
         s.published.viewfinder_text = camera.viewfinder_text;
         s.published.viewfinder_rec = camera.viewfinder_rec;
         s.published.own_lines = camera.lines;
@@ -1049,6 +1062,20 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         if (s.mod_notes.empty()) return text + " Nothing wrong in the mods' profiles.";
         for (const auto &note : s.mod_notes) text += "\n" + note;
         return text;
+    }
+    if (verb == "effects") {
+        if (!words.empty() && words[0] == "list") {
+            std::string text = "Effects a camera can use (docs/MODDING.md has their fields):";
+            for (const auto &kind : effect_library()) text += "\n" + std::string(kind.name) + ": " + std::string(kind.what) + ".";
+            return text;
+        }
+        const auto &camera = s.camcorder.settings().camera;
+        std::string text = camera.name + (camera.effects ? "'s effects:" : "'s effects (from its look):");
+        const auto stack = camera_effects(camera);
+        for (const auto &block : stack) text += " " + std::string(effect_kind(block.type).name) + (part_on(block.part, s.finish.dv) ? "" : " (off)") + ",";
+        if (stack.empty()) text += " none,";
+        text.back() = '.';
+        return text + (s.finish.dv.on ? "" : " The look is off (camcorder look dv).");
     }
     if (verb == "export") return export_profiles(s);
     CommandContext context;

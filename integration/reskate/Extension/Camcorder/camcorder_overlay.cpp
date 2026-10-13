@@ -98,52 +98,36 @@ double seconds_now() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-// The picture pass's numbers for this frame (camcorder_warp.h): the lens, and the camera's look.
-PicturePass pass_numbers(const camcorder_runtime::Published &p, const Rect &picture, float width, float height,
-                         std::uint32_t frame) {
+// This frame's picture (camcorder_warp.h): the lens, the light and the camera's effects.
+PictureChain chain_numbers(const camcorder_runtime::Published &p, const Rect &picture, float width, float height,
+                           std::uint32_t frame, double frame_rate) {
     static const double start = seconds_now();
     const auto &o = p.frame.optics;
-    const auto look = screen_look(p.finish, DvClip{0.37f}, seconds_now() - start);
     constexpr float radians = 3.14159265f / 180;
-    PicturePass pass;
-    const float rect[4]{picture.x, picture.y, picture.width, picture.height};
-    std::copy(std::begin(rect), std::end(rect), pass.rect);
-    pass.screen[0] = width;
-    pass.screen[1] = height;
-    pass.screen[2] = 1 / width;
-    pass.screen[3] = 1 / height;
-    pass.lens[0] = o.warped ? 1.0f : 0.0f;
-    pass.lens[1] = o.horizontal_fov * 0.5f * radians;
-    pass.lens[2] = std::tan(std::clamp(o.render_vertical_fov, 1.0f, 179.0f) * 0.5f * radians);
-    pass.lens[3] = width / height;
-    pass.tone[0] = look.on ? 1.0f : 0.0f;
-    pass.tone[1] = look.black_crush;
-    pass.tone[2] = look.highlight_gain;
-    pass.tone[3] = look.saturation;
-    pass.colour[0] = look.red_gain;
-    pass.colour[1] = look.blue_gain;
-    pass.colour[2] = look.sharpen;
-    pass.colour[3] = look.grain;
-    pass.tape[0] = look.chroma_width;
-    pass.tape[1] = look.softness;
-    pass.tape[2] = picture.width / 720;
-    pass.tape[3] = static_cast<float>(frame % 65536u);
-    pass.output[0] = static_cast<float>(camcorder_warp_transfer());
-    pass.output[1] = 200; // the white an HDR game's picture is taken to have, as the recording takes it
-    pass.output[2] = look.highlight_bleed ? 1.0f : 0.0f;
-    // The camera's own lines (the look's softest, most visible part), and the light on top of it.
-    pass.camera[0] = look.on && p.finish.dv.chroma ? static_cast<float>(std::clamp(p.own_lines, 120, 1080)) : 0.0f;
-    const auto &lamp = p.finish.light;
-    pass.camera[1] = p.light ? std::clamp(lamp.strength, 0.0f, 10.0f) : 0.0f;
-    pass.camera[2] = std::clamp(lamp.reach, 0.1f, 3.0f);
-    pass.camera[3] = look.sharpen_radius;
-    pass.detail[0] = look.highlight_knee;
-    pass.detail[1] = look.highlight_spread;
-    pass.detail[2] = look.grain_size;
-    pass.detail[3] = look.grain_colour;
-    for (int i = 0; i < 3; ++i) pass.lamp[i] = static_cast<float>(lamp.colour[static_cast<std::size_t>(i)]) / 255.0f;
-    pass.bend[0] = static_cast<float>(static_cast<int>(o.projection));
-    return pass;
+    PictureChain chain;
+    chain.rect[0] = picture.x;
+    chain.rect[1] = picture.y;
+    chain.rect[2] = picture.width;
+    chain.rect[3] = picture.height;
+    chain.screen[0] = width;
+    chain.screen[1] = height;
+    chain.lens[0] = o.warped ? 1.0f : 0.0f;
+    chain.lens[1] = o.horizontal_fov * 0.5f * radians;
+    chain.lens[2] = std::tan(std::clamp(o.render_vertical_fov, 1.0f, 179.0f) * 0.5f * radians);
+    chain.lens[3] = width / height;
+    chain.projection = static_cast<float>(static_cast<int>(o.projection));
+    chain.look = p.finish.dv.on;
+    if (p.light) {
+        const auto &lamp = p.finish.light;
+        chain.light[0] = std::clamp(lamp.strength, 0.0f, 10.0f);
+        chain.light[1] = std::clamp(lamp.reach, 0.1f, 3.0f);
+        for (int i = 0; i < 3; ++i) chain.light[4 + i] = static_cast<float>(lamp.colour[static_cast<std::size_t>(i)]) / 255.0f;
+    }
+    const double seconds = seconds_now() - start;
+    chain.frame = static_cast<float>(frame % 65536u);
+    chain.seconds = static_cast<float>(std::fmod(seconds, 65536.0));
+    chain.passes = plan_effects(p.effects, p.finish.dv, EffectTime{seconds, frame, frame_rate, 0.37f});
+    return chain;
 }
 
 // The camera's date stamp, over the picture: what it records is what it shows.
@@ -288,10 +272,12 @@ void draw_camcorder() {
         if (copy) next_picture = (now - next_picture > 0.25 ? now : next_picture) + 1 / film_rate;
     }
     bool look_on_screen = false;
-    if ((warped || p.finish.dv.on || film_rate > 0 || p.light) && height > 0 && camcorder_picture_pass_ready()) {
+    const bool chain_wanted = warped || p.finish.dv.on || film_rate > 0 || p.light;
+    if (chain_wanted && height > 0 && camcorder_picture_pass_ready()) {
         if (camcorder_warp_request(copy)) {
             if (copy) ++pictures; // the grain changes with the picture
-            camcorder_picture_pass(list, pass_numbers(p, v.picture, io.DisplaySize.x, io.DisplaySize.y, pictures));
+            const double rate = film_rate > 0 ? film_rate : std::max(io.Framerate, 1.0f);
+            camcorder_picture_chain(chain_numbers(p, v.picture, io.DisplaySize.x, io.DisplaySize.y, pictures, rate));
             look_on_screen = p.finish.dv.on;
         }
     } else if (warped && height > 0) {
@@ -304,13 +290,15 @@ void draw_camcorder() {
         static double missing_since = 0;
         static bool said = false;
         const bool wanted = p.finish.dv.on || p.light;
-        if (!wanted || look_on_screen || (p.light && camcorder_picture_pass_ready() && camcorder_warp_why_not().empty())) {
+        // (While the shader is still being built, a moment after the camera first comes on, it is not missing.)
+        const bool building = !camcorder_picture_pass_ready() && !camcorder_picture_pass_failed();
+        if (!wanted || look_on_screen || building || (p.light && camcorder_picture_pass_ready() && camcorder_warp_why_not().empty())) {
             missing_since = 0;
         } else if (missing_since == 0) {
             missing_since = now;
         } else if (now - missing_since > 3 && !said) {
             said = true;
-            const auto why = !camcorder_picture_pass_ready() ? std::string("its shader could not be set up (logs\\ReSkate.log has why)")
+            const auto why = camcorder_picture_pass_failed() ? std::string("its shader could not be set up (logs\\ReSkate.log has why)")
                                                              : camcorder_warp_why_not();
             notify(NoticeLevel::warning, "The camcorder's look isn't showing on screen.",
                    "Clips and stills still get it. Why: " + (why.empty() ? std::string("unknown") : why) + ".");

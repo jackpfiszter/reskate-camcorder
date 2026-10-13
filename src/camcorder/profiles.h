@@ -15,10 +15,12 @@
 // changed or ignored is noted for `camcorder mods`. docs/MODDING.md has every field.
 //
 // Data only: nothing in a profile runs, as nothing in any ReSkate mod does.
+#include "effects.h"
 #include "json.h"
 #include "look.h"
 #include "rigs.h"
 #include "vx1000.h"
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -34,6 +36,8 @@ struct CameraProfile {
     int lines{480};                  // its own recording height (the width is the picture's shape of it)
     double tape_minutes{60};         // one cassette
     LookProfile look;
+    // Its picture's effects, in order (effects.h); none: the look's numbers make them (stack_from_look).
+    std::optional<EffectStack> effects;
     StampProfile stamp;
     MicProfile mic;                  // its own microphone (`camcorder sound mic`)
     LightProfile light;              // the lamp on it (`camcorder light`)
@@ -86,7 +90,12 @@ template <class Profile> struct Reading {
     std::string error;
     std::vector<std::string> notes;
 };
-Reading<CameraProfile> read_camera(std::string_view json_text, std::string id);
+// What a profile names beside itself (a lut's .cube): the file's text, or nothing when it cannot be
+// read. The name has been checked to be a plain file name.
+using ProfileFiles = std::function<std::optional<std::string>(std::string_view file_name)>;
+Reading<CameraProfile> read_camera(std::string_view json_text, std::string id, const ProfileFiles &files = {});
+// The effects a camera shows: its own, or its look's.
+EffectStack camera_effects(const CameraProfile &);
 Reading<Adapter> read_adapter(std::string_view json_text, std::string id);
 Reading<GripProfile> read_grip(std::string_view json_text, std::string id);
 // The numbers in the file over `base` (a handling.json changes only what it gives).

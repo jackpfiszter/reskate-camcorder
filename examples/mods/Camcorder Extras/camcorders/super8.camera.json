@@ -7,21 +7,23 @@
   "lines": 480,
   "tape_minutes": 3.3,
   "look": {
-    "format": "Super 8",
-    "black_crush": 0.06,
-    "highlight_gain": 1,
-    "saturation": 1.15,
-    "white_balance_drift": 0.06,
-    "sharpen": 0,
-    "grain": 0.45,
-    "chroma_width": 0,
-    "softness": 1,
-    "grain_size": 2.5,
-    "grain_colour": 0.6,
-    "highlight_knee": 0.85,
-    "highlight_spread": 0.15,
-    "drift_seconds": [20, 6]
+    "format": "Super 8"
   },
+  "effects": [
+    {"type": "weave", "amount": 2, "rotation": 0.15, "speed": 1.2, "jump": 6, "jump_rate": 0.15},
+    {"type": "blur", "radius": 1},
+    {"type": "white_balance", "temperature": 0.25, "drift": 0.06, "drift_seconds": [20, 6]},
+    {"type": "tone", "black_crush": 0.06, "gain": 1, "knee": 0.85, "spread": 0.15},
+    {"type": "split_tone", "shadows": [70, 110, 120], "highlights": [255, 200, 140], "amount": 0.45},
+    {"type": "hue_saturation", "saturation": 1.15},
+    {"type": "bloom", "threshold": 0.8, "amount": 0.3, "radius": 18, "colour": [255, 140, 90]},
+    {"type": "flicker", "amount": 0.04, "speed": 18, "smooth": 0.2},
+    {"type": "light_leak", "amount": 0.35, "speed": 0.08},
+    {"type": "dust", "amount": 2, "scratches": 0.08},
+    {"type": "grain", "amount": 0.45, "size": 2.5, "colour": 0.6},
+    {"type": "vignette", "amount": 0.4, "radius": 0.9, "softness": 0.7, "roundness": 0.6},
+    {"type": "gate", "radius": 0.06, "softness": 0.012}
+  ],
   "stamp": {
     "lines": "date",
     "colour": [255, 140, 40],

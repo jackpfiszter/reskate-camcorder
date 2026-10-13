@@ -879,7 +879,7 @@ diff --git a/cmake/UI.cmake b/cmake/UI.cmake
 index 83ec6ba..f9008d6 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
-@@ -2,6 +2,23 @@
+@@ -2,6 +2,24 @@
  add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
  target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
  
@@ -888,6 +888,7 @@ index 83ec6ba..f9008d6 100644
 +    Extension/Camcorder/Model/camcorder/audio.cpp
 +    Extension/Camcorder/Model/camcorder/camcorder.cpp
 +    Extension/Camcorder/Model/camcorder/commands.cpp
++    Extension/Camcorder/Model/camcorder/effects.cpp
 +    Extension/Camcorder/Model/camcorder/json.cpp
 +    Extension/Camcorder/Model/camcorder/look.cpp
 +    Extension/Camcorder/Model/camcorder/preferences.cpp
@@ -903,7 +904,7 @@ index 83ec6ba..f9008d6 100644
  add_library(dingosdk_overlay STATIC
  
      Extension/UI/Overlay/overlay.cpp
-@@ -42,8 +59,17 @@ add_library(dingosdk_overlay STATIC
+@@ -42,8 +60,17 @@ add_library(dingosdk_overlay STATIC
      Extension/Music/music_page.cpp
      Extension/Trainer/trainer_view.cpp
      Extension/HallOfMeat/hall_of_meat_overlay.cpp

@@ -10,6 +10,7 @@ add_library(camcorder STATIC
     src/camcorder/audio.cpp
     src/camcorder/camcorder.cpp
     src/camcorder/commands.cpp
+    src/camcorder/effects.cpp
     src/camcorder/json.cpp
     src/camcorder/look.cpp
     src/camcorder/preferences.cpp
@@ -36,6 +37,7 @@ if(BUILD_TESTING)
         tests/audio_tests.cpp
         tests/camcorder_tests.cpp
         tests/command_tests.cpp
+        tests/effect_tests.cpp
         tests/look_tests.cpp
         tests/preference_tests.cpp
         tests/presence_tests.cpp
@@ -48,5 +50,7 @@ if(BUILD_TESTING)
     target_link_libraries(camcorder_tests PRIVATE camcorder)
     # The example mod must always load cleanly: modders copy it.
     target_compile_definitions(camcorder_tests PRIVATE CAMCORDER_EXAMPLE_MODS="${CMAKE_CURRENT_SOURCE_DIR}/examples/mods")
+    # Every effect in the library must have its program in the picture shader.
+    target_compile_definitions(camcorder_tests PRIVATE CAMCORDER_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/integration/reskate/Extension/Camcorder/camcorder_shader.h")
     add_test(NAME camcorder_tests COMMAND camcorder_tests)
 endif()

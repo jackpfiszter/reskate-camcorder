@@ -273,12 +273,25 @@ also switches to the camera's own size (640 x 480 for the VX1000).
 Copy `examples/mods/Camcorder Extras` (or the zip from the Releases page) into the game's `Mods`
 folder, and make sure it is enabled in the mod list.
 
-- [ ] `camcorder mods`: lists vx2000, hi8, super8 and hvx200, and wide-half, from Camcorder Extras, and
+- [ ] `camcorder mods`: lists vx2000, hi8, super8, vhs and hvx200, and wide-half, from Camcorder Extras, and
       "Nothing wrong". The CAMCORDER card shows them as buttons (hover: which mod).
 - [ ] VX2000: zooms further than the VX1000 (12x). Hi8: its look is softer, less saturated, a
       little grainy, with a yellow stamp bottom left. Super 8: its clips are 18 frames a second,
       grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
       about 3 minutes 20.
+- [ ] Super 8 (its effects): the picture wanders a little in the gate and now and then jolts,
+      the brightness flickers, dust specks and the odd scratch come and go, a warm light leak
+      drifts in from an edge, the corners are rounded and dark, and lights glow orange. Cool
+      shadows, warm highlights.
+- [ ] VHS-C: 240 soft lines, colour smeared and lagging to the right of edges, a faint echo,
+      the lines wobble, a torn band at the very bottom, a white streak now and then, and every
+      few seconds a tracking band of torn lines and snow passes. `camcorder dv chroma off`
+      (the tape part) takes all of that away but leaves the tone and grain.
+- [ ] `camcorder effects` names the camera's effects in order (`(off)` by those a switch has
+      turned off); `camcorder effects list` lists every type.
+- [ ] A mod camera with `{"type": "lut", "file": "<name>.cube"}` and a .cube from a grading app
+      beside it: the grade shows. A .cube that is broken or missing is named in `camcorder mods`.
+- [ ] Frame rate with Super 8 or VHS-C on screen at 1440p: not much lower than the VX1000's.
 - [ ] HVX200: a 16:9 picture. On a 16:9 screen it fills it with no black bars; on a 4:3 or
       ultrawide screen, bars where the shapes differ. With the fisheye, the housing's shadow and the
       bend still sit centred, and nothing at the picture's edges is cut off or stretched. Its clips

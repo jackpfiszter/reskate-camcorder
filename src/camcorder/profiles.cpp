@@ -144,6 +144,197 @@ const char *lines_word(StampProfile::Lines l) {
 }
 const char *date_word(StampProfile::Date d) { return d == StampProfile::Date::day_month_year ? "day-month-year" : "month-day-year"; }
 
+// A file a profile names beside itself: a plain name with that extension, no folders.
+bool plain_file_name(std::string_view name, std::string_view extension) {
+    if (name.size() <= extension.size() || name.size() > 64 || name.substr(name.size() - extension.size()) != extension) return false;
+    if (name.front() == '.') return false;
+    return std::all_of(name.begin(), name.end(), [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ' ';
+    });
+}
+
+// The "effects" list (effects.h): each block's type, then its fields by the library's description.
+EffectStack read_effects(const Value &list, std::vector<std::string> &notes, const ProfileFiles &files) {
+    EffectStack stack;
+    std::size_t index = 0;
+    for (const auto &item : list.items) {
+        const std::string where = "effects[" + std::to_string(index++) + "].";
+        if (!item.is(Kind::object)) {
+            notes.push_back(where.substr(0, where.size() - 1) + " should be an object, {\"type\": ...}; left out.");
+            continue;
+        }
+        const auto *type = item.find("type");
+        if (!type || !type->is(Kind::string)) {
+            notes.push_back(where + "type is missing (\"blur\", \"grain\", ...); left out.");
+            continue;
+        }
+        const auto *kind = find_effect(type->text);
+        if (!kind) {
+            notes.push_back(where + "type \"" + type->text + "\" is not one of the camcorder's effects (`camcorder effects` lists them); left out.");
+            continue;
+        }
+        if (stack.size() >= most_effects) {
+            notes.push_back(where.substr(0, where.size() - 1) + ": more than " + std::to_string(most_effects) + " effects; the rest are left out.");
+            break;
+        }
+        auto block = effect_block(kind->type);
+        Fields f{item, where, notes};
+        f.known.emplace_back("type");
+        f.number("mix", block.mix, 0, 1);
+        if (const auto *part = f.get("part", Kind::string, "text")) {
+            if (!part_from_word(part->text, block.part))
+                notes.push_back(where + "part \"" + part->text + "\" is not one of always, tone, white_balance, sharpen, tape, grain; the type's own is kept.");
+        }
+        std::size_t at = 0;
+        bool usable = true;
+        for (const auto &p : kind->params) {
+            float *values = block.values.data() + at;
+            const auto key = p.key;
+            at += p.count();
+            switch (p.kind) {
+            case ParamKind::number: f.number(key, values[0], p.low, p.high); break;
+            case ParamKind::pair: f.pair(key, values[0], values[1], p.low, p.high, p.low, p.high); break;
+            case ParamKind::flag: {
+                bool on = values[0] > 0.5f;
+                f.boolean(key, on);
+                values[0] = on ? 1.0f : 0.0f;
+                break;
+            }
+            case ParamKind::word: {
+                const auto *v = f.get(key, Kind::string, "text");
+                if (!v) break;
+                const auto found = std::find(p.words.begin(), p.words.end(), v->text);
+                if (found == p.words.end()) {
+                    std::string allowed;
+                    for (const auto w : p.words) allowed += (allowed.empty() ? "" : ", ") + std::string(w);
+                    notes.push_back(where + std::string(key) + " \"" + v->text + "\" is not one of " + allowed + "; the default is kept.");
+                } else {
+                    values[0] = static_cast<float>(found - p.words.begin());
+                }
+                break;
+            }
+            case ParamKind::triple:
+            case ParamKind::colour: {
+                f.known.emplace_back(key);
+                const auto *v = item.find(key);
+                if (!v) break;
+                const double scale = p.kind == ParamKind::colour ? 255 : 1;
+                if (v->is(Kind::number) && p.kind == ParamKind::triple) {
+                    const float one = f.clamp_note(key, v->number, p.low, p.high);
+                    values[0] = values[1] = values[2] = one;
+                } else if (v->is(Kind::array) && v->items.size() == 3 &&
+                           std::all_of(v->items.begin(), v->items.end(), [](const Value &c) { return c.is(Kind::number); })) {
+                    for (std::size_t i = 0; i < 3; ++i)
+                        values[i] = static_cast<float>(f.clamp_note(key, v->items[i].number, p.low, p.high) / scale);
+                } else {
+                    notes.push_back(where + std::string(key) + (p.kind == ParamKind::colour ? " should be [red, green, blue], each 0 to 255"
+                                                                                          : " should be [red, green, blue] or one number") +
+                                    "; the default is kept.");
+                }
+                break;
+            }
+            case ParamKind::points: {
+                const auto *v = f.get(key, Kind::array, "a list of points, [[in, out], ...]");
+                if (!v) break;
+                std::vector<std::pair<float, float>> points;
+                for (const auto &point : v->items) {
+                    if (!point.is(Kind::array) || point.items.size() != 2 || !point.items[0].is(Kind::number) || !point.items[1].is(Kind::number)) {
+                        points.clear();
+                        break;
+                    }
+                    points.emplace_back(f.clamp_note(key, point.items[0].number, 0, 1), f.clamp_note(key, point.items[1].number, 0, 1));
+                }
+                std::sort(points.begin(), points.end());
+                // Two points at the same place in: the first is kept.
+                points.erase(std::unique(points.begin(), points.end(), [](const auto &a, const auto &b) { return a.first == b.first; }), points.end());
+                if (points.size() < 2 || points.size() > 8) {
+                    notes.push_back(where + std::string(key) + " should be 2 to 8 points, [[in, out], ...], at different places in; the straight line is kept.");
+                    break;
+                }
+                values[0] = static_cast<float>(points.size());
+                for (std::size_t i = 0; i < points.size(); ++i) {
+                    values[1 + 2 * i] = points[i].first;
+                    values[2 + 2 * i] = points[i].second;
+                }
+                break;
+            }
+            case ParamKind::file: {
+                const auto *v = f.get(key, Kind::string, "a file name");
+                if (!v) {
+                    notes.push_back(where + std::string(key) + " is needed: the .cube file beside the camera's; left out.");
+                    usable = false;
+                    break;
+                }
+                if (!plain_file_name(v->text, ".cube")) {
+                    notes.push_back(where + std::string(key) + " \"" + v->text + "\" should be a .cube file's name, beside the camera's file; left out.");
+                    usable = false;
+                    break;
+                }
+                block.file = v->text;
+                const auto text = files ? files(v->text) : std::nullopt;
+                if (!text) {
+                    notes.push_back(where + std::string(key) + " \"" + v->text + "\" could not be read; left out.");
+                    usable = false;
+                    break;
+                }
+                std::string error;
+                if (auto lut = read_cube(*text, error)) {
+                    block.lut = std::make_shared<const Lut3d>(std::move(*lut));
+                } else {
+                    notes.push_back(where + std::string(key) + " \"" + v->text + "\": " + error + " Left out.");
+                    usable = false;
+                }
+                break;
+            }
+            }
+        }
+        f.unknown();
+        if (usable) stack.push_back(std::move(block));
+    }
+    return stack;
+}
+
+std::string effect_text(const EffectBlock &block) {
+    const auto &kind = effect_kind(block.type);
+    const auto fallback = effect_block(block.type);
+    std::string out = "{\"type\": \"" + std::string(kind.name) + "\"";
+    if (block.mix != 1) out += ", \"mix\": " + number_text(block.mix);
+    if (block.part != kind.part) out += ", \"part\": \"" + std::string(part_word(block.part)) + "\"";
+    std::size_t at = 0;
+    for (const auto &p : kind.params) {
+        const float *v = block.values.data() + at;
+        const float *d = fallback.values.data() + at;
+        const auto count = p.count();
+        at += count;
+        if (p.kind == ParamKind::file) {
+            out += ", \"" + std::string(p.key) + "\": " + quoted(block.file);
+            continue;
+        }
+        if (std::equal(v, v + count, d)) continue; // the default: left out
+        out += ", \"" + std::string(p.key) + "\": ";
+        switch (p.kind) {
+        case ParamKind::number: out += number_text(v[0]); break;
+        case ParamKind::flag: out += v[0] > 0.5f ? "true" : "false"; break;
+        case ParamKind::word: out += "\"" + std::string(p.words[static_cast<std::size_t>(v[0])]) + "\""; break;
+        case ParamKind::pair: out += "[" + number_text(v[0]) + ", " + number_text(v[1]) + "]"; break;
+        case ParamKind::triple: out += "[" + number_text(v[0]) + ", " + number_text(v[1]) + ", " + number_text(v[2]) + "]"; break;
+        case ParamKind::colour:
+            out += "[" + std::to_string(std::lround(v[0] * 255)) + ", " + std::to_string(std::lround(v[1] * 255)) + ", " +
+                   std::to_string(std::lround(v[2] * 255)) + "]";
+            break;
+        case ParamKind::points: {
+            out += "[";
+            for (int i = 0; i < static_cast<int>(v[0]); ++i)
+                out += (i ? ", [" : "[") + number_text(v[1 + 2 * i]) + ", " + number_text(v[2 + 2 * i]) + "]";
+            out += "]";
+            break;
+        }
+        case ParamKind::file: break;
+        }
+    }
+    return out + "}";
+}
+
 template <class Profile> std::optional<Value> root(std::string_view text, Reading<Profile> &reading) {
     std::string error;
     auto value = json::parse(text, error);
@@ -164,7 +355,11 @@ const CameraProfile &vx1000() {
     return camera;
 }
 
-Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
+EffectStack camera_effects(const CameraProfile &camera) {
+    return camera.effects ? *camera.effects : stack_from_look(camera.look, camera.lines);
+}
+
+Reading<CameraProfile> read_camera(std::string_view text, std::string id, const ProfileFiles &files) {
     Reading<CameraProfile> reading;
     if (!valid_id(id)) {
         reading.error = "\"" + id + "\" cannot be an id: use 1 to 32 of a-z, 0-9, - and _.";
@@ -230,6 +425,14 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
         if (l.pair("drift_seconds", p.drift_seconds[0], p.drift_seconds[1], 1, 3600, 1, 3600) && p.drift_seconds[0] < p.drift_seconds[1])
             std::swap(p.drift_seconds[0], p.drift_seconds[1]); // the slow one first
         l.unknown();
+    }
+    if (const auto *effects = f.get("effects", Kind::array, "a list of effects, [{\"type\": ...}, ...]")) {
+        camera.effects = read_effects(*effects, reading.notes, files);
+        if (const auto *look = value->find("look"); look && look->is(Kind::object) &&
+            std::any_of(look->members.begin(), look->members.end(), [](const json::Member &m) { return m.key != "format"; }))
+            reading.notes.emplace_back("look: with effects given, only look.format is used (the effects are the picture).");
+        // What a recording does where the screen cannot show the effects: their nearest classic look.
+        camera.look = classic_look(*camera.effects, camera.look);
     }
     if (const auto *stamp = f.get("stamp", Kind::object, "an object, { ... }")) {
         Fields s{*stamp, "stamp.", reading.notes};
@@ -416,22 +619,31 @@ std::string write_camera(const CameraProfile &c) {
     out += "  \"lines\": " + std::to_string(c.lines) + ",\n";
     out += "  \"tape_minutes\": " + number_text(c.tape_minutes) + ",\n";
     out += "  \"look\": {\n";
-    out += "    \"format\": " + quoted(l.format) + ",\n";
-    out += "    \"black_crush\": " + number_text(l.black_crush) + ",\n";
-    out += "    \"highlight_gain\": " + number_text(l.highlight_gain) + ",\n";
-    out += "    \"saturation\": " + number_text(l.saturation) + ",\n";
-    out += "    \"white_balance_drift\": " + number_text(l.white_balance_drift) + ",\n";
-    out += "    \"sharpen\": " + number_text(l.sharpen) + ",\n";
-    out += "    \"grain\": " + number_text(l.grain) + ",\n";
-    out += "    \"chroma_width\": " + number_text(l.chroma_width) + ",\n";
-    out += "    \"softness\": " + number_text(l.softness) + ",\n";
-    out += "    \"highlight_knee\": " + number_text(l.highlight_knee) + ",\n";
-    out += "    \"highlight_spread\": " + number_text(l.highlight_spread) + ",\n";
-    out += "    \"grain_size\": " + number_text(l.grain_size) + ",\n";
-    out += "    \"grain_colour\": " + number_text(l.grain_colour) + ",\n";
-    out += "    \"sharpen_radius\": " + number_text(l.sharpen_radius) + ",\n";
-    out += "    \"drift_seconds\": [" + number_text(l.drift_seconds[0]) + ", " + number_text(l.drift_seconds[1]) + "]\n";
-    out += "  },\n";
+    // With effects, the effects are the picture: the look is only its name.
+    if (c.effects) out += "    \"format\": " + quoted(l.format) + "\n  },\n";
+    else {
+        out += "    \"format\": " + quoted(l.format) + ",\n";
+        out += "    \"black_crush\": " + number_text(l.black_crush) + ",\n";
+        out += "    \"highlight_gain\": " + number_text(l.highlight_gain) + ",\n";
+        out += "    \"saturation\": " + number_text(l.saturation) + ",\n";
+        out += "    \"white_balance_drift\": " + number_text(l.white_balance_drift) + ",\n";
+        out += "    \"sharpen\": " + number_text(l.sharpen) + ",\n";
+        out += "    \"grain\": " + number_text(l.grain) + ",\n";
+        out += "    \"chroma_width\": " + number_text(l.chroma_width) + ",\n";
+        out += "    \"softness\": " + number_text(l.softness) + ",\n";
+        out += "    \"highlight_knee\": " + number_text(l.highlight_knee) + ",\n";
+        out += "    \"highlight_spread\": " + number_text(l.highlight_spread) + ",\n";
+        out += "    \"grain_size\": " + number_text(l.grain_size) + ",\n";
+        out += "    \"grain_colour\": " + number_text(l.grain_colour) + ",\n";
+        out += "    \"sharpen_radius\": " + number_text(l.sharpen_radius) + ",\n";
+        out += "    \"drift_seconds\": [" + number_text(l.drift_seconds[0]) + ", " + number_text(l.drift_seconds[1]) + "]\n";
+        out += "  },\n";
+    }
+    if (c.effects) {
+        out += "  \"effects\": [";
+        for (std::size_t i = 0; i < c.effects->size(); ++i) out += std::string(i ? ",\n" : "\n") + "    " + effect_text((*c.effects)[i]);
+        out += c.effects->empty() ? "],\n" : "\n  ],\n";
+    }
     out += "  \"stamp\": {\n";
     out += "    \"corner\": \"" + std::string(corner_word(s.corner)) + "\",\n";
     out += "    \"lines\": \"" + std::string(lines_word(s.lines)) + "\",\n";

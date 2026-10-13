@@ -187,29 +187,6 @@ TEST(a_finished_frame_has_the_stamp_and_the_look) {
     CHECK(both.pixels != stamped.pixels);
 }
 
-TEST(the_screen_look_follows_the_camera_and_the_switches) {
-    Finish finish;
-    CHECK(!screen_look(finish, {}, 0).on); // off: nothing
-    finish.dv.on = true;
-    finish.look.grain = 0.3f;
-    finish.look.softness = 1.5f;
-    auto s = screen_look(finish, {0.2f}, 5);
-    CHECK(s.on);
-    CHECK_NEAR(s.black_crush, finish.look.black_crush, 1e-6);
-    CHECK_NEAR(s.highlight_gain, 1.15, 1e-6);
-    CHECK(s.highlight_bleed);
-    CHECK_NEAR(s.sharpen, 0.6, 1e-6);
-    CHECK_NEAR(s.grain, 0.3, 1e-6);
-    CHECK_NEAR(s.chroma_width, 4, 1e-6);
-    CHECK_NEAR(s.softness, 1.5, 1e-6);
-    CHECK(s.red_gain != 1 && std::abs((s.red_gain - 1) + (s.blue_gain - 1)) < 1e-5); // a cast, red against blue
-    // Each switch puts its part back to neutral.
-    finish.dv.highlights = finish.dv.white_balance = finish.dv.sharpen = finish.dv.grain = finish.dv.chroma = false;
-    s = screen_look(finish, {0.2f}, 5);
-    CHECK(s.on && s.black_crush == 0 && s.highlight_gain == 1 && !s.highlight_bleed && s.saturation == 1);
-    CHECK(s.red_gain == 1 && s.blue_gain == 1 && s.sharpen == 0 && s.grain == 0 && s.chroma_width == 0 && s.softness == 0);
-}
-
 TEST(film_cameras_move_at_their_own_rate_on_screen) {
     Finish finish;
     CHECK(screen_frame_rate(finish) == 0); // video: every game frame

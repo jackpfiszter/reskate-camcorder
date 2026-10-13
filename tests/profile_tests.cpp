@@ -215,7 +215,7 @@ TEST(the_example_mod_loads_without_a_note) {
         case ProfileKind::handling: check_one(read_handling(text.str(), Handling{})); break;
         }
     }
-    CHECK(profiles == 7);
+    CHECK(profiles == 8);
     // Super 8 runs at 18 frames, with no fields to switch.
     std::ifstream in(std::filesystem::path(CAMCORDER_EXAMPLE_MODS) / "Camcorder Extras" / "camcorders" / "super8.camera.json");
     std::stringstream text;

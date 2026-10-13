@@ -47,9 +47,12 @@ jobs:
         shell: pwsh
         run: |
           $fxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" | Sort-Object FullName | Select-Object -Last 1
-          $source = Get-Content camcorder/integration/reskate/Extension/Camcorder/camcorder_warp.cpp -Raw
-          $start = $source.IndexOf('R"hlsl(') + 7
-          $hlsl = $source.Substring($start, $source.IndexOf(')hlsl"') - $start)
+          # The shader is in pieces (MSVC keeps a string literal under 16 KB); C++ joins them, so do we.
+          $source = Get-Content camcorder/integration/reskate/Extension/Camcorder/camcorder_shader.h -Raw
+          $pieces = [regex]::Matches($source, 'R"hlsl\((.*?)\)hlsl"', 'Singleline')
+          if ($pieces.Count -lt 1) { Write-Error 'No shader found in camcorder_shader.h'; exit 1 }
+          foreach ($piece in $pieces) { if ($piece.Groups[1].Value.Length -gt 16000) { Write-Error 'A shader piece is over 16000 characters (MSVC C2026)'; exit 1 } }
+          $hlsl = ($pieces | ForEach-Object { $_.Groups[1].Value }) -join ''
           Set-Content picture.hlsl $hlsl -NoNewline
           & $fxc.FullName /nologo /T vs_5_0 /E picture_vs /O3 /Fo picture_vs.cso picture.hlsl
           if ($LASTEXITCODE -ne 0) { exit 1 }

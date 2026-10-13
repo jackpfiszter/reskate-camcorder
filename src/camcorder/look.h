@@ -162,20 +162,6 @@ std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view
 // The auto white balance's red and blue gains at `seconds` into a clip.
 std::array<float, 2> white_balance(const LookProfile &, const DvClip &, double seconds);
 
-// The look as the overlay's shader does it on screen (and so in clips and stills): the numbers
-// for one frame, with the player's switched-off parts at their neutral values. Fields are left to
-// the recording (recorded_finish).
-struct ScreenLook {
-    bool on{};
-    float black_crush{}, highlight_gain{1}, saturation{1};
-    bool highlight_bleed{};
-    float red_gain{1}, blue_gain{1};
-    float sharpen{}, grain{};
-    float chroma_width{}, softness{}; // in pixels of a 720-wide picture
-    float highlight_knee{0.925f}, highlight_spread{0.075f};
-    float grain_size{1}, grain_colour{}, sharpen_radius{1}; // sizes in pixels of a 720-wide picture
-};
-ScreenLook screen_look(const Finish &, const DvClip &, double seconds);
 // How often the screen shows a new picture for a film-like camera (24p, Super 8's 18), so it moves
 // as it records; 0 for video, which shows every frame the game draws.
 double screen_frame_rate(const Finish &) noexcept;

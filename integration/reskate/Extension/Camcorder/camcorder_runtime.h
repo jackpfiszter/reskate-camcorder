@@ -71,6 +71,7 @@ struct Published {
     std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
     std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
     camcorder::Finish finish;     // `camcorder look|dv|date` and the camera's own look, motion and stamp
+    camcorder::EffectStack effects; // the camera's picture (camcorder/effects.h): drawn on screen while the look is on
     int own_lines{480};           // the camera's own recording height (quality dv)
     bool warp{true};              // `camcorder warp`: the true fisheye
     // The cameras and lenses to choose from (built in, and from mods: camcorder/profiles.h).

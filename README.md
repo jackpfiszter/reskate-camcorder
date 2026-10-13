@@ -121,7 +121,7 @@ picture shader with fxc. Building ReSkate yourself is in [docs/TESTING.md](docs/
 
 ### Console commands
 
-Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|warp|rig|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|sensitivity|invert|guide|open|review|mods|export|status`.
+Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|warp|rig|lockon|subject|operate|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|sensitivity|invert|guide|open|review|mods|effects|export|status`.
 Settings are kept in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 
 ### Releases
