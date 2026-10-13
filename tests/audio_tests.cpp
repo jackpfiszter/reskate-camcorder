@@ -225,10 +225,10 @@ TEST(the_camera_hears_the_skater_from_where_it_stands) {
     close.process(close_by.data(), 480, {1, 0});
     for (std::size_t i = 0; i < close_by.size(); ++i) CHECK(close_by[i] == sound[i]);
     // Far to the right: the right channel carries more than the left.
-    CameraEar far;
+    CameraEar far_off;
     for (int packet = 0; packet < 20; ++packet) {
         std::vector<float> both(2 * 480, 0.4f);
-        far.process(both.data(), 480, {12, 1});
+        far_off.process(both.data(), 480, {12, 1});
         if (packet == 19) CHECK(both[2 * 479 + 1] > both[2 * 479] * 2);
         if (packet == 19) CHECK(both[2 * 479 + 1] < 0.4f);
     }
