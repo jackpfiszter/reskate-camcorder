@@ -335,6 +335,106 @@ std::string effect_text(const EffectBlock &block) {
     return out + "}";
 }
 
+// A viewfinder's "layout" (viewfinder_layout.h): each element's fields.
+std::vector<ViewfinderElement> read_layout(const Value &list, std::vector<std::string> &notes) {
+    std::vector<ViewfinderElement> elements;
+    std::size_t index = 0;
+    for (const auto &item : list.items) {
+        const std::string where = "viewfinder.layout[" + std::to_string(index++) + "].";
+        if (!item.is(Kind::object)) {
+            notes.push_back(where.substr(0, where.size() - 1) + " should be an object, {\"show\": ...}; left out.");
+            continue;
+        }
+        if (elements.size() >= 48) {
+            notes.push_back(where.substr(0, where.size() - 1) + ": more than 48 elements; the rest are left out.");
+            break;
+        }
+        ViewfinderElement e;
+        Fields f{item, where, notes};
+        if (const auto *show = f.get("show", Kind::string, "text")) {
+            if (const auto kind = show_from_word(show->text)) {
+                e.show = *kind;
+            } else {
+                notes.push_back(where + "show \"" + show->text + "\" is not one of text, dot, battery, zoom-bar, box, centre, grid, corners; left out.");
+                continue;
+            }
+        }
+        if (e.show == Show::grid) e.size = 3;
+        if (e.show == Show::battery) e.size = 16.5f;
+        if (e.show == Show::corners) e.size = 40;
+        if (const auto *anchor = f.get("anchor", Kind::string, "text")) {
+            if (const auto a = anchor_from_word(anchor->text)) e.anchor = *a;
+            else notes.push_back(where + "anchor \"" + anchor->text + "\" is not one of top-left, top, top-right, left, centre, right, bottom-left, bottom, bottom-right; top-left is kept.");
+        }
+        f.pair("offset", e.offset[0], e.offset[1], -480, 480, -480, 480);
+        f.number("size", e.size, 0.5, 480);
+        f.number("length", e.extent[0], 0.02, 1);
+        f.number("width", e.extent[0], 0, 2000);
+        f.number("height", e.extent[1], 0, 2000);
+        f.text("text", e.text, 64);
+        f.known.emplace_back("colour");
+        if (const auto *colour = item.find("colour")) {
+            if (colour->is(Kind::string)) {
+                if (colour->text == "text") e.ink = Ink::text;
+                else if (colour->text == "rec") e.ink = Ink::rec;
+                else if (colour->text == "warning") e.ink = Ink::warning;
+                else notes.push_back(where + "colour \"" + colour->text + "\" is not text, rec or warning; the text colour is kept.");
+            } else {
+                Fields c{item, where, notes};
+                c.colour("colour", e.colour);
+                e.ink = Ink::own;
+            }
+        }
+        f.number("opacity", e.opacity, 0, 1);
+        f.boolean("filled", e.filled);
+        f.number("thickness", e.thickness, 0.25, 10);
+        f.number("blink", e.blink, 0, 10);
+        f.boolean("shadow", e.shadow);
+        f.known.emplace_back("when");
+        if (const auto *when = item.find("when")) {
+            std::vector<const Value *> words;
+            if (when->is(Kind::string)) words.push_back(when);
+            else if (when->is(Kind::array))
+                for (const auto &w : when->items) words.push_back(&w);
+            if (words.empty() && !(when->is(Kind::array) && when->items.empty()))
+                notes.push_back(where + "when should be a condition or a list of them (\"recording\", [\"tripod\", \"!setup\"]); always shown.");
+            for (const auto *w : words) {
+                const auto condition = w->is(Kind::string) ? when_from_word(w->text) : std::nullopt;
+                if (condition) e.when.push_back(*condition);
+                else notes.push_back(where + "when: " + (w->is(Kind::string) ? "\"" + w->text + "\"" : std::string("a non-text")) +
+                                     " is not one of recording, zooming, tripod, setup, handheld, low-battery, low-tape, tape-end, fisheye, light (! for not); left out of it.");
+            }
+        }
+        f.unknown();
+        elements.push_back(std::move(e));
+    }
+    return elements;
+}
+
+std::string element_text(const ViewfinderElement &e) {
+    const ViewfinderElement plain;
+    std::string out = "{\"show\": \"" + std::string(show_word(e.show)) + "\"";
+    if (e.anchor != plain.anchor) out += ", \"anchor\": \"" + std::string(anchor_word(e.anchor)) + "\"";
+    out += ", \"offset\": [" + number_text(e.offset[0]) + ", " + number_text(e.offset[1]) + "]";
+    out += ", \"size\": " + number_text(e.size);
+    if (e.show == Show::zoom_bar) out += ", \"length\": " + number_text(e.extent[0]);
+    if (e.show == Show::box) out += ", \"width\": " + number_text(e.extent[0]) + ", \"height\": " + number_text(e.extent[1]);
+    if (!e.text.empty()) out += ", \"text\": " + quoted(e.text);
+    if (e.ink == Ink::own) out += ", \"colour\": " + colour_text(e.colour);
+    else if (e.ink != Ink::text) out += std::string(", \"colour\": \"") + (e.ink == Ink::rec ? "rec" : "warning") + "\"";
+    if (e.opacity != plain.opacity) out += ", \"opacity\": " + number_text(e.opacity);
+    if (e.filled) out += ", \"filled\": true";
+    if (e.thickness != plain.thickness) out += ", \"thickness\": " + number_text(e.thickness);
+    if (e.blink != plain.blink) out += ", \"blink\": " + number_text(e.blink);
+    if (!e.shadow) out += ", \"shadow\": false";
+    if (!e.when.empty()) {
+        out += ", \"when\": [";
+        for (std::size_t i = 0; i < e.when.size(); ++i) out += (i ? ", \"" : "\"") + when_word(e.when[i]) + "\"";
+        out += "]";
+    }
+    return out + "}";
+}
+
 template <class Profile> std::optional<Value> root(std::string_view text, Reading<Profile> &reading) {
     std::string error;
     auto value = json::parse(text, error);
@@ -471,8 +571,11 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id, const 
     }
     if (const auto *finder = f.get("viewfinder", Kind::object, "an object, { ... }")) {
         Fields v{*finder, "viewfinder.", reading.notes};
-        v.colour("text", camera.viewfinder_text);
-        v.colour("rec", camera.viewfinder_rec);
+        v.colour("text", camera.viewfinder.text);
+        v.colour("rec", camera.viewfinder.rec);
+        v.colour("warning", camera.viewfinder.warning);
+        if (const auto *layout = v.get("layout", Kind::array, "a list of elements, [{\"show\": ...}, ...]"))
+            camera.viewfinder.elements = read_layout(*layout, reading.notes);
         v.unknown();
     }
     f.unknown();
@@ -670,9 +773,17 @@ std::string write_camera(const CameraProfile &c) {
     out += "    \"colour\": " + colour_text(c.light.colour) + "\n";
     out += "  },\n";
     out += "  \"viewfinder\": {\n";
-    out += "    \"text\": " + colour_text(c.viewfinder_text) + ",\n";
-    out += "    \"rec\": " + colour_text(c.viewfinder_rec) + "\n";
-    out += "  }\n}\n";
+    out += "    \"text\": " + colour_text(c.viewfinder.text) + ",\n";
+    out += "    \"rec\": " + colour_text(c.viewfinder.rec) + ",\n";
+    out += "    \"warning\": " + colour_text(c.viewfinder.warning);
+    // The layout when it is the camera's own (the VX1000's is the one built in).
+    if (c.viewfinder.elements != vx1000_viewfinder().elements) {
+        out += ",\n    \"layout\": [";
+        for (std::size_t i = 0; i < c.viewfinder.elements.size(); ++i)
+            out += std::string(i ? ",\n" : "\n") + "      " + element_text(c.viewfinder.elements[i]);
+        out += c.viewfinder.elements.empty() ? "]" : "\n    ]";
+    }
+    out += "\n  }\n}\n";
     return out;
 }
 

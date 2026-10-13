@@ -19,6 +19,7 @@
 #include "json.h"
 #include "look.h"
 #include "rigs.h"
+#include "viewfinder_layout.h"
 #include "vx1000.h"
 #include <functional>
 #include <optional>
@@ -41,8 +42,8 @@ struct CameraProfile {
     StampProfile stamp;
     MicProfile mic;                  // its own microphone (`camcorder sound mic`)
     LightProfile light;              // the lamp on it (`camcorder light`)
-    // The viewfinder's readouts: their colour, and the REC light's.
-    std::array<std::uint8_t, 3> viewfinder_text{240, 240, 240}, viewfinder_rec{235, 40, 40};
+    // The viewfinder: its readouts' colours and what it shows where (viewfinder_layout.h).
+    ViewfinderLayout viewfinder = vx1000_viewfinder();
     std::string source;              // the mod folder it came from; empty when built in
     bool operator==(const CameraProfile &) const = default;
 };

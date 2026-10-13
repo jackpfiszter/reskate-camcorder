@@ -29,5 +29,20 @@
     "lines": "date-time",
     "colour": [255, 255, 255],
     "size": 1.2
+  },
+  "viewfinder": {
+    "text": [255, 255, 255],
+    "rec": [255, 60, 60],
+    "layout": [
+      {"show": "box", "anchor": "top-left", "offset": [24, 24], "width": 84, "height": 34, "filled": true, "colour": [0, 0, 0], "opacity": 0.45, "when": "recording"},
+      {"text": "REC", "anchor": "top-left", "offset": [30, 28], "size": 26, "colour": "rec", "when": "recording", "blink": 1},
+      {"text": "PAUSE", "anchor": "top-left", "offset": [30, 28], "size": 26, "when": "!recording"},
+      {"text": "SP {counter}", "anchor": "top-right", "offset": [30, 30]},
+      {"text": "{remaining}", "anchor": "top-right", "offset": [30, 58], "colour": "warning", "when": "low-tape", "blink": 0.6},
+      {"show": "battery", "anchor": "bottom-right", "offset": [30, 30]},
+      {"text": "x{zoom}", "anchor": "bottom", "offset": [0, 30], "when": "zooming"},
+      {"text": "TRIPOD {tripod}", "anchor": "bottom-left", "offset": [30, 30], "size": 18, "when": "tripod"},
+      {"show": "corners", "offset": [16, 16], "size": 36, "opacity": 0.5}
+    ]
   }
 }

@@ -26,15 +26,7 @@
 namespace dingosdk::overlay {
 namespace {
 using namespace dingosdk::camcorder;
-// The readouts' colours: the camera's own (its profile's "viewfinder"), set each frame.
-std::array<std::uint8_t, 3> text_ink{240, 240, 240}, rec_ink{235, 40, 40};
-ImU32 ink(Ink value) {
-    switch (value) {
-    case Ink::red: return IM_COL32(rec_ink[0], rec_ink[1], rec_ink[2], 255);
-    case Ink::amber: return IM_COL32(255, 190, 40, 255);
-    case Ink::white: default: return IM_COL32(text_ink[0], text_ink[1], text_ink[2], 255);
-    }
-}
+ImU32 imgui_colour(const Colour &c) { return IM_COL32(c.r, c.g, c.b, c.a); }
 // Black outside a circle, inside the picture: a ring of quads from the circle out to a radius
 // that covers the picture's corners.
 void shadow(ImDrawList *list, const Circle &c, const Rect &picture) {
@@ -236,14 +228,24 @@ bool camcorder_pending() {
 
 void draw_camcorder() {
     const auto p = camcorder_runtime::published();
-    text_ink = p.viewfinder_text;
-    rec_ink = p.viewfinder_rec;
     const auto &io = ImGui::GetIO();
     if (io.DisplaySize.y > 0) camcorder_runtime::note_render_aspect(io.DisplaySize.x / io.DisplaySize.y);
     ViewfinderOptions options;
     options.clean_feed = p.clean_feed;
     options.blink_time = p.blink;
     options.hint = p.hint;
+    // The camera's own viewfinder, and what its text fields need.
+    options.layout = &p.viewfinder;
+    options.format = p.finish.look.format;
+    {
+        const auto time = stamp_clock(std::time(nullptr), p.finish);
+        std::tm local{};
+        localtime_s(&local, &time);
+        options.clock = local;
+    }
+    options.year = p.finish.stamp_year;
+    options.date_order = p.finish.stamp.date;
+    options.light = p.light;
     // While the camcorder's picture is up the overlay must draw something every frame, or it skips
     // the frame and the picture is not copied for a clip or a still (camcorder_capture.h): one
     // pixel, all but transparent.
@@ -320,29 +322,30 @@ void draw_camcorder() {
         const auto &f = *v.safe_frame;
         list->AddRect({f.x, f.y}, {f.x + f.width, f.y + f.height}, IM_COL32(255, 255, 255, 70), 0, 0, 1.5f);
     }
-    if (v.rec_dot) list->AddCircleFilled({v.rec_dot_x, v.rec_dot_y}, v.rec_dot_radius, ink(Ink::red));
+    // The readouts: the camera's shapes, then its text, each with a soft shadow to read over any picture.
+    for (const auto &m : v.marks) {
+        const auto colour = imgui_colour(m.colour);
+        const auto shade = IM_COL32(0, 0, 0, m.colour.a * 3 / 4);
+        switch (m.kind) {
+        case Mark::Kind::dot: list->AddCircleFilled({m.x0, m.y0}, m.x1, colour); break;
+        case Mark::Kind::box: list->AddRectFilled({m.x0, m.y0}, {m.x1, m.y1}, colour); break;
+        case Mark::Kind::outline:
+            if (m.shadow) list->AddRect({m.x0 + 1, m.y0 + 1}, {m.x1 + 1, m.y1 + 1}, shade, 0, 0, m.thickness);
+            list->AddRect({m.x0, m.y0}, {m.x1, m.y1}, colour, 0, 0, m.thickness);
+            break;
+        case Mark::Kind::line:
+            if (m.shadow) list->AddLine({m.x0 + 1, m.y0 + 1}, {m.x1 + 1, m.y1 + 1}, shade, m.thickness);
+            list->AddLine({m.x0, m.y0}, {m.x1, m.y1}, colour, m.thickness);
+            break;
+        }
+    }
     for (const auto &label : v.labels) {
         const auto size = font->CalcTextSizeA(label.size, FLT_MAX, 0, label.text.c_str());
         const float x = label.align == Align::right ? label.x - size.x
                       : label.align == Align::centre ? label.x - size.x * 0.5f : label.x;
         // A one-pixel shadow, as an EVF's white text sits over any picture.
-        list->AddText(font, label.size, {x + 1, label.y + 1}, IM_COL32(0, 0, 0, 180), label.text.c_str());
-        list->AddText(font, label.size, {x, label.y}, ink(label.ink), label.text.c_str());
-    }
-    if (v.battery.visible) {
-        const auto &b = v.battery.body;
-        list->AddRect({b.x, b.y}, {b.x + b.width, b.y + b.height}, ink(Ink::white), 0, 0, 1.5f);
-        list->AddRectFilled({b.x + b.width, b.y + b.height * 0.3f}, {b.x + b.width + 3, b.y + b.height * 0.7f}, ink(Ink::white));
-        const float bars = std::ceil(v.battery.level * 4);
-        for (int i = 0; i < static_cast<int>(bars); ++i) {
-            const float w = (b.width - 4) / 4;
-            list->AddRectFilled({b.x + 2 + i * w + 1, b.y + 2}, {b.x + 2 + (i + 1) * w - 1, b.y + b.height - 2}, ink(Ink::white));
-        }
-    }
-    if (v.zoom.visible) {
-        const auto &t = v.zoom.track;
-        list->AddRect({t.x, t.y}, {t.x + t.width, t.y + t.height}, ink(Ink::white), 0, 0, 1.5f);
-        list->AddRectFilled({t.x, t.y}, {t.x + t.width * v.zoom.position, t.y + t.height}, ink(Ink::white));
+        if (label.shadow) list->AddText(font, label.size, {x + 1, label.y + 1}, IM_COL32(0, 0, 0, label.colour.a * 180 / 255), label.text.c_str());
+        list->AddText(font, label.size, {x, label.y}, imgui_colour(label.colour), label.text.c_str());
     }
     // Over the readouts, and after the recording's copy: the quick menu and the first-use guide.
     if (!p.quick.empty()) draw_quick(list, font, p, v.picture);

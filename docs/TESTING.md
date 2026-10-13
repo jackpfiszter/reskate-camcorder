@@ -287,6 +287,9 @@ folder, and make sure it is enabled in the mod list.
       the lines wobble, a torn band at the very bottom, a white streak now and then, and every
       few seconds a tracking band of torn lines and snow passes. `camcorder dv chroma off`
       (the tape part) takes all of that away but leaves the tone and grain.
+- [ ] VHS-C's own viewfinder: PAUSE top left, a blinking REC on a dark backing while recording,
+      SP and the counter top right, the battery bottom right, x1.0 (the zoom) bottom middle while
+      zooming, faint corner brackets. Switch back to the VX1000: its viewfinder is back as it was.
 - [ ] `camcorder effects` names the camera's effects in order (`(off)` by those a switch has
       turned off); `camcorder effects list` lists every type.
 - [ ] A mod camera with `{"type": "lut", "file": "<name>.cube"}` and a .cube from a grading app

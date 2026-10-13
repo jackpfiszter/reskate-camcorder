@@ -534,6 +534,61 @@ the middle of the picture, falling off to the edges.
 |---|---|---|---|
 | `text` | `[240, 240, 240]` | 0 to 255 each | The readouts' colour (counter, tape, battery, zoom bar) |
 | `rec` | `[235, 40, 40]` | 0 to 255 each | The REC light's |
+| `warning` | `[255, 190, 40]` | 0 to 255 each | For warnings (the VX1000's tape counter turns it when under 5 minutes are left) |
+| `layout` | the VX1000's | up to 48 elements | What the viewfinder shows, and where: see below |
+
+#### `layout`
+
+The viewfinder's readouts, as a list of elements. A camera with a `layout` shows only its own
+elements; one without has the VX1000's (STBY or a red REC top left, the battery under it, the
+counter and the tape left top right, the zoom bar bottom left while it zooms, the tripod bottom
+right). The control hints along the bottom, the safe frame while setting up a tripod, the date
+stamp and the black bars are the camcorder's own and always there.
+
+```json
+"layout": [
+  {"text": "{status}", "anchor": "top-left", "colour": "rec", "when": "recording", "blink": 1},
+  {"text": "STBY", "anchor": "top-left", "when": "!recording"},
+  {"text": "SP {counter}", "anchor": "top-right"},
+  {"show": "battery", "anchor": "top-right", "offset": [30, 60]},
+  {"text": "{zoom}x", "anchor": "bottom", "when": "zooming"},
+  {"show": "corners", "offset": [20, 20], "size": 40, "opacity": 0.6}
+]
+```
+
+Sizes and offsets are in 480ths of the picture's height (an NTSC line), so a layout sits the same
+at any resolution and on any picture shape.
+
+| Field | Default | Range | What it is |
+|---|---|---|---|
+| `show` | `"text"` | `text` `dot` `battery` `zoom-bar` `box` `centre` `grid` `corners` | What it is (below) |
+| `anchor` | `"top-left"` | `top-left` `top` `top-right` `left` `centre` `right` `bottom-left` `bottom` `bottom-right` | The corner, edge or middle of the picture it sits at. Text lines up the same way: left, centred or right |
+| `offset` | `[30, 30]` | -480 to 480 each | How far in from the anchor: right and down from a left or top one, left and up from a right or bottom one; from the middle, right and down |
+| `size` | `22` | 0.5 to 480 | Text: its height. A dot: across. The battery: its height (16.5). A cross: across. A grid: how many parts each way (3, thirds). Corners: each bracket's length (40) |
+| `text` | | up to 64 characters | A text's words, with fields filled in each frame (below) |
+| `colour` | `"text"` | `"text"` `"rec"` `"warning"`, or `[red, green, blue]` | The viewfinder's colours above, or its own |
+| `opacity` | `1` | 0 to 1 | |
+| `when` | always | a condition or a list | Shown only while all are so: `recording`, `zooming`, `tripod`, `setup`, `handheld`, `low-battery`, `low-tape` (under 5 minutes), `tape-end`, `fisheye`, `light`. `"!recording"`: while not |
+| `blink` | `0` | 0 to 10 | Seconds a blink, on for the first half; 0 steady |
+| `length` | `0.28` | 0.02 to 1 | A zoom bar's, of the picture's width |
+| `width`, `height` | | 0 to 2000 | A box's |
+| `filled` | `false` | | A box filled, or an outline |
+| `thickness` | `1.5` | 0.25 to 10 | Lines and outlines, in pixels at 1080 lines |
+| `shadow` | `true` | | A dark shadow under text and lines, to read over any picture |
+
+- **`text`**: its `text`. Fields: `{counter}` (0:01:23), `{remaining}` (58min, or TAPE END),
+  `{minutes}` (58), `{status}` (REC or STBY), `{zoom}` (1.0, the zoom's ratio), `{focal}` (5.9,
+  millimetres), `{date}` (OCT 12 1996, in the stamp's date order) and `{time}` (4:03:22 PM), by the
+  camera's clock, `{tripod}` (its number), `{clip}`, `{battery}` (percent), `{camera}`, `{lens}`,
+  `{format}` (the look's name).
+- **`dot`**: a filled circle, `size` across (a REC light).
+- **`battery`**: a battery with four bars of charge. It blinks by itself when nearly flat.
+- **`zoom-bar`**: W, a bar filled to the zoom, T. Usually with `"when": "zooming"`.
+- **`box`**: `width` by `height`: behind text as a backing (`filled`, a dark `colour`, `opacity`
+  0.5), or an outline.
+- **`centre`**: a cross in the middle of the picture (`offset` moves it).
+- **`grid`**: lines across the picture: `size` 3 is thirds.
+- **`corners`**: brackets at the picture's corners, `offset` in from them.
 
 ### `mic`
 
@@ -631,5 +686,5 @@ A lens goes on the front of any camera.
 - **Effects of your own code.** ReSkate mods are data, so a camera builds its picture from the
   library above, not from shaders of its own. If a look needs a block the library doesn't have,
   ask for it.
-- **The viewfinder's layout and lettering.** A camera sets its readouts' colours, not where they
-  sit or their font.
+- **The viewfinder's lettering.** A layout sets what shows, where, how big and in what colour;
+  the letters are the overlay's own font.

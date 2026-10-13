@@ -60,8 +60,8 @@ TEST(a_written_camera_reads_back_the_same) {
     camera.stamp.outline = false;
     camera.stamp.outline_colour = {40, 0, 0};
     camera.light = {1.5f, 1.2f, {200, 220, 255}};
-    camera.viewfinder_text = {120, 255, 120};
-    camera.viewfinder_rec = {255, 255, 0};
+    camera.viewfinder.text = {120, 255, 120};
+    camera.viewfinder.rec = {255, 255, 0};
     const auto read = read_camera(write_camera(camera), "test");
     CHECK(read.profile.has_value());
     CHECK(read.notes.empty());
@@ -307,7 +307,7 @@ TEST(a_camera_sets_how_its_look_light_and_stamp_behave) {
     CHECK(c.look.drift_seconds[0] == 90 && c.look.drift_seconds[1] == 5); // the slow one first
     CHECK(c.stamp.corner == StampProfile::Corner::top_right && c.stamp.size == 2 && !c.stamp.outline);
     CHECK(c.light.strength == 4 && c.light.colour[2] == 255 && c.light.reach == LightProfile{}.reach);
-    CHECK(c.viewfinder_text[1] == 200 && c.viewfinder_rec == vx1000().viewfinder_rec);
+    CHECK(c.viewfinder.text[1] == 200 && c.viewfinder.rec == vx1000().viewfinder.rec);
     const auto wrong = read_camera(R"({"light": {"colour": [1, 2]}, "stamp": {"size": 9}})", "x");
     CHECK(wrong.notes.size() == 2); // a colour needs three numbers; a size is kept to 4
 }
@@ -330,4 +330,34 @@ TEST(a_fisheye_bends_by_its_projection) {
     const auto o = optics(&lens, 0, FisheyeRender::warp);
     CHECK(o.warped && o.projection == Projection::orthographic && o.render_vertical_fov > o.vertical_fov);
     CHECK(read_adapter(R"({"projection": "bendy"})", "x").notes.size() == 1);
+}
+
+TEST(a_camera_brings_its_own_viewfinder) {
+    const auto read = read_camera(R"({"viewfinder": {"text": [255, 255, 255], "warning": [255, 0, 0], "layout": [
+        {"show": "text", "text": "{status}", "anchor": "top-right", "offset": [20, 20], "size": 30, "colour": "rec", "when": "recording"},
+        {"text": "SP {remaining}", "anchor": "bottom-left", "when": ["!recording", "!low-tape"], "blink": 1},
+        {"show": "box", "anchor": "top", "width": 120, "height": 30, "filled": true, "colour": [0, 0, 0], "opacity": 0.5},
+        {"show": "corners", "offset": [24, 24]},
+        {"show": "zoom-bar", "length": 0.5, "when": "zooming"},
+        {"show": "sparkle"},
+        {"anchor": "middle", "when": ["sometimes"], "glow": 1}
+    ]}})", "own");
+    CHECK(read.profile.has_value());
+    const auto &v = read.profile->viewfinder;
+    CHECK(v.warning == (std::array<std::uint8_t, 3>{255, 0, 0}));
+    CHECK(v.elements.size() == 6);
+    CHECK(v.elements[0].anchor == Anchor::top_right && v.elements[0].ink == Ink::rec && v.elements[0].when.size() == 1);
+    CHECK(v.elements[1].when.size() == 2 && !v.elements[1].when[1].is && v.elements[1].when[1].what == Condition::low_tape);
+    CHECK(v.elements[2].show == Show::box && v.elements[2].filled && v.elements[2].ink == Ink::own && v.elements[2].extent[0] == 120);
+    CHECK(v.elements[3].show == Show::corners && v.elements[3].size == 40);
+    CHECK(v.elements[4].extent[0] == 0.5f);
+    CHECK(mentions(read.notes, "layout[5].show \"sparkle\""));
+    CHECK(mentions(read.notes, "layout[6].anchor \"middle\""));
+    CHECK(mentions(read.notes, "\"sometimes\" is not one of"));
+    CHECK(mentions(read.notes, "layout[6].glow is not a field"));
+    // Written out and read back: the same; the VX1000's own layout isn't written out at all.
+    const auto again = read_camera(write_camera(*read.profile), "own");
+    CHECK(again.notes.empty() && again.profile->viewfinder == v);
+    CHECK(write_camera(vx1000()).find("layout") == std::string::npos);
+    CHECK(read_camera("{}", "plain").profile->viewfinder == vx1000_viewfinder());
 }

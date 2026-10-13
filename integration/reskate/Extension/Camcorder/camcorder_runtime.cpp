@@ -576,8 +576,7 @@ void publish(State &s, const Frame &frame) {
         finish.ear = s.camcorder.handling().sound;
         s.published.finish = finish;
         s.published.effects = camera_effects(camera);
-        s.published.viewfinder_text = camera.viewfinder_text;
-        s.published.viewfinder_rec = camera.viewfinder_rec;
+        s.published.viewfinder = camera.viewfinder;
         s.published.own_lines = camera.lines;
     }
     s.published.warp = s.warp;

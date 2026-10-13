@@ -20,6 +20,7 @@ add_library(camcorder STATIC
     src/camcorder/rigs.cpp
     src/camcorder/tape.cpp
     src/camcorder/viewfinder.cpp
+    src/camcorder/viewfinder_layout.cpp
     src/camcorder/vx1000.cpp)
 target_include_directories(camcorder PUBLIC src)
 find_package(Threads REQUIRED)
