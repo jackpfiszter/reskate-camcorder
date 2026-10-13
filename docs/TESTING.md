@@ -28,6 +28,8 @@ git clone https://github.com/Dingo-Shenanigans/ReSkate C:\src\ReSkate
 git -C C:\src\ReSkate checkout (Get-Content integration\reskate\reskate.commit)
 pwsh integration\reskate\install.ps1 -ReSkate C:\src\ReSkate
 cd C:\src\ReSkate
+# With Rust installed, ReSkate builds its Spotify device too: fetch its crates first.
+if (Test-Path SpotifyHelper\Cargo.toml) { cargo fetch --manifest-path SpotifyHelper\Cargo.toml }
 cmake --preset vs2022-x64 "-DDINGOSDK_BACKTRACE_URL="
 cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher
 ```
