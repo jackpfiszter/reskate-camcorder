@@ -14,6 +14,12 @@ jobs:
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --parallel
       - run: ctest --test-dir build --output-on-failure
+      # windows.h defines near, far and small as macros: a name like those breaks only the Windows build.
+      - name: Model compiles with windows.h's macro names
+        run: |
+          for f in src/camcorder/*.cpp; do
+            g++ -std=c++20 -fsyntax-only -Isrc -Dnear= -Dfar= -Dsmall=char -Dhyper=__int64 "$f"
+          done
       # Every source file must be in ReSkate's build too (reskate.patch), or the Windows link fails.
       - name: Sources listed in reskate.patch
         run: |
