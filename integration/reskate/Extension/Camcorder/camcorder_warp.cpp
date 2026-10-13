@@ -579,7 +579,7 @@ bool camcorder_picture_pass_ready() {
                                 : "Camcorder: no picture shader; the fisheye is drawn as a mesh and the look is left to clips.");
     if (!w.pass_ready && !std::exchange(w.pass_failure_said, true))
         notify(NoticeLevel::warning, "The camcorder's look can't be shown on screen here.",
-               "Clips and stills still get it; the camera light needs it. logs\\ReSkate.log says why.");
+               "Clips and stills still get it. logs\\ReSkate.log says why.");
     return w.pass_ready;
 }
 

@@ -90,7 +90,7 @@ double seconds_now() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-// This frame's picture (camcorder_warp.h): the lens, the light and the camera's effects.
+// This frame's picture (camcorder_warp.h): the lens and the camera's effects.
 PictureChain chain_numbers(const camcorder_runtime::Published &p, const Rect &picture, float width, float height,
                            std::uint32_t frame, double frame_rate) {
     static const double start = seconds_now();
@@ -280,7 +280,7 @@ void draw_camcorder() {
         if (const auto texture = camcorder_warp_request())
             warp(list, *texture, p.frame.optics, v.picture, io.DisplaySize.x / io.DisplaySize.y);
     }
-    // The look or the light asked for and not on screen for a while: say why, once a game.
+    // The look asked for and not on screen for a while: say why, once a game.
     {
         static double missing_since = 0;
         static bool said = false;

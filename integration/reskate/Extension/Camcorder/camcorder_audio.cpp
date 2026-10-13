@@ -136,7 +136,7 @@ struct Capture::Impl {
                         }
                     }
                     capture->ReleaseBuffer(frames);
-                    // Heard from where the camera stands (anything over full scale is held at it).
+                    // Heard from where the camera stands (it only ever turns the game down; to_pcm16 clamps).
                     ear.process(sound.data(), frames, camcorder_runtime::ear());
                     packet.resize(count);
                     to_pcm16(sound.data(), count, packet.data());

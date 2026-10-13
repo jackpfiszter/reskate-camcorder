@@ -69,7 +69,7 @@ struct Published {
     bool closest{};                   // filming whoever is nearest (subject: who that is now)
     camcorder::ViewfinderLayout viewfinder = camcorder::vx1000_viewfinder(); // the camera's readouts
     std::string subject;  // who is, empty for nobody
-    camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`
+    camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game`
     std::uint32_t still{};        // counts `camcorder still` requests: each new number takes one
     std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
     std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
