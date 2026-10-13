@@ -89,8 +89,9 @@ struct StampProfile {
 
 // A lamp on the camera (`camcorder light`): what the picture's middle is lit by.
 struct LightProfile {
-    float strength{2.5f};                                // how much it brightens the middle (light times 1 + this)
+    float strength{2.5f};                                // how bright it is, against a night scene's own light
     float reach{0.8f};                                   // the beam's width, in half picture widths
+    float exposure{0.6f};                                // how far the camera's auto exposure stops down for it: 0 not at all, 1 fully
     std::array<std::uint8_t, 3> colour{255, 245, 224};   // a halogen lamp on a camera balanced for daylight
     bool operator==(const LightProfile &) const = default;
 };

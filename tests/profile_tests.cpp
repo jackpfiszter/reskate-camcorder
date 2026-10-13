@@ -59,7 +59,7 @@ TEST(a_written_camera_reads_back_the_same) {
     camera.stamp.margin = {0.1f, 0.05f};
     camera.stamp.outline = false;
     camera.stamp.outline_colour = {40, 0, 0};
-    camera.light = {1.5f, 1.2f, {200, 220, 255}};
+    camera.light = {1.5f, 1.2f, 0.3f, {200, 220, 255}};
     camera.viewfinder.text = {120, 255, 120};
     camera.viewfinder.rec = {255, 255, 0};
     const auto read = read_camera(write_camera(camera), "test");
@@ -216,7 +216,7 @@ TEST(the_example_mod_loads_without_a_note) {
         }
     }
     CHECK(profiles == 8);
-    // Super 8 runs at 18 frames, with no fields to switch.
+    // Super 8 runs at film's 24 frames (as sound Super 8 did), with no fields to switch.
     std::ifstream in(std::filesystem::path(CAMCORDER_EXAMPLE_MODS) / "Camcorder Extras" / "camcorders" / "super8.camera.json");
     std::stringstream text;
     text << in.rdbuf();
@@ -224,7 +224,7 @@ TEST(the_example_mod_loads_without_a_note) {
     finish.dv.on = true;
     finish.motion = read_camera(text.str(), "super8").profile->motion;
     CHECK(!finish.fields());
-    CHECK(clip_rate(finish) == (FrameRate{18, 1}));
+    CHECK(clip_rate(finish).fps() > 23.9 && clip_rate(finish).fps() < 24.01);
 }
 #endif
 

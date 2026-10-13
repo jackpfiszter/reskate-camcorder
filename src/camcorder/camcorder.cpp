@@ -205,7 +205,7 @@ Frame Camcorder::tick(const TickInput &in) {
                 // Nobody picked: a tripod films the player who set it up (solo, the only skater).
                 Subject self;
                 if (!subject && in.filmer.valid) {
-                    self = {true, in.filmer.position, in.filmer.velocity};
+                    self = {true, in.filmer.position, in.filmer.velocity, in.filmer.root_height};
                     subject = &self;
                 }
                 frame.shot = t.step(subject, in.controls, dt, frame.optics.zoom_ratio);

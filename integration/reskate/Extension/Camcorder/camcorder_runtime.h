@@ -38,7 +38,7 @@ void note_players(std::vector<Player> players) noexcept;
 void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_phase) noexcept;
 // Whether the camcorder holds the screen (it yields to Spectate).
 bool owns_camera() noexcept;
-// Whether the camcorder wants the pad kept from the skater (operating, or setting up a tripod).
+// Whether the camcorder wants the pad kept from the skater (setting up a tripod, the quick menu).
 // The client tick ORs it into the freecam's input capture, which it sets every tick.
 bool wants_controller() noexcept;
 
@@ -56,8 +56,8 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
 struct Published {
     camcorder::Frame frame;
     bool clean_feed{};
-    bool operating{};     // `camcorder operate`: the pad works the camera
-    bool aiming{};        // `camcorder aim`: the camera aims while the player skates
+    bool aiming{};        // `camcorder aim`: the player aims the camera (otherwise it points itself)
+    int frame_on{1};      // `camcorder frame`: 0 board, 1 the whole skater, 2 head
     float blink{};        // seconds, for blinking readouts
     std::string hint;     // the viewfinder's control hints, empty for none
     std::vector<std::string> players; // who could be filmed (the menu's subject list)

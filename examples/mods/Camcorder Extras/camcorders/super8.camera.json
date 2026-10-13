@@ -3,9 +3,9 @@
   "sensor_mm": [5.79, 4.01],
   "zoom_mm": [9, 36],
   "zoom_seconds": [2, 8],
-  "motion": "18p",
+  "motion": "24p",
   "lines": 480,
-  "tape_minutes": 3.3,
+  "tape_minutes": 2.5,
   "look": {
     "format": "Super 8"
   },
@@ -20,7 +20,7 @@
     {"type": "flicker", "amount": 0.04, "speed": 18, "smooth": 0.2},
     {"type": "light_leak", "amount": 0.35, "speed": 0.08},
     {"type": "dust", "amount": 2, "scratches": 0.08},
-    {"type": "grain", "amount": 0.45, "size": 2.5, "colour": 0.6},
+    {"type": "grain", "amount": 0.35, "size": 1.8, "colour": 0.5},
     {"type": "vignette", "amount": 0.4, "radius": 0.9, "softness": 0.7, "roundness": 0.6},
     {"type": "gate", "radius": 0.06, "softness": 0.012}
   ],

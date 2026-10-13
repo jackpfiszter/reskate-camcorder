@@ -59,35 +59,38 @@ camcorder to be filmed, but a different ReSkate build may not be allowed to join
 ### Controls
 
 Everything is on the **CAMCORDER** page of the ReSkate menu (Insert). The first card has what
-most visits are for: on / off, REC, still, open my clips, camera, lens, the look, the camera
-light, aim while filming and who to film. TRIPODS is next. MORE SETTINGS opens the rest:
+most visits are for: on / off, REC, still, open my clips, camera, lens, who to film, what to frame
+on them (board, whole skater, head), pointing (automatic or you aim it), the look and the camera
+light. TRIPODS is next. MORE SETTINGS opens the rest:
 handheld height and rigs, tape and sound, look details (the date stamp and its clock), and controls.
-CONTROLS has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC, quick menu, still, aim
-while filming, tripod) where they are free. Keys and buttons can be changed in
+CONTROLS has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC, quick menu, still,
+pointing, tripod) where they are free. Keys and buttons can be changed in
 SETTINGS > CONTROLS. While the camcorder is on, skate.'s own HUD is hidden. **Esc or Start** backs
-out of camera controls, a tripod's setup and the quick menu; the next press opens the pause menu.
+out of a tripod's setup and the quick menu; the next press opens the pause menu.
 
 The **quick menu** (F7 after SET UP KEYS, or `camcorder quick`) is a short list over the
-viewfinder: REC, still, camera, lens, look, light, aim while filming,
+viewfinder: REC, still, camera, lens, look, light, pointing, frame on,
 height, tripod (and a mod's rigs). W / S or
 the wheel (stick up / down) choose, D (stick right) does it, A (stick left) closes. The skater
 waits while it is open; it closes itself after 8 seconds untouched.
 
-**Camera controls** (the menu's toggle, or `camcorder operate on`), or setting up a tripod, give the
-mouse, keys and pad to the camera; the skater stands still until you turn them off:
+**Setting up a tripod** gives the mouse, keys and pad to the camera; the skater stands still
+until it is done:
 
 | | Mouse and keyboard | Pad |
 |---|---|---|
 | Aim | move the mouse (no button needed) | right stick |
 | Zoom (wide / tele) | Q / E | left / right trigger |
-| Higher / lower (the camera, or a tripod being set up) | R / F | RB / LB |
+| Higher / lower | R / F | RB / LB |
 | Tripod setup: carry it | W A S D (Shift: faster) | left stick (L3: faster) |
 | Tripod setup: done | the tripod key again, or REC (done and rolling), or Esc | Start |
 
 The viewfinder shows a line of these hints while they apply.
 
-**Aim while filming** (the menu's toggle, `camcorder aim on`, or a bound key) splits the controls,
-for following a friend's line: you keep skating, the camera takes only the look and the zoom.
+**Pointing** is AUTOMATIC by default: the camera keeps who you film in frame by itself, and you
+just skate. **YOU AIM IT** (the menu, the quick menu, `camcorder aim you`, or F9) splits the
+controls, for following a friend's line your own way: you keep skating, the camera takes only the
+look and the zoom.
 
 | | Mouse and keyboard | Pad |
 |---|---|---|
@@ -112,9 +115,12 @@ Solo:
 - [ ] Aim has weight: a quick flick of the mouse carries on a touch past and settles back; a
       locked-on friend stays framed but not perfectly (small corrections, a little behind when
       they change direction). Too much or too little: tell me which, or tune `handling.json`.
-- [ ] Camera controls on (menu or `camcorder operate on`): the skater stops; the mouse (or right
-      stick) aims, right turns right and up looks up; Q / E (or the triggers) zoom, the W-T bar shows
-      while zooming, and the round corners vanish after a little zoom. Off again: you skate.
+- [ ] Pointing YOU AIM IT: the mouse (or right stick) aims, right turns right and up looks up; the
+      wheel (or the triggers) zooms, the W-T bar shows while zooming, and the round corners vanish
+      after a little zoom. AUTOMATIC again: it points itself, and you skate as normal.
+- [ ] Film a friend (or CLOSEST with a tripod on you): FRAME ON WHOLE SKATER keeps their whole
+      body in the frame, centred about the waist, not their face. BOARD centres their feet and
+      board; HEAD their head and shoulders. Through an ollie it rides up with them.
 - [ ] True fisheye (on by default): straight lines bow outward toward the edges (rails, ledges,
       building edges), the middle looks slightly magnified, and zooming in straightens them.
       `camcorder warp off` goes back to the flat stand-in: wide, round corners, no bend. Say if the
@@ -123,9 +129,7 @@ Solo:
 - [ ] MORE SETTINGS > HANDHELD > LOW: the camera is low, about knee height (0.45 m), not at your
       head; HIP at the waist; EYE LEVEL at eye level. Same on a board and on foot, and on a ledge.
       The quick menu's Height steps through the three.
-- [ ] Camera controls on: the left stick (or A / D) tilts the frame for a dutch angle, up to about
-      25 degrees; let go and it eases back level. The hint line lists LT/RT for zoom.
-- [ ] Hold RB / LB (or R / F with camera controls on): the camera rises and drops smoothly, from
+- [ ] Hold RB / LB: the camera rises and drops smoothly, from
       a skate's height off the ground to overhead. `camcorder height up` and `down` step it, for
       binding to keys.
 - [ ] The shake: hold still at eye level and watch for 30 seconds. It wanders like hands, with no
@@ -138,25 +142,24 @@ Solo:
       Does it stand on the ground? Carry it onto a ledge and off again: it steps up and drops down.
 - [ ] F10 again (or DONE SETTING UP, or Esc): setup ends, you skate. REC: it rolls. Skate away:
       the tripod pans after you. (REC while setting up: done and rolling at once.)
-      `camcorder head locked`: it stops panning. `camcorder head manual` + `camcorder operate on`:
-      pan by hand, with drag.
+      `camcorder head locked`: it stops panning. `camcorder head manual` + YOU AIM IT: pan it by
+      hand, with drag.
 - [ ] Place a second tripod somewhere else; `camcorder tripod next` cuts between them.
 - [ ] Turn on Freecam, then `camcorder power on`: no viewfinder, and `camcorder status` says the
       game kept its camera. Freecam off: the camcorder takes over.
 - [ ] `camcorder power off`: your normal camera comes back. Open and close the menu, load another
       map, bail: nothing sticks or crashes.
-- [ ] With the camera on (and with camera controls on, and setting up a tripod): Esc (or Start)
-      opens skate.'s pause menu, after one press backing out of camera controls or the setup. The
+- [ ] With the camera on (and setting up a tripod, and with the quick menu open): Esc (or Start)
+      opens skate.'s pause menu, after one press backing out of the setup or the menu. The
       pause menu shows and works with the mouse and pad; a recording stops (STBY). Close it: the
       camcorder's picture comes back.
-- [ ] With camera controls on or setting up a tripod, move the mouse about for a while: Windows'
-      arrow never shows over the picture.
+- [ ] With YOU AIM IT, or setting up a tripod, move the mouse about for a while: Windows' arrow
+      never shows over the picture.
 - [ ] Handheld at eye level, get off the board and walk: the shake changes from a fine wheel buzz
       to a slower footstep bob. Back on the board: the buzz again.
-- [ ] Aim while filming on (menu or `camcorder aim on`): WASD / the keyboard still skates; the
-      mouse aims without moving the skater's view of anything else; the wheel zooms a step per
-      notch. With a friend as subject the mouse nudges the framing; solo it aims freely and the
-      aim turns with you. Open the ReSkate menu: the mouse works in it. Off again: all as before.
+- [ ] YOU AIM IT: WASD / the keyboard still skates; the mouse aims without moving the skater's
+      view of anything else; the wheel zooms a step per notch; the aim turns with you. Open the
+      ReSkate menu: the mouse works in it. AUTOMATIC again: all as before.
 - [ ] `camcorder still` (or TAKE A STILL, or a bound key): "Still saved." and a JPEG in
       **Videos\ReSkate Camcorder\Stills** of the picture, no readouts.
 - [ ] The first time the camera comes on (or SHOW THE GUIDE): a short list of the controls over
@@ -175,11 +178,13 @@ Solo:
       fast. Invert up and down: pushing up looks down.
 - [ ] OPEN MY CLIPS: Explorer opens on Videos\ReSkate Camcorder (stills in its Stills folder).
 - [ ] Camera light (the CAMCORDER card, the quick menu, or `camcorder light on`), at night (`tod
-      next` until dark): the middle of the picture comes up warm and bright, falling off to the
-      edges; what the game lights at all gets brighter, a black sky stays black. It is in clips too.
-      (A drawn light, not a real one: walls behind the skater brighten as much as the skater.)
+      next` until dark): what the camera points at comes up warm, dark ground and walls included,
+      falling off to the edges; the background goes a little darker as the camera exposes for the
+      light, and bright things roll off softly instead of burning out white. A black sky stays
+      black. It is in clips too. (A drawn light, not a real one: walls behind the skater brighten
+      as much as the skater.)
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",
-      "Camcorder: pad to camera", "Camcorder: aim while filming", "Camcorder: set up a tripod",
+      "Camcorder: you aim it / it aims itself", "Camcorder: set up a tripod",
       "Camcorder: next tripod", "Camcorder: take a still", "Camcorder: quick menu" and
       "Camcorder: hold it higher / lower".
 
@@ -276,9 +281,9 @@ folder, and make sure it is enabled in the mod list.
 - [ ] `camcorder mods`: lists vx2000, hi8, super8, vhs and hvx200, and wide-half, from Camcorder Extras, and
       "Nothing wrong". The CAMCORDER card shows them as buttons (hover: which mod).
 - [ ] VX2000: zooms further than the VX1000 (12x). Hi8: its look is softer, less saturated, a
-      little grainy, with a yellow stamp bottom left. Super 8: its clips are 18 frames a second,
+      little grainy, with a yellow stamp bottom left. Super 8: its clips are 24 frames a second,
       grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
-      about 3 minutes 20.
+      about 2 minutes 30.
 - [ ] Super 8 (its effects): the picture wanders a little in the gate and now and then jolts,
       the brightness flickers, dust specks and the odd scratch come and go, a warm light leak
       drifts in from an edge, the corners are rounded and dark, and lights glow orange. Cool
@@ -316,7 +321,7 @@ folder, and make sure it is enabled in the mod list.
 
 ### Settings
 
-- [ ] Change the lens, rig, quality, sound, aim while filming, the tape look, the light, the
+- [ ] Change the lens, rig, quality, sound, pointing, frame on, the tape look, the light, the
       stamp, the aim speed and invert; quit
       the game and start it again: they are as you left them. The file is
       `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt` (one command a line; delete it to reset).

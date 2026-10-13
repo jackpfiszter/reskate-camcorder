@@ -33,7 +33,7 @@ struct Recommended {
 };
 constexpr Recommended recommended[]{
     {"camcorder", "on / off", 0x74}, {"camrec", "REC / STBY", 0x75}, {"camquick", "quick menu", 0x76},
-    {"camstill", "still", 0x77},     {"camaim", "aim while filming", 0x78}, {"camtripod", "tripod: set up / done", 0x79},
+    {"camstill", "still", 0x77},     {"camaim", "pointing: automatic / you aim it", 0x78}, {"camtripod", "tripod: set up / done", 0x79},
 };
 int bind_index(std::string_view name) {
     for (std::size_t i = 0; i < action_binds.size(); ++i)
@@ -84,23 +84,12 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Videos\\ReSkate Camcorder: the clips, and the stills in Stills.");
     if (const auto last = camcorder_capture_last(); !last.empty()) info(menu, "Last", last);
 
-    field(menu, "Camera", "Its zoom, tape, frame rate, look, date stamp and mic. Mods add cameras (hover for which).");
+    field(menu, "Camera", "Each has its own zoom, picture and frame rate. Mods add more (hover for which).");
     pick(menu, callbacks, "camcorder-cameras", published.cameras, s.camera_id, "camera", nullptr);
-    field(menu, "Lens", "The Century 0.3x fisheye of every 90s part, the camera's own lens, or a mod's.");
+    field(menu, "Lens", "The fisheye of every 90s part, or the camera's own lens.");
     pick(menu, callbacks, "camcorder-lenses", published.lenses, s.lens_id, "lens", "STOCK LENS");
-    bool dv_look = finish.dv.on;
-    const std::string look_label = finish.look.format + " look";
-    if (toggle_row(menu, look_label.c_str(), "The camera's picture: its lines, hard whites, sharpened edges, colour and grain. Each camera has its own.", dv_look))
-        run(menu, callbacks, dv_look ? "look dv" : "look clean");
-    bool light = published.light;
-    if (toggle_row(menu, "Camera light", "A lamp on the camera for night filming: what it points at is lit, the edges fall off.", light))
-        run(menu, callbacks, light ? "light on" : "light off");
-    bool aim = published.aiming;
-    if (toggle_row(menu, "Aim while filming",
-                   "The mouse or right stick aims the camera, the wheel or triggers zoom, while you skate. Off: they are the skater's again (flick-it tricks).", aim))
-        run(menu, callbacks, aim ? "aim on" : "aim off");
 
-    field(menu, "Who to film", "Handheld: the camera keeps them framed. A tripod: it pans after them. Closest: whoever is nearest the camera, you too.");
+    field(menu, "Who to film", "The camera follows them. Closest: whoever is nearest the camera, you too.");
     if (small_button("ME / NOBODY", published.subject.empty() && !published.closest)) run(menu, callbacks, "subject none");
     ImGui::SameLine();
     if (small_button("CLOSEST", published.closest)) run(menu, callbacks, "subject closest");
@@ -113,6 +102,23 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         if (small_button(name.c_str(), !published.closest && name == published.subject)) run(menu, callbacks, "subject " + name);
         ImGui::PopID();
     }
+    field(menu, "Frame on", "Where the camera points on them: the board, the whole skater, or their head.");
+    int frame_on = published.frame_on;
+    if (choice(menu, "camcorder-frame", frame_on, {"BOARD", "WHOLE SKATER", "HEAD"}))
+        run(menu, callbacks, frame_on == 0 ? "frame board" : frame_on == 1 ? "frame body" : "frame head");
+
+    field(menu, "Pointing", "Automatic: it keeps who you film in frame; you just skate. You aim it: the mouse or right stick aims, the wheel or triggers zoom, as you skate.");
+    int pointing = published.aiming ? 1 : 0;
+    if (choice(menu, "camcorder-pointing", pointing, {"AUTOMATIC", "YOU AIM IT"}))
+        run(menu, callbacks, pointing ? "aim you" : "aim auto");
+
+    bool dv_look = finish.dv.on;
+    const std::string look_label = finish.look.format + " look";
+    if (toggle_row(menu, look_label.c_str(), "The camera's own picture: its lines, colour, grain and quirks. Off: the game's clean picture.", dv_look))
+        run(menu, callbacks, dv_look ? "look dv" : "look clean");
+    bool light = published.light;
+    if (toggle_row(menu, "Camera light", "A lamp on the camera for night filming.", light))
+        run(menu, callbacks, light ? "light on" : "light off");
     end_card();
 
     // Tripods: what to do, in order, on the card.
@@ -147,7 +153,7 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         }
         ImGui::SameLine();
         if (small_button("TAKE IT DOWN")) run(menu, callbacks, "tripod remove " + number);
-        field(menu, "Head", "Follow: it pans after who it films. Locked off: nothing moves. Manual: you pan it with camera controls.");
+        field(menu, "Head", "Follow: it pans after who it films. Locked off: nothing moves. Manual: you pan it (Pointing: you aim it).");
         int head = static_cast<int>(s.head);
         if (choice(menu, "camcorder-head", head, {"LOCKED OFF", "MANUAL", "FOLLOW"}))
             run(menu, callbacks, head == 0 ? "head locked" : head == 1 ? "head manual" : "head follow");
@@ -163,7 +169,7 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     }
 
     begin_card(menu, "camcorder-handheld", "HANDHELD");
-    field(menu, "Height", "Where your hands hold it. LB / RB (R / F with camera controls) move it on the fly.");
+    field(menu, "Height", "Where your hands hold it. The bumpers (or the height keys) move it on the fly.");
     if (small_button("LOW")) run(menu, callbacks, "height low");
     ImGui::SameLine();
     if (small_button("HIP")) run(menu, callbacks, "height hip");
@@ -173,12 +179,6 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         field(menu, "Rig", "In your hands, or a mod's rig: a pole cam, a board cam.");
         pick(menu, callbacks, "camcorder-rigs", published.grips, s.grip_id, "rig", nullptr);
     }
-    bool lock_on = s.lock_on;
-    if (toggle_row(menu, "Keep them framed", "Handheld, the camera stays on who you film by itself; the mouse or stick nudges it.", lock_on))
-        run(menu, callbacks, lock_on ? "lockon on" : "lockon off");
-    bool operate = published.operating;
-    if (toggle_row(menu, "Camera controls", "Stand still and work the camera with everything: mouse aims, Q / E zoom, R / F height. Esc to skate again.", operate))
-        run(menu, callbacks, operate ? "operate on" : "operate off");
     if (s.fisheye) {
         bool bend = published.warp;
         if (toggle_row(menu, "True fisheye", "Straight lines bend as through the real lens. The middle is a little softer.", bend))
@@ -276,7 +276,7 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
         const auto combo = model.bindings.action_combos[static_cast<std::size_t>(index)];
         info(menu, r.what, combo ? controller_combo_label(combo) : std::string("not bound"));
     }
-    note("Change any of them, or add pad buttons, in SETTINGS > CONTROLS. Esc or Start backs out of camera controls and the quick menu.");
+    note("Change any of them, or add pad buttons, in SETTINGS > CONTROLS. Esc or Start backs out of the quick menu and a tripod's setup.");
     static constexpr float speeds[] = {0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 3.0f};
     int speed = 2;
     for (int i = 0; i < 6; ++i)

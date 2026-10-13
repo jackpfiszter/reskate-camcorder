@@ -60,12 +60,13 @@ The camera rides on your skater, held in your right hand.
   framed by themself, a little late like a person (a critically damped "operator" spring, aiming
   slightly ahead of where they are going). You keep both hands on skating; the stick, when the
   camera has it, only nudges the framing, which drifts back when you let go.
-- **Operate.** skate.'s right stick does the tricks, so the camera cannot share it. `camcorder
-  operate` hands the pad to the camera, as Freecam does: right stick aims (or nudges, locked on),
-  triggers zoom. Off again, the pad is the skater's and lock on keeps filming. This is the
-  main trade-off to test in play; a chord (hold LB + RB for camera controls, as the Trainer's
-  pad shortcuts do) is the alternative if a toggle feels clumsy.
-- **Aim while filming.** Following a friend's line you need both: `camcorder aim` splits the
+- **Pointing: automatic or you aim it.** By default the camera points itself (lock on, above)
+  and you just skate. One setting, one key, turns it over to you. skate.'s right stick does the
+  tricks, so the camera cannot share it without taking it: there used to be a separate
+  "operate" mode that stopped the skater and gave the whole pad to the camera, but it overlapped
+  with aiming and confused people, so it went. Full control of a standing camera is setting up
+  a tripod.
+- **You aim it.** Following a friend's line you need both: `camcorder aim you` splits the
   input instead of taking all of it. The game keeps the keyboard, the left stick and the
   buttons; the camera takes the right stick, the triggers and the mouse (the wheel zooms, a
   notch at a time like a thumb on the rocker). ReSkate's overlay does the split where it already
@@ -153,7 +154,7 @@ best done with the ReSkate developers, who keep their own notes on it.
 
 A cheap stand-in, alternating frames (game camera, camcorder, game camera...), would halve the
 frame rate of both, flicker, and upset the game's temporal anti-aliasing and motion blur, so it
-is not built. Until there is a real second view, "aim while filming" is the answer: you look
+is not built. Until there is a real second view, "you aim it" is the answer: you look
 through the camcorder and steer by it, as real filmers do.
 
 ## The look
@@ -205,8 +206,8 @@ action is also a console command.
 |---|---|
 | Camera on / off | `camcorder power toggle` |
 | REC / STBY | `camcorder rec` |
-| Pad to camera / to skater | `camcorder operate toggle` |
-| Aim while filming | `camcorder aim toggle` |
+| Pointing: automatic / you aim it | `camcorder aim toggle` |
+| Frame on board / whole skater / head | `camcorder frame next` |
 | Take a still | `camcorder still` |
 | Capture the tape | `camcorder tape capture` |
 | Set up a tripod here | `camcorder tripod place` |
@@ -233,8 +234,7 @@ boost button held the triggers zoom instead.
 
 ## Open questions
 
-- Does a toggle (`operate`) or a held chord feel better for camera controls while skating?
-  With `aim`, is giving up skate.'s mouse and right-stick tricks while filming acceptable?
+- With "you aim it", is giving up skate.'s mouse and right-stick tricks while filming acceptable?
 - The game's camera at very narrow FOVs (full tele is about 3.5 degrees vertical): LOD and
   streaming are tuned for the gameplay camera's distance, not a 10x lens across a plaza.
 - Hall of Meat's slow motion is single-player only; any camcorder slow-mo (overcranking was

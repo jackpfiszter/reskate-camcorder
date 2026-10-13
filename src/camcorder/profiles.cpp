@@ -566,6 +566,7 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id, const 
         auto &p = camera.light;
         g.number("strength", p.strength, 0, 10);
         g.number("reach", p.reach, 0.1, 3);
+        g.number("exposure", p.exposure, 0, 1);
         g.colour("colour", p.colour);
         g.unknown();
     }
@@ -770,6 +771,7 @@ std::string write_camera(const CameraProfile &c) {
     out += "  \"light\": {\n";
     out += "    \"strength\": " + number_text(c.light.strength) + ",\n";
     out += "    \"reach\": " + number_text(c.light.reach) + ",\n";
+    out += "    \"exposure\": " + number_text(c.light.exposure) + ",\n";
     out += "    \"colour\": " + colour_text(c.light.colour) + "\n";
     out += "  },\n";
     out += "  \"viewfinder\": {\n";

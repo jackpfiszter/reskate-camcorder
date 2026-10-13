@@ -1,6 +1,20 @@
 #include "rigs.h"
 
 namespace dingosdk::camcorder {
+std::optional<float> RootHeight::update(std::optional<float> measured, float dt) {
+    if (!measured || !std::isfinite(*measured) || !std::isfinite(dt)) return value;
+    const float m = std::clamp(*measured, 0.0f, 2.5f);
+    if (!value) value = m;
+    else value = damp(*value, m, m < *value ? 0.05f : 4.0f, std::max(dt, 0.0f));
+    return value;
+}
+
+Vec3 framing_point(const Subject &subject, float height, float lead) {
+    const float feet = subject.root_height && std::isfinite(*subject.root_height) ? std::clamp(*subject.root_height, 0.0f, 2.0f) : 0.0f;
+    const float ahead = std::isfinite(lead) ? lead : 0.0f;
+    return add(add(subject.position, mul(subject.velocity, ahead)), {0, height - feet, 0});
+}
+
 namespace {
 float clamp_unit(float v) { return std::isfinite(v) ? std::clamp(v, -1.0f, 1.0f) : 0.0f; }
 float clamp_dt(float dt) { return std::isfinite(dt) ? std::clamp(dt, 0.0f, 0.1f) : 0.0f; }
@@ -184,8 +198,7 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
         nudge_pitch_ = std::clamp(nudge_pitch_ + look_y * rate * dt, -settings_.max_nudge, settings_.max_nudge);
         if (look_x == 0) nudge_yaw_ = damp(nudge_yaw_, 0, 1.5f, dt);
         if (look_y == 0) nudge_pitch_ = damp(nudge_pitch_, 0, 1.5f, dt);
-        const auto ahead = add(subject->position, mul(subject->velocity, settings_.lead));
-        const auto aim = aim_at(eye, add(ahead, {0, settings_.aim_height, 0}));
+        const auto aim = aim_at(eye, framing_point(*subject, settings_.aim_height, settings_.lead));
         // A person chasing a subject is never exactly on it: small corrections, more of them the
         // faster the subject crosses the frame.
         if (dt > 1e-4f) target_rate_ = damp(target_rate_, std::abs(wrap_angle(aim.yaw - last_target_yaw_)) / dt, 0.3f, dt);
@@ -280,7 +293,7 @@ Shot TripodRig::step(const Subject *subject, const OperatorInput &input, float d
     }
     case Head::follow:
         if (subject && subject->valid && finite(subject->position)) {
-            const auto aim = aim_at(lens(), add(subject->position, {0, settings_.aim_height, 0}));
+            const auto aim = aim_at(lens(), framing_point(*subject, settings_.aim_height));
             yaw_.step(aim.yaw, settings_.follow_reaction, dt, true);
             pitch_.step(std::clamp(aim.pitch, -highest_pitch, highest_pitch), settings_.follow_reaction, dt);
         } else {

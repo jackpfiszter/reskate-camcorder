@@ -38,7 +38,7 @@ struct PictureChain {
     float lens[4]{};   // bent (0 / 1), half the picture's width (radians), tan(half the render's height), render aspect
     float projection{}; // the fisheye's (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic)
     bool look{};       // the look is on: the picture goes into the look's values and back out
-    float light[8]{};  // strength (0: no light), reach, 0, 0, red, green, blue, 0
+    float light[8]{};  // strength (0: no light), reach, exposure, 0, red, green, blue, 0
     float frame{}, seconds{};
     std::vector<camcorder::EffectPass> passes; // camcorder::plan_effects
 };

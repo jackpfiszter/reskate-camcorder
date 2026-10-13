@@ -135,17 +135,34 @@ float3 lens_program(float2 p) {
 }
 
 // ---- 1: the camera light ----
-// v[0]: strength, reach (half picture widths). v[1]: colour (red, green, blue), in the look (0 / 1).
-// Without the scene's depth it can only scale the light already there, in linear light: the middle
-// of a night shot comes up and its brightest parts burn out, as under a real camera light.
+// v[0]: strength, reach (half picture widths), exposure (how far the camera stops down for it).
+// v[1]: colour (red, green, blue), in the look (0 / 1).
+// Without the scene's depth or surfaces, the lamp's light is worked out from the picture: what it
+// falls on is guessed from the light already there (its colour, and roughly how light a surface it
+// is), and that much light is added, so a dark wall comes up as a wall and a black sky stays
+// black. Then the camera does what a camcorder does under its own lamp: its auto exposure stops
+// down for the lit middle, so the edges fall darker, and its knee rolls the brightest parts off
+// instead of clipping them flat.
+float3 lamp_on(float3 lin, float2 p) {
+    float r = length(centred(p)) / max(v[0].y, 0.05);
+    float beam = exp(-r * r * 1.6);
+    float strength = v[0].x;
+    float y = luma(lin);
+    float3 tint = clamp(lin / max(y, 1e-4), 0, 3);                         // its colour, at brightness 1
+    float albedo = saturate(sqrt(max(y, 0)) * 1.2) * smoothstep(0, 0.004, y); // lighter things reflect more
+    float3 lamp = v[1].rgb * strength * beam;
+    float3 lit = lin * (1 + lamp * 0.5) + tint * albedo * lamp * 0.25;
+    lit /= 1 + strength * v[0].z * 0.35;
+    float3 knee = 0.8 + 0.2 * (1 - exp(-(lit - 0.8) / 0.2));
+    float3 rolled = lerp(lit, knee, step(0.8, lit));
+    return lerp(lit, rolled, saturate(beam * strength));
+}
 float3 light_program(float2 p) {
     float3 c = current.Load(int3((int2)p, 0)).rgb;
-    float r = length(centred(p)) / max(v[0].y, 0.05);
-    float3 gain = 1 + v[0].x * exp(-r * r * 1.6) * v[1].rgb;
     float3 result;
-    if (v[1].w > 0.5 || clock.w < 0.5) result = srgb_encode(srgb_decode(c) * gain); // the look's values, or SDR
-    else if (clock.w < 1.5) result = c * gain;                                     // scRGB is linear already
-    else result = nits_to_pq(pq_to_nits(c) * gain);                                // HDR10
+    if (v[1].w > 0.5 || clock.w < 0.5) result = srgb_encode(lamp_on(srgb_decode(c), p)); // the look's values, or SDR
+    else if (clock.w < 1.5) result = lamp_on(c * (80 / job.w), p) * (job.w / 80);      // scRGB: 1 is 80 nits
+    else result = nits_to_pq(lamp_on(pq_to_nits(c) / job.w, p) * job.w);               // HDR10
     return result;
 }
 
@@ -474,15 +491,22 @@ float3 trails_program(float2 p) {
 }
 
 // ---- grain (216): [0] amount, [1] size, [2] colour, [3] shadows, [24] picture, [25] block ----
+// Noise at points `size` apart, blended smoothly between them: soft grains of about that size, not
+// square blocks (which a large size would otherwise show).
+float4 grain_point(float2 at_point, float frame) {
+    return float4(random3(at_point.x, at_point.y, frame), random3(at_point.x, at_point.y, frame + 1),
+                  random3(at_point.x, at_point.y, frame + 2), random3(at_point.x, at_point.y, frame + 3)) * 2 - 1;
+}
 float3 grain_program(float2 p) {
     float3 c = at(p);
-    float2 cell = floor((p - rect.xy) / max(unit_px() * max(val(1), 0.25), 1e-3));
+    float2 q = (p - rect.xy) / max(unit_px() * max(val(1), 0.25), 1e-3);
+    float2 corner = floor(q), f = q - corner;
+    f = f * f * (3 - 2 * f);
     float frame = val(24) + val(25) * 4099;
-    // Two draws added, about -1 to 1, as the recording's grain.
-    float same = random3(cell.x, cell.y, frame) + random3(cell.x, cell.y, frame + 7919) - 1;
-    float3 own = float3(random3(cell.x, cell.y, frame + 1), random3(cell.x, cell.y, frame + 2), random3(cell.x, cell.y, frame + 3)) +
-                 float3(random3(cell.x, cell.y, frame + 4), random3(cell.x, cell.y, frame + 5), random3(cell.x, cell.y, frame + 6)) - 1;
-    float3 grain = lerp(float3(same, same, same), own, saturate(val(2)));
+    float4 n = lerp(lerp(grain_point(corner, frame), grain_point(corner + float2(1, 0), frame), f.x),
+                    lerp(grain_point(corner + float2(0, 1), frame), grain_point(corner + float2(1, 1), frame), f.x), f.y);
+    // (Blended, it has about the strength the old square grains had: the amounts mean the same.)
+    float3 grain = lerp(n.xxx, n.yzw, saturate(val(2))); // the same on every colour, or each its own
     float weight = lerp(1, 2 * (1 - saturate(luma(c))), val(3));
     return c + grain * val(0) * (56.0 / 255) * weight;
 }

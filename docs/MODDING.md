@@ -54,9 +54,9 @@ to `Mods/My Camcorder`.
 | `aspect` | the sensor's (4:3) | 0.5 to 3 | The picture's shape: a number (`1.778`) or `[width, height]` (`[16, 9]`). The sensor keeps its width and is cut to this shape, as a camera recording 16:9 from a 4:3 chip does. The viewfinder, the fisheye and the clips all take it: `[16, 9]` fills a 16:9 screen and records 1920 x 1080, `1` is square. Or give the real `sensor_mm` (Super 8's frame is `[5.79, 4.01]`) and leave this out |
 | `zoom_mm` | `[5.9, 59]` | wide 1 to 200; at most 50x | The lens's focal length at wide and at tele, mm. Equal numbers: a fixed lens |
 | `zoom_seconds` | `[4.1, 20]` | 0.5 to 120 | Wide to tele with the rocker pressed fully, and pressed lightly |
-| `motion` | `"60i"` | `60i` `50i` `30p` `25p` `24p` `18p` | How it records motion. `60i` is NTSC video, `50i` PAL; with the look's fields on, those record 59.94 or 50 frames a second. `18p` is Super 8 |
+| `motion` | `"60i"` | `60i` `50i` `30p` `25p` `24p` `18p` | How it records motion. `60i` is NTSC video, `50i` PAL; with the look's fields on, those record 59.94 or 50 frames a second. `24p` and `18p` are film speeds: the screen shows the camera's own frames (choppier, as film looks), and `18p` is silent Super 8's |
 | `lines` | `480` | 120 to 1080 | Its own recording height (quality OWN); the width follows the picture's shape |
-| `tape_minutes` | `60` | 1 to 600 | One cassette (or film cartridge: Super 8 is about 3.3 minutes at 18 frames) |
+| `tape_minutes` | `60` | 1 to 600 | One cassette (or film cartridge: Super 8 is about 3.3 minutes at 18 frames, 2.5 at 24) |
 | `look` | see below | | What its sensor, processing and tape do to the picture: a few numbers |
 | `effects` | the look's | up to 32 | Or the picture as a list of effects, in order, for full control: see below |
 | `stamp` | see below | | Its date stamp |
@@ -133,7 +133,8 @@ the `tone`, `hue_saturation`, `white_balance`, `sharpen`, `grain` and `blur` blo
 #### Recipes
 
 - **Super 8**: `weave`, `flicker`, `gate`, `dust`, `light_leak`, a `lut` or `split_tone` for the
-  stock, `grain` with `size` 2.5, and `motion` `"18p"`.
+  stock, `grain` with `size` 1.5 to 2, and `motion` `"24p"` (or `"18p"` for silent film's
+  choppier motion).
 - **A night shot on a CCD**: `bloom` with a low `threshold`, `ccd_smear`, `grain` with `shadows` 1.
 - **Black and white with a red filter**: `monochrome` with `weights` `[0.9, 0.3, 0]`, then `levels`
   with `contrast` 1.3.
@@ -519,13 +520,16 @@ Red, green and blue out of register. Part: `tape`.
 
 ### `light`
 
-The lamp on the camera (the CAMCORDER card's Camera light, or `camcorder light`). It brightens
-the middle of the picture, falling off to the edges.
+The lamp on the camera (the CAMCORDER card's Camera light, or `camcorder light`). It lights what
+the camera points at, falling off to the edges, and the camera exposes for it as a camcorder does
+under its own lamp: the lit middle comes out right, the background falls darker, and the
+brightest parts roll off rather than clip.
 
 | Field | Default | Range | What it is |
 |---|---|---|---|
-| `strength` | `2.5` | 0 to 10 | How much it brightens the middle: the light there is times 1 + this |
+| `strength` | `2.5` | 0 to 10 | How bright the lamp is, against a night scene's own light |
 | `reach` | `0.8` | 0.1 to 3 | The beam's width, in half picture widths |
+| `exposure` | `0.6` | 0 to 1 | How far the camera's auto exposure stops down for the lamp: 0 not at all (the middle brightens, the rest stays), 1 fully (the background goes darkest) |
 | `colour` | `[255, 245, 224]` | 0 to 255 each | Its colour: a halogen is warm on a daylight-balanced camera, an LED cold |
 
 ### `viewfinder`

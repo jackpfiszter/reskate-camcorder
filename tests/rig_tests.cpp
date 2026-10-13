@@ -449,3 +449,23 @@ TEST(a_tick_with_no_time_keeps_the_velocity) {
     v.update(at, 0); // a second call in the same instant
     CHECK(v.velocity[0] > 7);
 }
+
+TEST(framing_is_measured_from_the_feet) {
+    // A root 0.9 m above the feet (around the hips, as the game's is): the whole skater is 0.8 m up
+    // from the feet, not 0.8 m above the hips (their face).
+    Subject s{true, {0, 10.9f, 0}, {2, 0, 0}, 0.9f};
+    CHECK_NEAR(framing_point(s, 0.8f)[1], 10.8f, 1e-5);
+    CHECK_NEAR(framing_point(s, 0.35f)[1], 10.35f, 1e-5); // the board
+    CHECK_NEAR(framing_point(s, 0.8f, 0.5f)[0], 1.0f, 1e-5); // half a second ahead
+    s.root_height.reset();
+    CHECK_NEAR(framing_point(s, 0.8f)[1], 11.7f, 1e-5); // unknown: from the root, as before
+    // The root's height follows a landing at once, and a jump hardly at all.
+    RootHeight h;
+    CHECK(!h.update(std::nullopt, 0.016f));
+    CHECK_NEAR(*h.update(0.9f, 0.016f), 0.9, 1e-6);
+    for (int i = 0; i < 30; ++i) h.update(1.9f, 0.016f); // half a second in the air, a metre up
+    CHECK(*h.value < 1.05f);
+    for (int i = 0; i < 20; ++i) h.update(0.6f, 0.016f); // crouching on landing
+    CHECK(*h.value < 0.62f);
+    CHECK_NEAR(*h.update(std::nullopt, 0.016f), *h.value, 0); // no ground found: kept
+}

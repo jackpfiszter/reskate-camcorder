@@ -113,6 +113,7 @@ PictureChain chain_numbers(const camcorder_runtime::Published &p, const Rect &pi
         const auto &lamp = p.finish.light;
         chain.light[0] = std::clamp(lamp.strength, 0.0f, 10.0f);
         chain.light[1] = std::clamp(lamp.reach, 0.1f, 3.0f);
+        chain.light[2] = std::clamp(lamp.exposure, 0.0f, 1.0f);
         for (int i = 0; i < 3; ++i) chain.light[4 + i] = static_cast<float>(lamp.colour[static_cast<std::size_t>(i)]) / 255.0f;
     }
     const double seconds = seconds_now() - start;
@@ -172,11 +173,11 @@ void draw_guide(ImDrawList *list, ImFont *font, const Rect &picture) {
     static constexpr const char *lines[] = {
         "THE CAMCORDER, QUICKLY",
         "REC / STBY: F6 after SET UP KEYS (the CAMCORDER page), or REC there",
-        "Aim: the mouse or right stick with AIM WHILE FILMING on (you keep skating)",
+        "It points itself at who you film. F9: you aim it (mouse or right stick) as you skate",
         "Zoom: wheel or triggers      Height: LB / RB",
         "Quick menu: F7: camera, lens, look, light, height, tripod",
         "Tripod: F10 sets one up; move and aim it; F10 again (or REC), then skate",
-        "Esc or Start: back out of camera controls and menus",
+        "Esc or Start: back out of the quick menu or a tripod's setup",
         "Everything else: the CAMCORDER page in the ReSkate menu",
     };
     const float size = std::clamp(picture.height / 34, 12.0f, 26.0f), line = size * 1.4f, pad = size * 0.9f;

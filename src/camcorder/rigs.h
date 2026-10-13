@@ -29,12 +29,27 @@ struct Filmer {
     // The height of the surface under the filmer, when the game found it: the handheld camera's
     // heights are from the feet, and the root can be well above them.
     std::optional<float> ground;
+    // How far the root sits above the feet (steady through a jump), when known.
+    std::optional<float> root_height;
 };
-// Who is being filmed: their root and velocity.
+// Who is being filmed: their root and velocity, and how far the root sits above their feet (the
+// framing is measured from the feet; unknown, from the root).
 struct Subject {
     bool valid{};
     Vec3 position{};
     Vec3 velocity{};
+    std::optional<float> root_height;
+};
+// The point a camera frames on a subject: `height` above their feet, `lead` seconds ahead.
+Vec3 framing_point(const Subject &, float height, float lead = 0);
+// How far a skater's root sits above their feet, from the ground found under it each tick: it
+// follows a landing (or a crouch) at once, and a jump hardly at all, so the framing rides up with
+// them in the air instead of staying on the ground.
+struct RootHeight {
+    std::optional<float> value;
+    // `measured`: the root's height above the ground under it, when the game found the ground.
+    std::optional<float> update(std::optional<float> measured, float dt);
+    void reset() { value.reset(); }
 };
 // Operator controls, already freed of deadzones, each in [-1, 1] (look: stick deflection).
 struct OperatorInput {
