@@ -335,7 +335,7 @@ Reading<Handling> read_handling(std::string_view text, const Handling &base) {
     }
     if (const auto *sound = f.get("sound", Kind::object, "an object, { ... }")) {
         Fields s{*sound, "sound.", reading.notes};
-        s.number("near", h.sound.near, 0.5, 100);
+        s.number("near", h.sound.nearby, 0.5, 100);
         s.number("floor", h.sound.floor, 0, 1);
         s.number("air", h.sound.air, 1, 1000);
         s.number("pan", h.sound.pan, 0, 1);
@@ -478,7 +478,7 @@ std::string write_handling(const Handling &h) {
     out += line("hands", h.shake.hands) + line("wheels", h.shake.wheels) + line("footsteps", h.shake.footsteps) +
            line("speed", h.shake.speed, true);
     out += "  },\n  \"sound\": {\n";
-    out += line("near", h.sound.near) + line("floor", h.sound.floor) + line("air", h.sound.air) + line("pan", h.sound.pan, true);
+    out += line("near", h.sound.nearby) + line("floor", h.sound.floor) + line("air", h.sound.air) + line("pan", h.sound.pan, true);
     out += "  },\n  \"tripod\": {\n";
     out += line("height", h.tripod_height) + line("drag", h.tripod_drag) + line("pan_speed", h.tripod_pan_speed) +
            line("follow", h.tripod_follow, true);

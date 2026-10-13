@@ -167,19 +167,19 @@ EarPlacement ear_placement(const std::array<float, 16> &camera, const std::array
 // Within a few metres (handheld) nothing changes; further off the level falls about as sound
 // does outdoors (6 dB each time the distance doubles), with a floor so a far-off line is still heard.
 float CameraEar::gain_at(float distance) const noexcept {
-    const float near = std::clamp(settings_.near, 0.5f, 100.0f);
-    if (!std::isfinite(distance) || distance <= near) return 1.0f;
-    return std::max(near / distance, std::clamp(settings_.floor, 0.0f, 1.0f));
+    const float close = std::clamp(settings_.nearby, 0.5f, 100.0f);
+    if (!std::isfinite(distance) || distance <= close) return 1.0f;
+    return std::max(close / distance, std::clamp(settings_.floor, 0.0f, 1.0f));
 }
 float CameraEar::cutoff_at(float distance) const noexcept {
-    const float near = std::clamp(settings_.near, 0.5f, 100.0f);
-    if (!std::isfinite(distance) || distance <= near) return 20000.0f;
-    return std::clamp(20000.0f / (1.0f + (distance - near) / std::clamp(settings_.air, 1.0f, 1000.0f)), 2500.0f, 20000.0f);
+    const float close = std::clamp(settings_.nearby, 0.5f, 100.0f);
+    if (!std::isfinite(distance) || distance <= close) return 20000.0f;
+    return std::clamp(20000.0f / (1.0f + (distance - close) / std::clamp(settings_.air, 1.0f, 1000.0f)), 2500.0f, 20000.0f);
 }
 float CameraEar::pan_amount_at(float distance) const noexcept {
     if (!std::isfinite(distance)) return 0;
-    const float near = std::clamp(settings_.near, 0.5f, 100.0f);
-    return std::clamp((distance - near * 2 / 3) / 8.0f, 0.0f, std::clamp(settings_.pan, 0.0f, 1.0f));
+    const float close = std::clamp(settings_.nearby, 0.5f, 100.0f);
+    return std::clamp((distance - close * 2 / 3) / 8.0f, 0.0f, std::clamp(settings_.pan, 0.0f, 1.0f));
 }
 
 void CameraEar::process(float *interleaved, std::size_t frames, EarPlacement where) noexcept {

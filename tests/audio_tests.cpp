@@ -219,11 +219,11 @@ TEST(the_camera_hears_the_skater_from_where_it_stands) {
     const CameraEar open_air({10, 0.3f, 40, 0});
     CHECK(open_air.gain_at(8) == 1 && open_air.pan_amount_at(50) == 0);
     CHECK_NEAR(open_air.gain_at(100), 0.3, 1e-5);
-    std::vector<float> near(2 * 480), sound(2 * 480);
-    for (std::size_t i = 0; i < near.size(); ++i) near[i] = sound[i] = 0.5f * std::sin(static_cast<float>(i) * 0.01f);
+    std::vector<float> close_by(2 * 480), sound(2 * 480);
+    for (std::size_t i = 0; i < close_by.size(); ++i) close_by[i] = sound[i] = 0.5f * std::sin(static_cast<float>(i) * 0.01f);
     CameraEar close;
-    close.process(near.data(), 480, {1, 0});
-    for (std::size_t i = 0; i < near.size(); ++i) CHECK(near[i] == sound[i]);
+    close.process(close_by.data(), 480, {1, 0});
+    for (std::size_t i = 0; i < close_by.size(); ++i) CHECK(close_by[i] == sound[i]);
     // Far to the right: the right channel carries more than the left.
     CameraEar far;
     for (int packet = 0; packet < 20; ++packet) {

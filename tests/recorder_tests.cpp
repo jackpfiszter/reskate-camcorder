@@ -86,11 +86,11 @@ TEST(scale_keeps_colour_and_averages_detail) {
     for (int y = 0; y < 64; ++y)
         for (int x = 0; x < 64; ++x)
             for (int i = 0; i < 3; ++i) checker.pixels[(static_cast<std::size_t>(y) * 64 + x) * 4 + i] = (x + y) % 2 ? 255 : 0;
-    Image small;
-    small.resize(16, 16);
-    scale_bgra(checker, small);
+    Image shrunk;
+    shrunk.resize(16, 16);
+    scale_bgra(checker, shrunk);
     for (int y = 0; y < 16; ++y)
-        for (int x = 0; x < 16; ++x) CHECK_NEAR(pixel(small, x, y)[1], 128, 2);
+        for (int x = 0; x < 16; ++x) CHECK_NEAR(pixel(shrunk, x, y)[1], 128, 2);
 }
 
 TEST(vignette_blacks_out_the_corners_only) {

@@ -131,7 +131,7 @@ EarPlacement ear_placement(const std::array<float, 16> &camera, const std::array
 // leaves the sound alone. Changes glide, so a cut between tripods or a fast pan doesn't click.
 // How far sound carries to the camera (a handling.json's "sound"; the defaults are as built).
 struct EarSettings {
-    float near{3};      // metres: closer than this, the game's sound as it is
+    float nearby{3};    // metres: closer than this, the game's sound as it is ("near" in a handling.json)
     float floor{0.12f}; // the quietest a far-off skater gets (of their level close by)
     float air{10};      // metres beyond `near` over which the top end halves (the air takes the highs)
     float pan{0.7f};    // how far a far-off skater's sound moves to their side of the picture, 0 to 1
