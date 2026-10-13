@@ -72,6 +72,10 @@ The camera rides on your skater, held in your right hand.
   for Freecam (`input_capture.cpp`: XInput, PlayStation HID reports, raw mouse and keyboard
   records, the cursor), so skate. simply sees a centred right stick, a still mouse and those four
   keys up. Watching from a tripod gives everything back to the game.
+- **Full camera control.** One key (or the menu) switches from filming while skating to working
+  the camera with everything: the skater waits (the whole input is held, as for Freecam), the
+  same aim, zoom and height, and A / D or the left stick roll the frame into a dutch angle, level
+  again on release. The key again, or Esc / Start, and the skater has the controls back.
 - **Hand shake.** A person breathing and holding 1.5 kg, the wheels' buzz rising with speed on
   a board, a dip with each footstep on foot. Repeatable, small (under 2.5 degrees), steadier as
   `steadiness` goes up, and naturally worse at tele because the frame is narrower.
@@ -207,6 +211,7 @@ action is also a console command.
 | Camera on / off | `camcorder power toggle` |
 | REC / STBY | `camcorder rec` |
 | Handheld / board cam | `camcorder rig toggle` |
+| Full camera control / film while skating | `camcorder operate toggle` |
 | Frame on board / whole skater / head | `camcorder frame next` |
 | Take a still | `camcorder still` |
 | Capture the tape | `camcorder tape capture` |
@@ -216,9 +221,9 @@ action is also a console command.
 | Fisheye / stock lens | `camcorder lens toggle` |
 | Next subject | `camcorder subject next` |
 
-Handheld, on the board cam and in tripod setup alike: mouse / right stick aims, Q / E, the wheel
-or the triggers zoom (left wide, right tele), R / F or the bumpers raise and lower it. In tripod
-setup WASD / the left stick also carry it.
+Handheld, on the board cam, in full camera control and in tripod setup alike: mouse / right stick
+aims, Q / E, the wheel or the triggers zoom (left wide, right tele), R / F or the bumpers raise and
+lower it. In full camera control A / D or the left stick roll; in tripod setup they carry it.
 
 ## Milestones
 

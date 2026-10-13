@@ -1,5 +1,5 @@
 diff --git a/Engine/Game/Input/controller_bindings.h b/Engine/Game/Input/controller_bindings.h
-index 639ed1e..4bce218 100644
+index 639ed1e..191de39 100644
 --- a/Engine/Game/Input/controller_bindings.h
 +++ b/Engine/Game/Input/controller_bindings.h
 @@ -89,7 +89,7 @@ struct ControllerInput {
@@ -7,11 +7,11 @@ index 639ed1e..4bce218 100644
      std::string_view key, name, label, command;
  };
 -inline constexpr std::array<ActionBind, 8> action_binds{{
-+inline constexpr std::array<ActionBind, 14> action_binds{{
++inline constexpr std::array<ActionBind, 15> action_binds{{
      {"first_person", "firstperson", "First person", "firstperson toggle"},
      {"hide_hud", "hidehud", "Hide HUD", "hideui toggle"},
      {"voice_chat", "voicechat", "Voice chat on / off", "mp voice-chat toggle"},
-@@ -98,6 +98,12 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
+@@ -98,6 +98,13 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
      {"challenges", "challenges", "Show / hide challenges", "challenges toggle"},
      {"nametags", "nametags", "Player nametags", "mp nametags toggle"},
      {"nametag_dots", "nametagdots", "Player dots", "mp nametag-dots toggle"},
@@ -19,6 +19,7 @@ index 639ed1e..4bce218 100644
 +    {"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"},
 +    {"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"},
 +    {"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"},
++    {"camcorder_operate", "camoperate", "Camcorder: full camera control / film while skating", "camcorder operate toggle"},
 +    {"camcorder_still", "camstill", "Camcorder: take a still", "camcorder still"},
 +    {"camcorder_quick", "camquick", "Camcorder: quick menu", "camcorder quick toggle"},
  }};
@@ -49,7 +50,7 @@ index 0caee4c..fe25e1a 100644
  void register_board_break_commands(Commands &);
  void register_grind_exit_commands(Commands &);
 diff --git a/Extension/Multiplayer/Hud/custom_nametags.cpp b/Extension/Multiplayer/Hud/custom_nametags.cpp
-index 8c4dadd..3960d78 100644
+index 0e1ac30..cbe969d 100644
 --- a/Extension/Multiplayer/Hud/custom_nametags.cpp
 +++ b/Extension/Multiplayer/Hud/custom_nametags.cpp
 @@ -57,6 +57,7 @@ void publish_custom_nametags(std::uintptr_t base, std::vector<NametagPlayer> pla
@@ -59,12 +60,12 @@ index 8c4dadd..3960d78 100644
 +            tag.camcorder = player.camcorder;
              tag.bubbles.reserve(player.bubbles.size());
              for (auto &line : player.bubbles)
-                 tag.bubbles.push_back({std::move(line.text), std::move(line.raw), line.appear, line.fade});
+                 tag.bubbles.push_back({std::move(line.text), std::move(line.raw), line.appear, line.fade, line.hint});
 diff --git a/Extension/Multiplayer/Hud/custom_nametags.h b/Extension/Multiplayer/Hud/custom_nametags.h
-index 5f3710e..1d9c85d 100644
+index a7f8449..fe1f9bf 100644
 --- a/Extension/Multiplayer/Hud/custom_nametags.h
 +++ b/Extension/Multiplayer/Hud/custom_nametags.h
-@@ -23,6 +23,7 @@ struct NametagPlayer {
+@@ -24,6 +24,7 @@ struct NametagPlayer {
      std::uint32_t color{0xffffffffU}; // IM_COL32 layout
      std::string tag;                  // role badge before the name, as in chat ("" for none)
      bool talking{};
@@ -86,10 +87,10 @@ index 856e908..51abeb6 100644
  std::uint64_t native_party_player_info(std::uintptr_t manager, std::size_t slot) noexcept;
  std::string native_party_status();
 diff --git a/Extension/Multiplayer/Hud/native_party_hooks.cpp b/Extension/Multiplayer/Hud/native_party_hooks.cpp
-index f74c419..cfbf26b 100644
+index 003b7c4..5f1bdde 100644
 --- a/Extension/Multiplayer/Hud/native_party_hooks.cpp
 +++ b/Extension/Multiplayer/Hud/native_party_hooks.cpp
-@@ -792,6 +792,10 @@ void execute_native_party_expression(std::uintptr_t vm, std::uint32_t pc, std::u
+@@ -819,6 +819,10 @@ void execute_native_party_expression(std::uintptr_t vm, std::uint32_t pc, std::u
                                      void (*runner)(std::uintptr_t, std::uint32_t, std::uintptr_t)) {
      run_expression(vm, pc, profiler, runner);
  }
@@ -101,10 +102,10 @@ index f74c419..cfbf26b 100644
      try {
          auto &s = state();
 diff --git a/Extension/Multiplayer/Session/session.cpp b/Extension/Multiplayer/Session/session.cpp
-index 14b4ab6..10475b6 100644
+index 31f13ae..b928c56 100644
 --- a/Extension/Multiplayer/Session/session.cpp
 +++ b/Extension/Multiplayer/Session/session.cpp
-@@ -7,6 +7,7 @@
+@@ -9,6 +9,7 @@
  #include "Extension/Multiplayer/Remote/native_skater.h"
  #include "Extension/Multiplayer/Hud/custom_nametags.h"
  #include "Extension/Multiplayer/Hud/follow_camera.h"
@@ -112,7 +113,7 @@ index 14b4ab6..10475b6 100644
  #include "Extension/Throwdowns/native_throwdowns.h"
  #include "Extension/Throwdowns/throwdown_relay.h"
  #include "Extension/Progression/script_natives.h"
-@@ -397,9 +398,12 @@ void relay_throwdowns(Session &s, bool in_world) {
+@@ -404,9 +405,12 @@ void relay_throwdowns(Session &s, bool in_world) {
      }
      if (names)
          input.local_name = in_session ? s.transport.name(local) : std::string(steam_social_snapshot()->local.name);
@@ -126,7 +127,7 @@ index 14b4ab6..10475b6 100644
      for (auto &text : take_throwdown_relay_notices()) add_chat(s, 0, "ReSkate", std::move(text));
  }
  // A player in the local coop celebration stands at their spot there: the whole pose moves,
-@@ -444,7 +448,13 @@ std::uint64_t far_sample_interval(const Peer &p, float distance) {
+@@ -451,9 +455,15 @@ std::uint64_t far_sample_interval(const Peer &p, float distance) {
      return 0;
  }
  void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::uint64_t now) {
@@ -135,21 +136,23 @@ index 14b4ab6..10475b6 100644
 +        camcorder_runtime::note_players({});
 +        return;
 +    }
+     // For naming who placed the object in front of the skater (object_prompt.h).
+     object_prompt::set_viewer(local.pose.root.position);
 +    // Everyone placed this frame, for the camcorder to film (where Spectate finds them too).
 +    std::vector<camcorder_runtime::Player> filmable;
 +    const auto film = [&](const Peer &p) { filmable.push_back(camcorder_runtime::filmable(p.member.id, p.member.name, p.render_pose)); };
      const auto view = latest_game_view();
      // ReSkate's nametags and chat bubbles: every shown player, placed above their head
      // each frame.
-@@ -495,6 +505,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -515,6 +525,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
          // Friends only: everyone else keeps their chat bubbles and loses the name and dot.
          tag.nameless = s.nametags_friends && !std::binary_search(s.friend_ids.begin(), s.friend_ids.end(), p.member.id);
          tag.talking = std::any_of(voices.begin(), voices.end(), [&](const auto &v) { return v.id == p.member.id && v.speaking; });
 +        tag.camcorder = camcorder_runtime::presence_of(p.member.id);
          tag.bubbles = recent_bubbles(p.member.id);
-         nametags.push_back(std::move(tag));
-     };
-@@ -578,6 +589,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+         if (bubbles)
+             if (auto hint = typing_bubble(p.typing_until); !hint.text.empty()) tag.bubbles.push_back(std::move(hint));
+@@ -600,6 +611,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                                     mark_styles(p));
              present_audio(p);
              update_party_position(&p.render_pose);
@@ -157,7 +160,7 @@ index 14b4ab6..10475b6 100644
              if (labels) label(p);
              return;
          }
-@@ -639,6 +651,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -661,6 +673,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                      // The spectate camera follows this every frame; the map and
                      // indicators below only need network-rate updates.
                      update_party_position(&p.render_pose);
@@ -165,7 +168,7 @@ index 14b4ab6..10475b6 100644
                      if (labels) label(p);
                      if (!p.ui_visible || now >= p.next_ui_update) {
                          update_player_ui(s.base, &p.render_pose, p.member.name);
-@@ -659,7 +672,10 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -681,7 +694,10 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                                                    : "Waiting for player poses.";
                  // No skater for them, but still their name or dot where they are, and where the
                  // Social menu's teleport and spectate find them.
@@ -177,7 +180,7 @@ index 14b4ab6..10475b6 100644
                  if (!p.shown_wanted && sampled && labels) label(p);
              }
          }
-@@ -690,6 +706,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
+@@ -715,6 +731,7 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
              nametags.push_back(std::move(tag));
          }
      }
@@ -185,7 +188,7 @@ index 14b4ab6..10475b6 100644
      if (labels)
          publish_custom_nametags(s.base, std::move(nametags),
                                  local.ready ? std::optional(local.pose.root.position) : std::nullopt,
-@@ -897,6 +914,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+@@ -924,6 +941,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
              physics_tuning::release(base); // the player's own tuning again after a session
              set_session_tuning_enforced(false);
              relay_throwdowns(s, ready);
@@ -200,7 +203,7 @@ index 14b4ab6..10475b6 100644
              // Without a session the UI model follows at the same 10 Hz as in one;
              // commands still publish at once.
              if (const auto now = now_us(); now >= s.next_publish) {
-@@ -970,7 +995,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
+@@ -997,7 +1022,10 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
          else
              local.detail = s.awaiting_map ? "Waiting for the host's map and local skater." : "Load a map to skate.";
          const auto captured_at = capture_pose ? now_us() : 0;
@@ -440,7 +443,7 @@ index 79c687a..a31da84 100644
      // Windows is not moving the cursor (RIDEV_NOLEGACY): move it for the
      // overlay so its pointer and the editor's hover keep working.
 diff --git a/Extension/UI/Overlay/nametag_overlay.cpp b/Extension/UI/Overlay/nametag_overlay.cpp
-index 4cd0123..be9eef0 100644
+index 7a38cac..bd33be2 100644
 --- a/Extension/UI/Overlay/nametag_overlay.cpp
 +++ b/Extension/UI/Overlay/nametag_overlay.cpp
 @@ -47,6 +47,26 @@ void outlined_dot(ImDrawList *draw, ImVec2 at, float radius, ImU32 colour) {
@@ -470,7 +473,7 @@ index 4cd0123..be9eef0 100644
  // A small speaker with one sound wave, its left edge at `at`, centred on `at.y`.
  void speaker(ImDrawList *draw, ImVec2 at, float size, ImU32 colour) {
      const float h = size * 0.5f;
-@@ -282,6 +302,10 @@ void draw_nametags() {
+@@ -316,6 +336,10 @@ void draw_nametags() {
                  draw->AddText(font, detail, distance_at, dim, distance.c_str());
                  if (tag.talking) speaker(draw, ImVec2(left - size * 1.05f, name_at.y + name_size.y * 0.5f), size * 0.8f,
                                           with_alpha(animated_colour, alpha));
@@ -482,7 +485,7 @@ index 4cd0123..be9eef0 100644
              }
          }
 diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
-index a18e222..ab1ec50 100644
+index cafb7ff..2649498 100644
 --- a/Extension/UI/Overlay/overlay.h
 +++ b/Extension/UI/Overlay/overlay.h
 @@ -91,6 +91,9 @@ struct FlightInput {
@@ -495,7 +498,7 @@ index a18e222..ab1ec50 100644
  };
  
  // May change what the GAME reads from an XInput pad (never what ReSkate itself reads). `user` is
-@@ -413,6 +416,7 @@ struct Nametag {
+@@ -414,6 +417,7 @@ struct Nametag {
      std::string tag;                  // role badge before the name ("Dev", "ReSkate Admin", "Content Creator", "Centrix", "Homie", "Admin", "Host", "Friend")
      float distance{};                 // metres from the local skater
      bool talking{};
@@ -503,7 +506,7 @@ index a18e222..ab1ec50 100644
      // Recent chat lines to show as bubbles above the head, oldest first ("" = none).
      std::vector<NametagBubble> bubbles;
      bool self{};                      // the local player: bubbles only, never a name or dot
-@@ -515,6 +519,13 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
+@@ -516,6 +520,13 @@ extern "C" __declspec(dllexport) void DingoSDKOverlayGetStatus(dingosdk::overlay
  // Poll only on the client update thread. Returns no input while either overlay
  // surface is open, the game is unfocused, or the overlay has stopped.
  extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* input, bool flight_active, bool player_flight = false);
@@ -517,7 +520,7 @@ index a18e222..ab1ec50 100644
  extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active);
  // The same hold on the game's input while a card asks something of the player and a
  // controller answers it (the map download's): the buttons that answer must not also skate.
-@@ -522,6 +533,10 @@ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active);
+@@ -523,6 +534,10 @@ extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active);
  // The keyboard keys such a card answers to, read past that hold: bit 0 left, 1 right, 2 Enter,
  // 3 Esc. Nothing while the game is not in front or the menu, console or chat has the keys.
  extern "C" unsigned DingoSDKOverlayReadPromptKeys();
@@ -885,72 +888,14 @@ index a87cff4..04230bb 100644
              DINGO_PROFILE_ZONE("tick/camera view");
              // The camera ReSkate's nametags start from, and the spectate camera's lesson in how
 diff --git a/cmake/Runtime.cmake b/cmake/Runtime.cmake
-index eb23e16..b7329ef 100644
+index eb23e16..cad97b7 100644
 --- a/cmake/Runtime.cmake
 +++ b/cmake/Runtime.cmake
-@@ -161,6 +161,8 @@ add_library(dingosdk_runtime SHARED
-     Extension/Trainer/trainer_commands.cpp
-     Extension/Trainer/trainer_session.cpp
-     Extension/Trainer/trainer_waypoint.cpp
-+    Extension/Camcorder/camcorder_runtime.cpp
-+    Extension/Camcorder/camcorder_commands.cpp
-     Extension/Skater/offboard_flight.cpp
-     Extension/Skater/camera_observer.cpp
-     Extension/Boot/offline_boot.cpp
-@@ -232,6 +234,7 @@ add_library(dingosdk_custom_level_manifest STATIC
+@@ -232,6 +232,7 @@ add_library(dingosdk_custom_level_manifest STATIC
      Engine/Game/World/custom_level_manifest.cpp)
  target_link_libraries(dingosdk_custom_level_manifest PUBLIC dingosdk_json)
  target_link_libraries(dingosdk_runtime PRIVATE dingosdk_custom_level_manifest)
-+target_link_libraries(dingosdk_runtime PRIVATE dingosdk_camcorder_model)
++include(Extension/Camcorder/camcorder.cmake) # the camcorder (its model, overlay and runtime files)
  
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  
-diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 83ec6ba..f3ac091 100644
---- a/cmake/UI.cmake
-+++ b/cmake/UI.cmake
-@@ -2,6 +2,25 @@
- add_library(dingosdk_playstation_input STATIC Extension/UI/Overlay/playstation_input.cpp)
- target_link_libraries(dingosdk_playstation_input PUBLIC dingosdk_logging PRIVATE hid cfgmgr32)
- 
-+# The camcorder's model (Extension/Camcorder/Model): no game types, shared by the overlay and the runtime.
-+add_library(dingosdk_camcorder_model STATIC
-+    Extension/Camcorder/Model/camcorder/audio.cpp
-+    Extension/Camcorder/Model/camcorder/camcorder.cpp
-+    Extension/Camcorder/Model/camcorder/commands.cpp
-+    Extension/Camcorder/Model/camcorder/effects.cpp
-+    Extension/Camcorder/Model/camcorder/json.cpp
-+    Extension/Camcorder/Model/camcorder/look.cpp
-+    Extension/Camcorder/Model/camcorder/preferences.cpp
-+    Extension/Camcorder/Model/camcorder/presence.cpp
-+    Extension/Camcorder/Model/camcorder/profiles.cpp
-+    Extension/Camcorder/Model/camcorder/recorder.cpp
-+    Extension/Camcorder/Model/camcorder/rigs.cpp
-+    Extension/Camcorder/Model/camcorder/tape.cpp
-+    Extension/Camcorder/Model/camcorder/viewfinder.cpp
-+    Extension/Camcorder/Model/camcorder/viewfinder_layout.cpp
-+    Extension/Camcorder/Model/camcorder/vx1000.cpp)
-+target_include_directories(dingosdk_camcorder_model PUBLIC "${PROJECT_SOURCE_DIR}/Extension/Camcorder/Model")
-+
- add_library(dingosdk_overlay STATIC
- 
-     Extension/UI/Overlay/overlay.cpp
-@@ -42,8 +61,17 @@ add_library(dingosdk_overlay STATIC
-     Extension/Music/music_page.cpp
-     Extension/Trainer/trainer_view.cpp
-     Extension/HallOfMeat/hall_of_meat_overlay.cpp
-+    Extension/Camcorder/camcorder_overlay.cpp
-+    Extension/Camcorder/camcorder_page.cpp
-+    Extension/Camcorder/camcorder_capture.cpp
-+    Extension/Camcorder/camcorder_video.cpp
-+    Extension/Camcorder/camcorder_audio.cpp
-+    Extension/Camcorder/camcorder_media.cpp
-+    Extension/Camcorder/camcorder_tape.cpp
-+    Extension/Camcorder/camcorder_review.cpp
-+    Extension/Camcorder/camcorder_warp.cpp
- )
--target_link_libraries(dingosdk_overlay PUBLIC dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
-+target_link_libraries(dingosdk_overlay PUBLIC dingosdk_camcorder_model mfplat mfreadwrite mfuuid mmdevapi dingosdk_logging dingosdk_profiler dingosdk_imgui dingosdk_hooks dingosdk_console_core dxguid PRIVATE dingosdk_playstation_input shell32 dingosdk_initfs dingosdk_custom_scripts dingosdk_game_archives dingosdk_mods dingosdk_json windowscodecs ole32)
- 
- # The window shown from the moment ReSkate loads until the game's own window appears.
- add_library(dingosdk_startup_window STATIC Extension/UI/Startup/startup_window.cpp)

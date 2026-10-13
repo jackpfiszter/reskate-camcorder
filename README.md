@@ -56,18 +56,20 @@ release into your `Mods` folder.
 |---|---|---|
 | Camera on / off | F5 | *bind it in Settings > Controls* |
 | Record / stop | F6 | |
-| Quick menu (camera, lens, look, handheld / board cam, tripod) | F7 | |
+| Quick menu (camera, lens, look, handheld / board cam, camera control, tripods) | F7 | |
 | Take a still | F8 | |
-| Next tripod | F9 | |
+| Full camera control (the skater waits), or film while skating | F9 | |
 | Set up a tripod, then done | F10, F10 again | |
 | Aim (nudge the framing; set up a tripod) | Mouse | Right stick |
 | Zoom | Q / E, or the mouse wheel | Triggers |
 | Camera higher / lower | R / F | Bumpers |
-| Back out of the quick menu or a tripod's setup | Esc | Start |
+| Roll the frame (full camera control) | A / D | Left stick |
+| Back out of the quick menu, a tripod's setup or full camera control | Esc | Start |
 
 The F keys are what **SET UP KEYS** gives you. Change any of them in ReSkate's Settings > Controls.
 Aim, zoom and height work the same handheld, on the board cam and setting up a tripod, and while
-you skate: while you film handheld those keys and sticks are the camera's, not the skater's.
+you skate: while you film handheld those keys and sticks are the camera's, not the skater's. Next
+tripod is in the quick menu, or bind it.
 
 ## Your clips
 
@@ -126,7 +128,7 @@ picture shader with fxc. Building ReSkate yourself is in [docs/TESTING.md](docs/
 
 ### Console commands
 
-Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|rig|lockon|subject|frame|tripod|head|height|tape|clean|sound|look|dv|date|sensitivity|invert|guide|open|review|mods|effects|export|status`.
+Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|rig|operate|lockon|subject|frame|tripod|head|height|tape|clean|sound|look|dv|date|sensitivity|invert|guide|open|review|mods|effects|export|status`.
 Settings are kept in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 
 ### Releases

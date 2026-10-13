@@ -33,7 +33,7 @@ struct Recommended {
 };
 constexpr Recommended recommended[]{
     {"camcorder", "on / off", 0x74}, {"camrec", "REC / STBY", 0x75}, {"camquick", "quick menu", 0x76},
-    {"camstill", "still", 0x77},     {"camcut", "next tripod", 0x78}, {"camtripod", "tripod: set up / done", 0x79},
+    {"camstill", "still", 0x77},     {"camoperate", "full camera control", 0x78}, {"camtripod", "tripod: set up / done", 0x79},
 };
 int bind_index(std::string_view name) {
     for (std::size_t i = 0; i < action_binds.size(); ++i)
@@ -60,6 +60,13 @@ void pick(SkateMenu &menu, const CallbacksV3 &callbacks, const char *id,
     if (none) button(none, "stock", current.empty(), "");
     for (const auto &item : items) button(item.name, item.id, item.id == current, item.source.empty() ? "" : "From " + item.source);
     ImGui::PopID();
+}
+// A player's name as a button shows it: "##" would hide the rest from ImGui, and a name of nothing
+// but spaces would be an empty button.
+std::string button_name(std::string name) {
+    for (std::size_t at = name.find("##"); at != std::string::npos; at = name.find("##", at + 2)) name.replace(at, 2, "# ");
+    if (name.find_first_not_of(' ') == std::string::npos) name = "PLAYER";
+    return name;
 }
 // A card that opens and closes from its title, closed until wanted (it stays as left).
 bool folding_card(SkateMenu &menu, const char *id, const char *title, bool &open) {
@@ -106,18 +113,26 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     field(menu, "Hold it", "In your hand (R / F or the bumpers raise and lower it), or on the board's nose, just off the ground.");
     int held = s.grip_id == board_cam().id ? 1 : 0;
     if (choice(menu, "camcorder-rig", held, {"HANDHELD", "BOARD CAM"})) run(menu, callbacks, held ? "rig board" : "rig handheld");
+    if (s.mode == Mode::handheld) {
+        field(menu, "Camera control", "Film while you skate (the camera has the mouse, right stick, triggers, bumpers and Q / E / R / F), or stop and work the camera with everything, roll too (A / D or the left stick). Esc or Start goes back to skating.");
+        int full = published.operating ? 1 : 0;
+        if (choice(menu, "camcorder-operate", full, {"FILM WHILE SKATING", "FULL CAMERA CONTROL"}))
+            run(menu, callbacks, full ? "operate on" : "operate off");
+    }
 
     field(menu, "Who to film", "The camera follows them; the mouse or right stick nudges the framing. Nobody: you aim it. Closest: whoever is nearest the camera, you too.");
-    if (small_button("ME / NOBODY", published.subject.empty() && !published.closest)) run(menu, callbacks, "subject none");
+    if (small_button("ME / NOBODY", published.subject_id == 0 && !published.closest)) run(menu, callbacks, "subject none");
     ImGui::SameLine();
     if (small_button("CLOSEST", published.closest)) run(menu, callbacks, "subject closest");
     if (ImGui::IsItemHovered() && published.closest && !published.subject.empty())
         ImGui::SetTooltip("Filming %s now.", published.subject.c_str());
-    for (std::size_t i = 0; i < published.players.size(); ++i) {
-        const auto &name = published.players[i];
+    // Picked by id: any name works, whatever letters it has (and two players can share one).
+    for (const auto &player : published.players) {
         ImGui::SameLine();
-        ImGui::PushID(static_cast<int>(i)); // two players can share a name
-        if (small_button(name.c_str(), !published.closest && name == published.subject)) run(menu, callbacks, "subject " + name);
+        const auto id = std::to_string(player.id);
+        ImGui::PushID(id.c_str());
+        if (small_button(button_name(player.name).c_str(), !published.closest && player.id == published.subject_id))
+            run(menu, callbacks, "subject " + id);
         ImGui::PopID();
     }
     field(menu, "Frame on", "Where the camera points on them: the board, the whole skater, or their head.");

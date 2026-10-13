@@ -30,7 +30,7 @@ pwsh integration\reskate\install.ps1 -ReSkate C:\src\ReSkate
 cd C:\src\ReSkate
 # With Rust installed, ReSkate builds its Spotify device too: fetch its crates first.
 if (Test-Path SpotifyHelper\Cargo.toml) { cargo fetch --manifest-path SpotifyHelper\Cargo.toml }
-cmake --preset vs2022-x64 "-DDINGOSDK_BACKTRACE_URL="
+cmake --preset vs2022-x64 "-DDINGOSDK_CRASH_REPORT_URL="
 cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher
 ```
 
@@ -60,16 +60,20 @@ camcorder to be filmed, but a different ReSkate build may not be allowed to join
 
 Everything is on the **CAMCORDER** page of the ReSkate menu (Insert). The first card has what
 most visits are for: on / off, REC, still, capture the tape, new tape, open my clips, camera,
-lens, hold it (handheld or board cam), who to film, what to frame on them (board, whole skater,
+lens, hold it (handheld or board cam), camera control (film while skating or full camera
+control), who to film, what to frame on them (board, whole skater,
 head), the look, the date stamp and the sound. TRIPODS is next, open. LOOK DETAILS (the stamp's
 clock, the clean viewfinder, the look's parts) and CONTROLS are closed until clicked open; they
 stay as you leave them. CONTROLS has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC,
-quick menu, still, next tripod, tripod) where they are free. Keys and buttons can be changed in
+quick menu, still, full camera control, tripod) where they are free; next tripod is in the quick
+menu (and bindable). Keys and buttons can be changed in
 SETTINGS > CONTROLS. While the camcorder is on, skate.'s own HUD is hidden. **Esc or Start** backs
-out of a tripod's setup and the quick menu; the next press opens the pause menu.
+out of the quick menu, a tripod's setup and full camera control; the next press opens the pause
+menu.
 
 The **quick menu** (F7 after SET UP KEYS, or `camcorder quick`) is a short list over the
-viewfinder: REC, still, camera, lens, look, frame on, hold it, tripod. W / S or the wheel (stick
+viewfinder: REC, still, camera, lens, look, frame on, hold it, camera control, tripod (and next
+tripod while looking through one of two or more). W / S or the wheel (stick
 up / down) choose, D (stick right) does it, A (stick left) closes. The skater waits while it is
 open; it closes itself after 8 seconds untouched.
 
@@ -85,6 +89,11 @@ with the keyboard, the left stick and the buttons; the camera has these:
 While filming handheld, skate.'s mouse, right stick, triggers, bumpers and Q / E / R / F don't
 reach the game (no flip tricks or grabs while you film). Looking through a tripod, all of it is
 the game's again: you skate as normal.
+
+**Full camera control** (F9 after SET UP KEYS, the menu's CAMERA CONTROL, or `camcorder operate`):
+the skater waits and every control is the camera's: the same aim, zoom and height, and A / D or
+the left stick roll the frame (a dutch angle, level again when you let go). F9 again, or Esc /
+Start, and you skate.
 
 **Setting up a tripod** uses the same, and carries it: W A S D (Shift faster) or the left stick
 (L3 faster); the tripod key again, REC (done and rolling) or Esc (Start) when it's set. The
@@ -122,6 +131,9 @@ Solo:
       board), not at your waist. Hold R / F (or RB / LB) while you skate: it rises and drops
       smoothly, from a skate's height off the ground to overhead. Same on a board, on foot, on a
       ledge. `camcorder height reset` puts it back low.
+- [ ] F9 (full camera control): the skater stops, the hint says so; aim, zoom and R / F height
+      work as before, and A / D (left stick) roll the frame up to about 25 degrees, easing back to
+      level on release. F9 again, or Esc / Start: you skate, and the camera films while you do.
 - [ ] BOARD CAM: the camera sits on the board's nose, a hand's height off the ground, looking
       ahead and a touch up; R / F don't move it.
 - [ ] The shake: hold still with the camera raised to eye level and watch for 30 seconds. It wanders like hands, with no
@@ -170,14 +182,17 @@ Solo:
       fast. Invert up and down: pushing up looks down.
 - [ ] OPEN MY CLIPS: Explorer opens on Videos\ReSkate Camcorder (stills in its Stills folder).
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",
-      "Camcorder: set up a tripod", "Camcorder: next tripod", "Camcorder: take a still" and
-      "Camcorder: quick menu".
+      "Camcorder: set up a tripod", "Camcorder: next tripod", "Camcorder: full camera control / film
+      while skating", "Camcorder: take a still" and "Camcorder: quick menu".
 
 With a friend:
 
 - [ ] `camcorder subject next` (or `camcorder subject <name>`): lock on follows them handheld while
       you skate after them.
 - [ ] A tripod with a subject follows them, not you.
+- [ ] A friend whose name has accents, symbols, emoji or other scripts: their button under WHO TO
+      FILM picks them (the name may show with ? for letters the menu's font lacks), and the camera
+      follows them. `camcorder subject` with the start of a name, any case, finds them too.
 - [ ] WHO TO FILM > CLOSEST, on a tripod, two of you skating past it in turns: it pans to whoever
       is nearest, you included, and doesn't flick between two side by side (hover CLOSEST: who).
       Handheld, CLOSEST follows the nearest other player.

@@ -169,8 +169,9 @@ void draw_guide(ImDrawList *list, ImFont *font, const Rect &picture) {
         "Filming someone, it follows them; nobody picked, you aim it. Mouse or right stick aims",
         "Zoom: Q / E, the wheel or the triggers      Height: R / F or the bumpers",
         "Quick menu: F7: camera, lens, look, who to frame, hold it, tripod",
+        "F9: full camera control (the skater waits; A / D or left stick roll), F9 again to skate",
         "Tripod: F10 sets one up; move and aim it; F10 again (or REC), then skate",
-        "Esc or Start: back out of the quick menu or a tripod's setup",
+        "Esc or Start: back out of the quick menu, a tripod's setup or full camera control",
         "Everything else: the CAMCORDER page in the ReSkate menu",
     };
     const float size = std::clamp(picture.height / 34, 12.0f, 26.0f), line = size * 1.4f, pad = size * 0.9f;

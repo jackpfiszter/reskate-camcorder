@@ -32,5 +32,5 @@ if ($LASTEXITCODE -ne 0) { throw 'reskate.patch does not apply (already applied,
 git -C $target apply --ignore-whitespace (Join-Path $here 'reskate.patch')
 if ($LASTEXITCODE -ne 0) { throw 'Applying reskate.patch failed.' }
 Write-Host "Camcorder installed into $target. Build with (crash uploads off: this is not ReSkate's own build):"
-Write-Host '  cmake --preset vs2022-x64 "-DDINGOSDK_BACKTRACE_URL="'
+Write-Host '  cmake --preset vs2022-x64 "-DDINGOSDK_CRASH_REPORT_URL="'
 Write-Host "  cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher"

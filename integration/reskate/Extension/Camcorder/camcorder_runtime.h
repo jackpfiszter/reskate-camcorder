@@ -65,8 +65,14 @@ struct Published {
     int frame_on{1};      // `camcorder frame`: 0 board, 1 the whole skater, 2 head
     float blink{};        // seconds, for blinking readouts
     std::string hint;     // the viewfinder's control hints, empty for none
-    std::vector<std::string> players; // who could be filmed (the menu's subject list)
+    struct Filmable {
+        std::uint64_t id{};
+        std::string name;
+    };
+    std::vector<Filmable> players;    // who could be filmed (the menu's subject list: picked by id)
+    std::uint64_t subject_id{};       // who was picked, 0 for nobody (or closest)
     bool closest{};                   // filming whoever is nearest (subject: who that is now)
+    bool operating{};                 // full camera control: the skater waits (`camcorder operate`)
     camcorder::ViewfinderLayout viewfinder = camcorder::vx1000_viewfinder(); // the camera's readouts
     std::string subject;  // who is, empty for nobody
     camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game`

@@ -20,15 +20,13 @@ jobs:
           for f in src/camcorder/*.cpp; do
             g++ -std=c++20 -fsyntax-only -Isrc -Dnear= -Dfar= -Dsmall=char -Dhyper=__int64 "$f"
           done
-      # Every source file must be in ReSkate's build too (reskate.patch), or the Windows link fails.
-      - name: Sources listed in reskate.patch
+      # Every ReSkate-side source file must be in ReSkate's build too (camcorder.cmake: the model's
+      # are found by themselves), or the Windows link fails.
+      - name: Sources listed in camcorder.cmake
         run: |
           missing=0
-          for f in src/camcorder/*.cpp; do
-            grep -q "^+ *Extension/Camcorder/Model/camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
-          done
           for f in integration/reskate/Extension/Camcorder/*.cpp; do
-            grep -q "^+ *Extension/Camcorder/$(basename "$f"))\?$" integration/reskate/reskate.patch || { echo "not in ReSkate's build: $f"; missing=1; }
+            grep -q "/$(basename "$f")\"" integration/reskate/Extension/Camcorder/camcorder.cmake || { echo "not in ReSkate's build: $f"; missing=1; }
           done
           exit $missing
 
@@ -78,7 +76,7 @@ jobs:
       # A modified ReSkate must not send its crashes to the ReSkate developers' crash reports.
       - name: Configure (crash uploads off)
         working-directory: ReSkate
-        run: cmake --preset vs2022-x64 "-DDINGOSDK_BACKTRACE_URL="
+        run: cmake --preset vs2022-x64 "-DDINGOSDK_CRASH_REPORT_URL="
       - name: Build ReSkate.dll and the launcher
         working-directory: ReSkate
         run: cmake --build --preset release --parallel 4 --target dingosdk_runtime dingosdk_launcher

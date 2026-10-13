@@ -23,9 +23,11 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
 
 ## Patch points
 
-1. **Build** (`cmake/Runtime.cmake`): add the `Extension/Camcorder/*.cpp` and model `.cpp`
-   files next to the Hall of Meat list. ReSkate builds with `/W4 /WX`; the model already builds
-   warning-free with `-Wall -Wextra -Wpedantic -Werror` on GCC and Clang.
+1. **Build** (`cmake/Runtime.cmake`): one line, `include(Extension/Camcorder/camcorder.cmake)`,
+   once `dingosdk_overlay` and `dingosdk_runtime` exist. That file (the camcorder's own) adds the
+   model library and puts the camcorder's files and Windows libraries into those two targets.
+   ReSkate builds with `/W4 /WX`; the model already builds warning-free with
+   `-Wall -Wextra -Wpedantic -Werror` on GCC and Clang.
 
 2. **Client tick** (`Runtime/client_tick.cpp`): right after
    `multiplayer::tick_native_party_actions(...)`, with the same `ready` and `camera_phase`:
@@ -64,7 +66,8 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
    `{"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"}`,
    `{"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"}`,
    `{"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"}`,
-   `{"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"}`.
+   `{"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"}`,
+   `{"camcorder_operate", "camoperate", "Camcorder: full camera control / film while skating", "camcorder operate toggle"}`.
 
    (The patch has the full list: take a still and the quick menu too.)
 
@@ -73,7 +76,7 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
 
 9. **Recording** (`overlay_render.cpp`): the back buffer is copied for clips and stills in the
    present path, before the readouts are drawn (`camcorder_capture.cpp`); Media Foundation and
-   process-loopback audio are linked in `cmake/UI.cmake`.
+   process-loopback audio are linked in `camcorder.cmake`.
 
 10. **Filming handheld** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
     partial hold beside Freecam's full one. `DingoSDKOverlaySetCameraAimCapture` keeps the right

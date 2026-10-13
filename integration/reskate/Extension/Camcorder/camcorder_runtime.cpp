@@ -14,8 +14,10 @@
 #include "camcorder/presence.h"
 #include "camcorder/profiles.h"
 #include "camcorder/recorder.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -51,6 +53,7 @@ struct State {
     std::atomic<float> ear_distance{}, ear_side{}; // the local skater from the camera, for the sound
     std::uint64_t nearest{}; // that one now: 0 is the local player
     VelocityEstimate subject_velocity;
+    bool operating{};        // full camera control: the skater waits, every control works the camera (`camcorder operate`)
     bool captured{};         // we asked the overlay to hold the pad
     bool aim_captured{};     // we asked the overlay for the right stick, the triggers and the mouse
     float wheel_zoom{};      // seconds of zoom rocker left from the mouse wheel, signed
@@ -374,7 +377,8 @@ std::string export_profiles(const State &s) {
 
 // Only while the camcorder's picture is on screen: without it the pad stays the skater's.
 bool wants_pad(State &s) {
-    return s.camcorder.powered() && s.owned && s.in_play && (s.camcorder.tripod_setup() || s.quick || s.back_held);
+    return s.camcorder.powered() && s.owned && s.in_play &&
+           (s.camcorder.tripod_setup() || s.quick || s.back_held || (s.operating && s.camcorder.status().mode == Mode::handheld));
 }
 double wall_seconds() { return std::chrono::duration<double>(Clock::now().time_since_epoch()).count(); }
 
@@ -395,12 +399,16 @@ std::vector<QuickItem> quick_items(const State &s) {
         {"Look", on(s.finish.dv.on), "look", {"toggle"}, false},
         {"Frame on", s.frame_on == 0 ? "board" : s.frame_on == 1 ? "whole skater" : "head", "frame", {"next"}, false},
     };
-    if (status.mode == Mode::handheld)
+    if (status.mode == Mode::handheld) {
         items.push_back({"Hold it", status.grip_id == board_cam().id ? "board cam" : "handheld", "rig", {"toggle"}, false});
+        items.push_back({"Camera control", s.operating ? "full (skater waits)" : "while skating", "operate", {"toggle"}, true});
+    }
     items.push_back(status.tripod_setup ? QuickItem{"Tripod: done", "", "tripod", {"done"}, true}
                                         : QuickItem{"Set up a tripod here", "", "tripod", {"place"}, true});
-    if (status.tripods[0] || status.tripods[1] || status.tripods[2] || status.tripods[3])
+    const auto standing = std::count(status.tripods.begin(), status.tripods.end(), true);
+    if (standing > 0)
         items.push_back({"Handheld / tripod", status.mode == Mode::tripod ? "tripod" : "handheld", "mode", {"toggle"}, false});
+    if (standing > 1 && status.mode == Mode::tripod) items.push_back({"Next tripod", "", "tripod", {"next"}, false});
     items.push_back({"Close", "", "", {}, true});
     return items;
 }
@@ -482,12 +490,13 @@ float wheel_rocker(State &s, float dt) {
 // keyboard: only the look (right stick, mouse) and the zoom (triggers, mouse wheel) are read.
 OperatorInput read_controls(State &s, float dt) {
     OperatorInput in;
+    if (s.camcorder.status().mode != Mode::handheld) s.operating = false; // a tripod's view: the skater's again
     const bool pad_held = wants_pad(s), aim = wants_aim(s);
     set_capture(s, pad_held, aim);
     if (pad_held) {
         // Esc or Start while the camera has the controls (which keeps them from the game): a step
-        // back out, the quick menu, then a tripod's setup. The next press is the game's again: its
-        // pause menu.
+        // back out, the quick menu, then a tripod's setup, then full camera control. The next press
+        // is the game's again: its pause menu.
         dingosdk::ControllerInput pressed;
         DingoSDKOverlayReadControllerInput(&pressed);
         constexpr std::uint32_t start_button = 0x0010; // XINPUT_GAMEPAD_START (Options on a PlayStation pad)
@@ -505,6 +514,7 @@ OperatorInput read_controls(State &s, float dt) {
             s.back_armed = false;
             if (s.quick) s.quick = false;
             else if (s.camcorder.tripod_setup()) s.camcorder.set_tripod_setup(false);
+            else s.operating = false;
         }
         s.back_held = back;
         if (back) {
@@ -547,6 +557,12 @@ OperatorInput read_controls(State &s, float dt) {
     in.zoom = std::clamp(pad.up + wheel, -1.0f, 1.0f);
     in.raise = std::clamp(pad.pad_raise + pad.key_raise, -1.0f, 1.0f);
     if (aim) return in;
+    // Full camera control, handheld: A / D or the left stick roll the frame (a dutch angle, held
+    // while they are).
+    if (!s.camcorder.tripod_setup()) {
+        in.tilt = pad.right;
+        return in;
+    }
     // Setting up a tripod also carries it: WASD or the left stick, Shift or L3 faster.
     in.move_x = pad.right;
     in.move_y = pad.forward;
@@ -596,6 +612,10 @@ void publish(State &s, const Frame &frame) {
         s.published.hint = "W/S or wheel choose   D do it   A or Esc close   (stick: up/down, right, left)";
     else if (status.tripod_setup)
         s.published.hint = "WASD / L-stick carry it   Mouse / R-stick aim   Q/E or LT/RT zoom   R/F or LB/RB height   Tripod key or Esc: done   REC: roll";
+    else if (s.operating && wants_pad(s))
+        s.published.hint = status.grip_id == board_cam().id
+                               ? "Mouse / R-stick aim   Q/E or LT/RT zoom   A/D or L-stick roll   Esc or Start: back to skating"
+                               : "Mouse / R-stick aim   Q/E or LT/RT zoom   R/F or LB/RB height   A/D or L-stick roll   Esc or Start: back to skating";
     else if (wants_aim(s) && status.grip_id == board_cam().id)
         s.published.hint = "Mouse / R-stick aim   Q/E or LT/RT zoom";
     else if (wants_aim(s))
@@ -614,11 +634,13 @@ void publish(State &s, const Frame &frame) {
     s.published.invert = s.invert;
     s.published.review = s.review;
     s.published.review_stop = s.review_stop;
+    s.published.operating = s.operating;
     s.published.players.clear();
     s.published.subject.clear();
+    s.published.subject_id = s.closest ? 0 : s.subject;
     s.published.closest = s.closest;
     for (const auto &p : s.players) {
-        s.published.players.push_back(p.name);
+        s.published.players.push_back({p.id, p.name});
         if (p.id == (s.closest ? s.nearest : s.subject)) s.published.subject = p.name;
     }
     if (s.closest && s.nearest == 0) s.published.subject = "you";
@@ -771,6 +793,7 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
                     s.camcorder.aim_handheld({matrix_yaw_pitch(view->world).yaw, 3 * degrees});
             } else {
                 s.quick = false;
+                s.operating = false; // the skater's controls again next time
                 s.guide_until = 0;
                 ++s.review_stop; // a review ends with the camera
             }
@@ -890,15 +913,37 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
             s.subject = s.players[at % s.players.size()].id;
             return "Filming " + s.players[at % s.players.size()].name + ".";
         }
-        // A name can have spaces: the words are the name.
+        // A player's id (the menu picks by it: any name works, whatever letters it has), or their
+        // name: the words are the name (it can have spaces), exact, then any case, then its start.
         std::string name;
         for (const auto &word : words) name += (name.empty() ? "" : " ") + word;
-        for (const auto &p : s.players)
-            if (p.name == name || std::to_string(p.id) == name) {
-                s.subject = p.id;
-                return "Filming " + p.name + ".";
-            }
-        return "No player called " + name + ".";
+        const auto lower = [](std::string text) {
+            for (auto &c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return text;
+        };
+        const auto pick = [&](auto &&matches) -> const Player * {
+            for (const auto &p : s.players)
+                if (matches(p)) return &p;
+            return nullptr;
+        };
+        const auto wanted = lower(name);
+        const Player *found = pick([&](const Player &p) { return std::to_string(p.id) == name; });
+        if (!found) found = pick([&](const Player &p) { return p.name == name; });
+        if (!found) found = pick([&](const Player &p) { return lower(p.name) == wanted; });
+        if (!found) found = pick([&](const Player &p) { return lower(p.name).starts_with(wanted); });
+        if (!found) return "No player called " + name + ".";
+        s.subject = found->id;
+        return "Filming " + found->name + ".";
+    }
+    // Full camera control or filming while skating: the skater waits and every control works the
+    // camera (roll too), or the skater keeps the left stick and buttons and films as they go.
+    if (verb == "operate") {
+        const bool want = words.empty() || words[0] == "toggle" ? !s.operating : words[0] == "on" || words[0] == "1";
+        if (want && s.camcorder.status().mode != Mode::handheld)
+            return "From a tripod, set it up (camcorder tripod setup) for full control of it.";
+        s.operating = want;
+        return s.operating ? "Full camera control: the skater waits. Mouse or right stick aim, Q / E or the triggers zoom, R / F or the bumpers raise it, A / D or the left stick roll. Esc or Start: back to skating."
+                           : "Filming while skating: the mouse or right stick aim, Q / E or the triggers zoom, R / F or the bumpers raise it.";
     }
     if (verb == "frame") {
         int pick = s.frame_on;
