@@ -559,7 +559,11 @@ void publish(State &s, const Frame &frame) {
         finish.look = camera.look;
         finish.stamp = camera.stamp;
         finish.mic = camera.mic;
+        finish.light = camera.light;
+        finish.ear = s.camcorder.handling().sound;
         s.published.finish = finish;
+        s.published.viewfinder_text = camera.viewfinder_text;
+        s.published.viewfinder_rec = camera.viewfinder_rec;
         s.published.own_lines = camera.lines;
     }
     s.published.warp = s.warp;

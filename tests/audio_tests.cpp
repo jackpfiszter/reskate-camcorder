@@ -211,9 +211,14 @@ TEST(the_camera_hears_the_skater_from_where_it_stands) {
     CHECK(right.side > 0.5f);
     CHECK(ear_placement(camera, {6, 1, 8}).side < -0.5f);
     // Close by, nothing changes; far off, quieter and duller.
-    CHECK(CameraEar::gain_at(1) == 1 && CameraEar::cutoff_at(1) == 20000 && CameraEar::pan_amount_at(1) == 0);
-    CHECK_NEAR(CameraEar::gain_at(12), 0.25, 1e-5);
-    CHECK(CameraEar::cutoff_at(30) < 8000);
+    const CameraEar ear;
+    CHECK(ear.gain_at(1) == 1 && ear.cutoff_at(1) == 20000 && ear.pan_amount_at(1) == 0);
+    CHECK_NEAR(ear.gain_at(12), 0.25, 1e-5);
+    CHECK(ear.cutoff_at(30) < 8000);
+    // A handling.json's sound: carrying further, and no re-panning.
+    const CameraEar open_air({10, 0.3f, 40, 0});
+    CHECK(open_air.gain_at(8) == 1 && open_air.pan_amount_at(50) == 0);
+    CHECK_NEAR(open_air.gain_at(100), 0.3, 1e-5);
     std::vector<float> near(2 * 480), sound(2 * 480);
     for (std::size_t i = 0; i < near.size(); ++i) near[i] = sound[i] = 0.5f * std::sin(static_cast<float>(i) * 0.01f);
     CameraEar close;

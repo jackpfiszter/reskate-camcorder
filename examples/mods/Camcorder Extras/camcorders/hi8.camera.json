@@ -15,11 +15,14 @@
     "sharpen": 0.6,
     "grain": 0.12,
     "chroma_width": 7,
-    "softness": 1.2
+    "softness": 1.2,
+    "grain_colour": 0.4,
+    "sharpen_radius": 1.5
   },
   "stamp": {
     "corner": "bottom-left",
     "lines": "date-time",
-    "colour": [255, 210, 60]
+    "colour": [255, 210, 60],
+    "size": 1.1
   }
 }

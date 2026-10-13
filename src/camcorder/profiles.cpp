@@ -73,6 +73,16 @@ struct Fields {
         b = clamp_note(std::string(key) + "[1]", v->items[1].number, low_b, high_b);
         return true;
     }
+    // Three numbers, [red, green, blue], each 0 to 255.
+    void colour(std::string_view key, std::array<std::uint8_t, 3> &out) {
+        const auto *v = get(key, Kind::array, "three numbers, [red, green, blue]");
+        if (!v) return;
+        if (v->items.size() != 3 || !std::all_of(v->items.begin(), v->items.end(), [](const Value &c) { return c.is(Kind::number); })) {
+            notes.push_back(where + std::string(key) + " should be three numbers, [red, green, blue]; the default is kept.");
+            return;
+        }
+        for (std::size_t i = 0; i < 3; ++i) out[i] = static_cast<std::uint8_t>(std::lround(clamp_note(key, v->items[i].number, 0, 255)));
+    }
     // Words from a fixed list.
     template <class Enum> void word(std::string_view key, Enum &out, std::initializer_list<std::pair<const char *, Enum>> words) {
         const auto *v = get(key, Kind::string, "text");
@@ -108,7 +118,27 @@ std::string quoted(const std::string &s) {
     }
     return out + "\"";
 }
-const char *corner_word(StampProfile::Corner c) { return c == StampProfile::Corner::bottom_left ? "bottom-left" : "bottom-right"; }
+const char *corner_word(StampProfile::Corner c) {
+    switch (c) {
+    case StampProfile::Corner::bottom_left: return "bottom-left";
+    case StampProfile::Corner::top_right: return "top-right";
+    case StampProfile::Corner::top_left: return "top-left";
+    case StampProfile::Corner::bottom_right: break;
+    }
+    return "bottom-right";
+}
+const char *projection_word(Projection p) {
+    switch (p) {
+    case Projection::equisolid: return "equisolid";
+    case Projection::stereographic: return "stereographic";
+    case Projection::orthographic: return "orthographic";
+    case Projection::equidistant: break;
+    }
+    return "equidistant";
+}
+std::string colour_text(const std::array<std::uint8_t, 3> &c) {
+    return "[" + std::to_string(c[0]) + ", " + std::to_string(c[1]) + ", " + std::to_string(c[2]) + "]";
+}
 const char *lines_word(StampProfile::Lines l) {
     return l == StampProfile::Lines::date_only ? "date" : l == StampProfile::Lines::date_over_time ? "date-time" : "time-date";
 }
@@ -176,22 +206,28 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
         l.number("grain", p.grain, 0, 1);
         l.number("chroma_width", p.chroma_width, 0, 16);
         l.number("softness", p.softness, 0, 8);
+        l.number("highlight_knee", p.highlight_knee, 0.5, 1);
+        l.number("highlight_spread", p.highlight_spread, 0.005, 0.5);
+        l.number("grain_size", p.grain_size, 0.25, 8);
+        l.number("grain_colour", p.grain_colour, 0, 1);
+        l.number("sharpen_radius", p.sharpen_radius, 0.25, 8);
+        if (l.pair("drift_seconds", p.drift_seconds[0], p.drift_seconds[1], 1, 3600, 1, 3600) && p.drift_seconds[0] < p.drift_seconds[1])
+            std::swap(p.drift_seconds[0], p.drift_seconds[1]); // the slow one first
         l.unknown();
     }
     if (const auto *stamp = f.get("stamp", Kind::object, "an object, { ... }")) {
         Fields s{*stamp, "stamp.", reading.notes};
         auto &p = camera.stamp;
-        s.word("corner", p.corner, {{"bottom-right", StampProfile::Corner::bottom_right}, {"bottom-left", StampProfile::Corner::bottom_left}});
+        s.word("corner", p.corner, {{"bottom-right", StampProfile::Corner::bottom_right}, {"bottom-left", StampProfile::Corner::bottom_left},
+                                    {"top-right", StampProfile::Corner::top_right}, {"top-left", StampProfile::Corner::top_left}});
         s.word("lines", p.lines, {{"time-date", StampProfile::Lines::time_over_date}, {"date", StampProfile::Lines::date_only},
                                   {"date-time", StampProfile::Lines::date_over_time}});
         s.word("date", p.date, {{"month-day-year", StampProfile::Date::month_day_year}, {"day-month-year", StampProfile::Date::day_month_year}});
-        if (const auto *colour = s.get("colour", Kind::array, "three numbers, [red, green, blue]")) {
-            if (colour->items.size() == 3 && std::all_of(colour->items.begin(), colour->items.end(), [](const Value &c) { return c.is(Kind::number); }))
-                for (std::size_t i = 0; i < 3; ++i)
-                    p.colour[i] = static_cast<std::uint8_t>(std::lround(s.clamp_note("colour", colour->items[i].number, 0, 255)));
-            else
-                reading.notes.emplace_back("stamp.colour should be three numbers, [red, green, blue]; the default is kept.");
-        }
+        s.colour("colour", p.colour);
+        s.number("size", p.size, 0.25, 4);
+        s.pair("margin", p.margin[0], p.margin[1], 0, 0.4, 0, 0.4);
+        s.boolean("outline", p.outline);
+        s.colour("outline_colour", p.outline_colour);
         s.unknown();
     }
     if (const auto *mic = f.get("mic", Kind::object, "an object, { ... }")) {
@@ -205,6 +241,20 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
         m.number("release", p.release, 0.02, 5);
         m.number("drive", p.drive, 0.1, 5);
         m.unknown();
+    }
+    if (const auto *light = f.get("light", Kind::object, "an object, { ... }")) {
+        Fields g{*light, "light.", reading.notes};
+        auto &p = camera.light;
+        g.number("strength", p.strength, 0, 10);
+        g.number("reach", p.reach, 0.1, 3);
+        g.colour("colour", p.colour);
+        g.unknown();
+    }
+    if (const auto *finder = f.get("viewfinder", Kind::object, "an object, { ... }")) {
+        Fields v{*finder, "viewfinder.", reading.notes};
+        v.colour("text", camera.viewfinder_text);
+        v.colour("rec", camera.viewfinder_rec);
+        v.unknown();
     }
     f.unknown();
     reading.profile = std::move(camera);
@@ -280,6 +330,15 @@ Reading<Handling> read_handling(std::string_view text, const Handling &base) {
         s.number("hands", h.shake.hands, 0, 5);
         s.number("wheels", h.shake.wheels, 0, 5);
         s.number("footsteps", h.shake.footsteps, 0, 5);
+        s.number("speed", h.shake.speed, 0.1, 8);
+        s.unknown();
+    }
+    if (const auto *sound = f.get("sound", Kind::object, "an object, { ... }")) {
+        Fields s{*sound, "sound.", reading.notes};
+        s.number("near", h.sound.near, 0.5, 100);
+        s.number("floor", h.sound.floor, 0, 1);
+        s.number("air", h.sound.air, 1, 1000);
+        s.number("pan", h.sound.pan, 0, 1);
         s.unknown();
     }
     if (const auto *tripod = f.get("tripod", Kind::object, "an object, { ... }")) {
@@ -317,6 +376,8 @@ Reading<Adapter> read_adapter(std::string_view text, std::string id) {
     f.boolean("fisheye", lens.fisheye);
     // A flat render cannot reach 90 degrees off-axis (vx1000.cpp), so 170 across is the most.
     f.number("fov", lens.fisheye_fov, 60, 170);
+    f.word("projection", lens.projection, {{"equidistant", Projection::equidistant}, {"equisolid", Projection::equisolid},
+                                           {"stereographic", Projection::stereographic}, {"orthographic", Projection::orthographic}});
     f.number("magnification", lens.magnification, 0.25, 4);
     if (!f.pair("vignette", lens.vignette_radius, lens.vignette_growth, 0, 1.25, 0, 2) && !value->find("vignette") &&
         !lens.fisheye) {
@@ -347,13 +408,23 @@ std::string write_camera(const CameraProfile &c) {
     out += "    \"sharpen\": " + number_text(l.sharpen) + ",\n";
     out += "    \"grain\": " + number_text(l.grain) + ",\n";
     out += "    \"chroma_width\": " + number_text(l.chroma_width) + ",\n";
-    out += "    \"softness\": " + number_text(l.softness) + "\n";
+    out += "    \"softness\": " + number_text(l.softness) + ",\n";
+    out += "    \"highlight_knee\": " + number_text(l.highlight_knee) + ",\n";
+    out += "    \"highlight_spread\": " + number_text(l.highlight_spread) + ",\n";
+    out += "    \"grain_size\": " + number_text(l.grain_size) + ",\n";
+    out += "    \"grain_colour\": " + number_text(l.grain_colour) + ",\n";
+    out += "    \"sharpen_radius\": " + number_text(l.sharpen_radius) + ",\n";
+    out += "    \"drift_seconds\": [" + number_text(l.drift_seconds[0]) + ", " + number_text(l.drift_seconds[1]) + "]\n";
     out += "  },\n";
     out += "  \"stamp\": {\n";
     out += "    \"corner\": \"" + std::string(corner_word(s.corner)) + "\",\n";
     out += "    \"lines\": \"" + std::string(lines_word(s.lines)) + "\",\n";
     out += "    \"date\": \"" + std::string(date_word(s.date)) + "\",\n";
-    out += "    \"colour\": [" + std::to_string(s.colour[0]) + ", " + std::to_string(s.colour[1]) + ", " + std::to_string(s.colour[2]) + "]\n";
+    out += "    \"colour\": " + colour_text(s.colour) + ",\n";
+    out += "    \"size\": " + number_text(s.size) + ",\n";
+    out += "    \"margin\": [" + number_text(s.margin[0]) + ", " + number_text(s.margin[1]) + "],\n";
+    out += std::string("    \"outline\": ") + (s.outline ? "true" : "false") + ",\n";
+    out += "    \"outline_colour\": " + colour_text(s.outline_colour) + "\n";
     out += "  },\n";
     const auto &m = c.mic;
     out += "  \"mic\": {\n";
@@ -364,6 +435,15 @@ std::string write_camera(const CameraProfile &c) {
     out += "    \"attack\": " + number_text(m.attack) + ",\n";
     out += "    \"release\": " + number_text(m.release) + ",\n";
     out += "    \"drive\": " + number_text(m.drive) + "\n";
+    out += "  },\n";
+    out += "  \"light\": {\n";
+    out += "    \"strength\": " + number_text(c.light.strength) + ",\n";
+    out += "    \"reach\": " + number_text(c.light.reach) + ",\n";
+    out += "    \"colour\": " + colour_text(c.light.colour) + "\n";
+    out += "  },\n";
+    out += "  \"viewfinder\": {\n";
+    out += "    \"text\": " + colour_text(c.viewfinder_text) + ",\n";
+    out += "    \"rec\": " + colour_text(c.viewfinder_rec) + "\n";
     out += "  }\n}\n";
     return out;
 }
@@ -395,7 +475,10 @@ std::string write_handling(const Handling &h) {
     out += "  },\n  \"aim\": {\n";
     out += line("swing", h.aim_swing) + line("damping", h.aim_damping) + line("hunting", h.hunting, true);
     out += "  },\n  \"shake\": {\n";
-    out += line("hands", h.shake.hands) + line("wheels", h.shake.wheels) + line("footsteps", h.shake.footsteps, true);
+    out += line("hands", h.shake.hands) + line("wheels", h.shake.wheels) + line("footsteps", h.shake.footsteps) +
+           line("speed", h.shake.speed, true);
+    out += "  },\n  \"sound\": {\n";
+    out += line("near", h.sound.near) + line("floor", h.sound.floor) + line("air", h.sound.air) + line("pan", h.sound.pan, true);
     out += "  },\n  \"tripod\": {\n";
     out += line("height", h.tripod_height) + line("drag", h.tripod_drag) + line("pan_speed", h.tripod_pan_speed) +
            line("follow", h.tripod_follow, true);
@@ -410,6 +493,7 @@ std::string write_adapter(const Adapter &a) {
     out += "  \"name\": " + quoted(a.name) + ",\n";
     out += std::string("  \"fisheye\": ") + (a.fisheye ? "true" : "false") + ",\n";
     out += "  \"fov\": " + number_text(a.fisheye_fov) + ",\n";
+    out += "  \"projection\": \"" + std::string(projection_word(a.projection)) + "\",\n";
     out += "  \"magnification\": " + number_text(a.magnification) + ",\n";
     out += "  \"vignette\": [" + number_text(a.vignette_radius) + ", " + number_text(a.vignette_growth) + "]\n}\n";
     return out;

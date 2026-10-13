@@ -48,6 +48,20 @@ TEST(a_written_camera_reads_back_the_same) {
     camera.look.grain = 0.25f;
     camera.stamp.corner = StampProfile::Corner::bottom_left;
     camera.stamp.colour = {255, 160, 40};
+    // Everything a mod can set goes out and comes back.
+    camera.look.highlight_knee = 0.8f;
+    camera.look.grain_size = 2.5f;
+    camera.look.grain_colour = 0.6f;
+    camera.look.sharpen_radius = 1.5f;
+    camera.look.drift_seconds = {60, 5};
+    camera.stamp.corner = StampProfile::Corner::top_left;
+    camera.stamp.size = 1.5f;
+    camera.stamp.margin = {0.1f, 0.05f};
+    camera.stamp.outline = false;
+    camera.stamp.outline_colour = {40, 0, 0};
+    camera.light = {1.5f, 1.2f, {200, 220, 255}};
+    camera.viewfinder_text = {120, 255, 120};
+    camera.viewfinder_rec = {255, 255, 0};
     const auto read = read_camera(write_camera(camera), "test");
     CHECK(read.profile.has_value());
     CHECK(read.notes.empty());
@@ -261,4 +275,43 @@ TEST(a_camera_has_its_own_mic) {
     CHECK(read.profile && read.notes.empty());
     CHECK(read.profile->mic.low_cut == 5000.0f && read.profile->mic.most_gain == 6.0f);
     CHECK(read.profile->mic.high_cut == MicProfile{}.high_cut);
+}
+
+TEST(a_camera_sets_how_its_look_light_and_stamp_behave) {
+    const auto read = read_camera(R"({
+        "look": {"grain_size": 3, "grain_colour": 1, "highlight_knee": 0.85, "drift_seconds": [5, 90]},
+        "stamp": {"corner": "top-right", "size": 2, "outline": false},
+        "light": {"strength": 4, "colour": [180, 200, 255]},
+        "viewfinder": {"text": [255, 200, 0]}
+    })", "led");
+    CHECK(read.profile && read.notes.empty());
+    const auto &c = *read.profile;
+    CHECK(c.look.grain_size == 3 && c.look.grain_colour == 1);
+    CHECK_NEAR(c.look.highlight_knee, 0.85, 1e-6);
+    CHECK(c.look.drift_seconds[0] == 90 && c.look.drift_seconds[1] == 5); // the slow one first
+    CHECK(c.stamp.corner == StampProfile::Corner::top_right && c.stamp.size == 2 && !c.stamp.outline);
+    CHECK(c.light.strength == 4 && c.light.colour[2] == 255 && c.light.reach == LightProfile{}.reach);
+    CHECK(c.viewfinder_text[1] == 200 && c.viewfinder_rec == vx1000().viewfinder_rec);
+    const auto wrong = read_camera(R"({"light": {"colour": [1, 2]}, "stamp": {"size": 9}})", "x");
+    CHECK(wrong.notes.size() == 2); // a colour needs three numbers; a size is kept to 4
+}
+
+TEST(a_fisheye_bends_by_its_projection) {
+    const auto read = read_adapter(R"({"fov": 150, "projection": "equisolid"})", "modern");
+    CHECK(read.profile && read.notes.empty() && read.profile->projection == Projection::equisolid);
+    CHECK(read_adapter(write_adapter(*read.profile), "modern").profile == read.profile);
+    // Every projection meets the edge of the picture at the lens's half angle; between, they differ.
+    const float half = 75 * degrees;
+    for (const auto p : {Projection::equidistant, Projection::equisolid, Projection::stereographic})
+        CHECK_NEAR(fisheye_angle(p, 1, half), half, 1e-4);
+    // Squeezed edges leave the middle bigger (less angle there); rounder edges, the middle smaller.
+    CHECK(fisheye_angle(Projection::equisolid, 0.5f, half) < fisheye_angle(Projection::equidistant, 0.5f, half));
+    CHECK(fisheye_angle(Projection::orthographic, 0.5f, half) < fisheye_angle(Projection::equisolid, 0.5f, half));
+    CHECK(fisheye_angle(Projection::stereographic, 0.5f, half) > fisheye_angle(Projection::equidistant, 0.5f, half));
+    // The render still covers the picture: the warp's corners have picture to sample.
+    Adapter lens = century_fisheye();
+    lens.projection = Projection::orthographic;
+    const auto o = optics(&lens, 0, FisheyeRender::warp);
+    CHECK(o.warped && o.projection == Projection::orthographic && o.render_vertical_fov > o.vertical_fov);
+    CHECK(read_adapter(R"({"projection": "bendy"})", "x").notes.size() == 1);
 }

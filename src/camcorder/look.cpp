@@ -52,6 +52,9 @@ void tone_and_balance(Image &image, const DvLook &look, const LookProfile &profi
             table[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)] = byte(static_cast<int>(std::lround(v * 255)));
         }
     }
+    // Where blown highlights start going white, and how soon they are: bytes.
+    const int knee = static_cast<int>(std::lround(std::clamp(profile.highlight_knee, 0.5f, 1.0f) * 255));
+    const int spread = std::max(1, static_cast<int>(std::lround(std::clamp(profile.highlight_spread, 0.005f, 0.5f) * 255)));
     // Saturation in 1/256ths, about luma.
     const int saturation = look.highlights ? static_cast<int>(std::lround(std::clamp(profile.saturation, 0.0f, 2.0f) * 256)) : 256;
     for_rows(image.height, [&](int first, int last) {
@@ -66,8 +69,8 @@ void tone_and_balance(Image &image, const DvLook &look, const LookProfile &profi
                 if (!look.highlights || gain <= 1) continue;
                 // A clipped channel bleeds into the others: blown highlights go white, not orange.
                 const int top = std::max({p[0], p[1], p[2]});
-                if (top > 236) {
-                    const int pull = (top - 236) * 256 / 19;
+                if (top > knee) {
+                    const int pull = std::min((top - knee) * 256 / spread, 256);
                     for (int c = 0; c < 3; ++c) p[c] = byte(p[c] + ((255 - p[c]) * pull >> 8));
                 }
             }
@@ -76,10 +79,10 @@ void tone_and_balance(Image &image, const DvLook &look, const LookProfile &profi
 }
 
 // Edge enhancement along the line (as a camera's aperture correction works): each pixel pushed away
-// from the average of its neighbours `reach` pixels either side, by `amount` (0.44 a VX1000's).
-void sharpen(Image &image, float amount) {
+// from the average of its neighbours `radius` pixels (of a 720-wide picture) either side, by `amount`.
+void sharpen(Image &image, float amount, float radius) {
     const int w = image.width;
-    const int reach = std::max(1, w / 640);
+    const int reach = std::max(1, static_cast<int>(std::lround(std::clamp(radius, 0.25f, 8.0f) * static_cast<float>(w) / 720.0f)));
     const int strength = static_cast<int>(std::lround(std::clamp(amount, 0.0f, 2.0f) * 256));
     for_rows(image.height, [&](int first, int last) {
         std::vector<std::uint8_t> line(static_cast<std::size_t>(w) * 4);
@@ -99,22 +102,34 @@ void sharpen(Image &image, float amount) {
     });
 }
 
-// Noise, the same on every channel (a sensor's or film's), new every frame.
-void add_grain(Image &image, float amount, std::int64_t index) {
+// Noise for one grain cell and frame, about -255 to 255 (two uniform draws added: a softer, more
+// grain-like spread than one). `salt` picks another, independent draw (a colour channel's).
+int grain_noise(std::uint32_t cx, std::uint32_t cy, std::uint32_t frame, std::uint32_t salt) {
+    std::uint32_t h = cx * 0x85EBCA6Bu ^ cy * 0xC2B2AE35u ^ frame ^ salt * 0x27D4EB2Fu;
+    h ^= h >> 15;
+    h *= 0x2C1B3C6Du;
+    h ^= h >> 12;
+    return static_cast<int>(h & 0xff) + static_cast<int>((h >> 8) & 0xff) - 255;
+}
+// Noise, new every frame, in cells `size` pixels (of a 720-wide picture) across: the same on every
+// channel (a CCD's), or with `colour`, partly each channel's own (cheap tape, film).
+void add_grain(Image &image, float amount, std::int64_t index, float size, float colour) {
     const int strength = static_cast<int>(std::lround(std::clamp(amount, 0.0f, 1.0f) * 56));
     if (strength <= 0) return;
     const auto frame = static_cast<std::uint32_t>(index * 0x9E3779B9u);
+    const float cell = std::max(1.0f, std::clamp(size, 0.25f, 8.0f) * static_cast<float>(image.width) / 720.0f);
+    const int own = static_cast<int>(std::lround(std::clamp(colour, 0.0f, 1.0f) * 256));
     for_rows(image.height, [&](int first, int last) {
         for (int y = first; y < last; ++y) {
             auto *p = image.pixels.data() + at(image, 0, y);
+            const auto cy = static_cast<std::uint32_t>(static_cast<float>(y) / cell);
             for (int x = 0; x < image.width; ++x, p += 4) {
-                std::uint32_t h = static_cast<std::uint32_t>(x) * 0x85EBCA6Bu ^ static_cast<std::uint32_t>(y) * 0xC2B2AE35u ^ frame;
-                h ^= h >> 15;
-                h *= 0x2C1B3C6Du;
-                h ^= h >> 12;
-                // Two uniform draws added: a softer, more grain-like spread than one.
-                const int noise = (static_cast<int>(h & 0xff) + static_cast<int>((h >> 8) & 0xff) - 255) * strength / 255;
-                for (int c = 0; c < 3; ++c) p[c] = byte(p[c] + noise);
+                const auto cx = static_cast<std::uint32_t>(static_cast<float>(x) / cell);
+                const int shared = grain_noise(cx, cy, frame, 0);
+                for (int c = 0; c < 3; ++c) {
+                    const int mixed = own ? (shared * (256 - own) + grain_noise(cx, cy, frame, static_cast<std::uint32_t>(c + 1)) * own) >> 8 : shared;
+                    p[c] = byte(p[c] + mixed * strength / 255);
+                }
             }
         }
     });
@@ -189,10 +204,10 @@ void dv_camera(Image &image, const DvLook &look, const LookProfile &profile, boo
                std::int64_t index, double frame_rate) {
     if (!look.on || image.width <= 0 || image.height <= 0) return;
     if (fields) keep_field(image, static_cast<int>(index & 1));
-    if (look.grain) add_grain(image, profile.grain, index);
+    if (look.grain) add_grain(image, profile.grain, index, profile.grain_size, profile.grain_colour);
     const double seconds = frame_rate > 0 ? static_cast<double>(index) / frame_rate : 0;
     if (look.highlights || look.white_balance) tone_and_balance(image, look, profile, clip, seconds);
-    if (look.sharpen && profile.sharpen > 0) sharpen(image, profile.sharpen);
+    if (look.sharpen && profile.sharpen > 0) sharpen(image, profile.sharpen, profile.sharpen_radius);
 }
 void dv_tape(Image &image, const DvLook &look, const LookProfile &profile) {
     if (!look.on || !look.chroma || image.width <= 0 || image.height <= 0) return;
@@ -321,23 +336,25 @@ std::vector<std::string> date_stamp_lines(const std::tm &t, int year, const Stam
 StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile &stamp) {
     StampMarks marks;
     marks.colour = stamp.colour;
+    marks.outline_colour = stamp.outline_colour;
     if (width < 64 || height < 48) return marks;
     const auto lines = date_stamp_lines(local_time, year, stamp);
-    const int dot = std::max(1, static_cast<int>(std::lround(height / 130.0)));
+    const int dot = std::max(1, static_cast<int>(std::lround(height / 130.0 * std::clamp(stamp.size, 0.25f, 4.0f))));
     const int edge = std::max(1, dot / 3);
     // Inside the picture's safe area, as the camera kept it.
-    const int margin = static_cast<int>(width * 0.07f);
-    const bool left = stamp.corner == StampProfile::Corner::bottom_left;
-    const int bottom = height - static_cast<int>(height * 0.08f);
+    const int margin = static_cast<int>(static_cast<float>(width) * std::clamp(stamp.margin[0], 0.0f, 0.4f));
+    const int from_edge = static_cast<int>(static_cast<float>(height) * std::clamp(stamp.margin[1], 0.0f, 0.4f));
+    const bool left = stamp.corner == StampProfile::Corner::bottom_left || stamp.corner == StampProfile::Corner::top_left;
+    const bool at_top = stamp.corner == StampProfile::Corner::top_left || stamp.corner == StampProfile::Corner::top_right;
     const int line_height = 9 * dot;
     const int count = static_cast<int>(lines.size());
-    const int top = bottom - count * line_height + 2 * dot;
+    const int top = at_top ? from_edge : height - from_edge - count * line_height + 2 * dot;
     for (int i = 0; i < count; ++i) {
         const auto &text = lines[static_cast<std::size_t>(i)];
         const int text_width = static_cast<int>(text.size()) * 6 * dot - dot;
         const int right = left ? margin + text_width : width - margin;
         each_dot(text, right, top + i * line_height, dot, [&](int x, int y) {
-            marks.edges.push_back({x - edge, y - edge, dot + 2 * edge, dot + 2 * edge});
+            if (stamp.outline) marks.edges.push_back({x - edge, y - edge, dot + 2 * edge, dot + 2 * edge});
             marks.dots.push_back({x, y, dot, dot});
         });
     }
@@ -347,7 +364,7 @@ StampMarks stamp_marks(int width, int height, const std::tm &local_time, int yea
 void burn_date(Image &image, const std::tm &local_time, int year, const StampProfile &stamp) {
     const auto marks = stamp_marks(image.width, image.height, local_time, year, stamp);
     // The dark edge first, then the dots over it.
-    for (const auto &b : marks.edges) fill(image, b.x, b.y, b.x + b.width, b.y + b.height, {16, 16, 16});
+    for (const auto &b : marks.edges) fill(image, b.x, b.y, b.x + b.width, b.y + b.height, marks.outline_colour);
     for (const auto &b : marks.dots) fill(image, b.x, b.y, b.x + b.width, b.y + b.height, marks.colour);
 }
 
@@ -355,8 +372,10 @@ std::array<float, 2> white_balance(const LookProfile &profile, const DvClip &cli
     if (!(profile.white_balance_drift > 0)) return {1, 1};
     // Two slow wanders, never in step: a cast that drifts over tens of seconds, never still.
     const double phase = clip.seed * two_pi, amount = profile.white_balance_drift;
-    const double cast = amount * std::sin(seconds * two_pi / 37.0 + phase) +
-                        0.57 * amount * std::sin(seconds * two_pi / 11.0 + 2.1 * phase);
+    const double slow = std::clamp(static_cast<double>(profile.drift_seconds[0]), 1.0, 3600.0);
+    const double quick = std::clamp(static_cast<double>(profile.drift_seconds[1]), 1.0, 3600.0);
+    const double cast = amount * std::sin(seconds * two_pi / slow + phase) +
+                        0.57 * amount * std::sin(seconds * two_pi / quick + 2.1 * phase);
     return {static_cast<float>(1 + cast), static_cast<float>(1 - cast)};
 }
 
@@ -377,6 +396,11 @@ ScreenLook screen_look(const Finish &finish, const DvClip &clip, double seconds)
         s.red_gain = gains[0];
         s.blue_gain = gains[1];
     }
+    s.highlight_knee = std::clamp(p.highlight_knee, 0.5f, 1.0f);
+    s.highlight_spread = std::clamp(p.highlight_spread, 0.005f, 0.5f);
+    s.grain_size = std::clamp(p.grain_size, 0.25f, 8.0f);
+    s.grain_colour = std::clamp(p.grain_colour, 0.0f, 1.0f);
+    s.sharpen_radius = std::clamp(p.sharpen_radius, 0.25f, 8.0f);
     if (look.sharpen) s.sharpen = std::clamp(p.sharpen, 0.0f, 2.0f);
     if (look.grain) s.grain = std::clamp(p.grain, 0.0f, 1.0f);
     if (look.chroma) {

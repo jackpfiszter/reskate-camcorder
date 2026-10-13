@@ -28,6 +28,12 @@ struct LensSpec {
 };
 inline constexpr LensSpec vx1000_lens{};
 
+// How a fisheye bends: the angle off the lens's axis against the distance from the picture's
+// centre. Equidistant in step (the Century's); equisolid squeezes the edges a little more (most
+// modern fisheyes); stereographic keeps shapes rounder toward the edges; orthographic squeezes the
+// edges hardest (a "bubble").
+enum class Projection : std::uint8_t { equidistant, equisolid, stereographic, orthographic };
+
 // A lens screwed onto the front of the camera's own: a fisheye, or a flat wide or tele converter.
 // The built-in one is the Century below; mods add more (profiles.h). No adapter is the stock lens.
 struct Adapter {
@@ -36,6 +42,7 @@ struct Adapter {
     bool fisheye{};
     // A fisheye's degrees across the 4:3 picture with the camera's lens at its widest.
     float fisheye_fov{};
+    Projection projection{Projection::equidistant};
     // A flat converter's effect on focal length: 0.5 for a half-wide, 1.5 for a tele converter.
     float magnification{1};
     // The housing's round shadow, as a radius in half picture widths (the picture's corners are at
@@ -65,6 +72,7 @@ struct Optics {
     float horizontal_fov{};   // degrees across the 4:3 picture the viewer sees
     float vertical_fov{};     // degrees up and down it
     bool fisheye{};
+    Projection projection{Projection::equidistant}; // a fisheye's
     float vignette_radius{};  // half picture widths; 0 when the housing's shadow is outside the picture
     float render_vertical_fov{}; // degrees: what to give the game's (flat, vertical-FOV) camera
     bool warped{};            // the flat render is opened for the warp (FisheyeRender::warp)
@@ -83,12 +91,15 @@ Optics optics(const Adapter *adapter, float zoom, FisheyeRender = FisheyeRender:
 
 // For the warp: a point of the recorded picture, x and y in half picture widths from its centre
 // (x right in [-1, 1], y up in [-0.75, 0.75]), to where it is in the flat render, as tangents
-// (screen x = tan / tan(half horizontal render FOV)). The fisheye is equidistant: the angle
-// off-axis grows in step with the distance from the centre.
+// (screen x = tan / tan(half horizontal render FOV)). How the angle off-axis grows with the
+// distance from the centre is the fisheye's projection.
 struct Tangent {
     float x{}, y{};
 };
 Tangent fisheye_source(const Optics &, float x, float y) noexcept;
+// The angle off-axis (radians) at `rho` half picture widths from the centre, for a fisheye `half`
+// radians across half the picture's width.
+float fisheye_angle(Projection, float rho, float half) noexcept;
 // The same point as a texture coordinate in the whole flat render (u right, v down, 0 to 1 across the
 // back buffer), which is `render_aspect` wide for 1 tall and `optics.render_vertical_fov` tall.
 struct TextureUv {

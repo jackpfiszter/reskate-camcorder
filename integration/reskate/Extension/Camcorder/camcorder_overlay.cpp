@@ -14,6 +14,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_dx12.h>
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <cfloat>
 #include <chrono>
@@ -25,11 +26,13 @@
 namespace dingosdk::overlay {
 namespace {
 using namespace dingosdk::camcorder;
+// The readouts' colours: the camera's own (its profile's "viewfinder"), set each frame.
+std::array<std::uint8_t, 3> text_ink{240, 240, 240}, rec_ink{235, 40, 40};
 ImU32 ink(Ink value) {
     switch (value) {
-    case Ink::red: return IM_COL32(235, 40, 40, 255);
+    case Ink::red: return IM_COL32(rec_ink[0], rec_ink[1], rec_ink[2], 255);
     case Ink::amber: return IM_COL32(255, 190, 40, 255);
-    case Ink::white: default: return IM_COL32(240, 240, 240, 255);
+    case Ink::white: default: return IM_COL32(text_ink[0], text_ink[1], text_ink[2], 255);
     }
 }
 // Black outside a circle, inside the picture: a ring of quads from the circle out to a radius
@@ -129,8 +132,16 @@ PicturePass pass_numbers(const camcorder_runtime::Published &p, const Rect &pict
     pass.output[2] = look.highlight_bleed ? 1.0f : 0.0f;
     // The camera's own lines (the look's softest, most visible part), and the light on top of it.
     pass.camera[0] = look.on && p.finish.dv.chroma ? static_cast<float>(std::clamp(p.own_lines, 120, 1080)) : 0.0f;
-    pass.camera[1] = p.light ? 2.5f : 0.0f;
-    pass.camera[2] = 0.8f;
+    const auto &lamp = p.finish.light;
+    pass.camera[1] = p.light ? std::clamp(lamp.strength, 0.0f, 10.0f) : 0.0f;
+    pass.camera[2] = std::clamp(lamp.reach, 0.1f, 3.0f);
+    pass.camera[3] = look.sharpen_radius;
+    pass.detail[0] = look.highlight_knee;
+    pass.detail[1] = look.highlight_spread;
+    pass.detail[2] = look.grain_size;
+    pass.detail[3] = look.grain_colour;
+    for (int i = 0; i < 3; ++i) pass.lamp[i] = static_cast<float>(lamp.colour[static_cast<std::size_t>(i)]) / 255.0f;
+    pass.bend[0] = static_cast<float>(static_cast<int>(o.projection));
     return pass;
 }
 
@@ -147,7 +158,7 @@ void draw_stamp(ImDrawList *list, const camcorder_runtime::Published &p, const R
         list->AddRectFilled({left + static_cast<float>(b.x), top + static_cast<float>(b.y)},
                             {left + static_cast<float>(b.x + b.width), top + static_cast<float>(b.y + b.height)}, colour);
     };
-    for (const auto &b : marks.edges) box(b, IM_COL32(16, 16, 16, 255));
+    for (const auto &b : marks.edges) box(b, IM_COL32(marks.outline_colour[0], marks.outline_colour[1], marks.outline_colour[2], 255));
     for (const auto &b : marks.dots) box(b, IM_COL32(marks.colour[0], marks.colour[1], marks.colour[2], 255));
 }
 // A dark panel with a thin edge, for the quick menu and the guide.
@@ -240,6 +251,8 @@ bool camcorder_pending() {
 
 void draw_camcorder() {
     const auto p = camcorder_runtime::published();
+    text_ink = p.viewfinder_text;
+    rec_ink = p.viewfinder_rec;
     const auto &io = ImGui::GetIO();
     if (io.DisplaySize.y > 0) camcorder_runtime::note_render_aspect(io.DisplaySize.x / io.DisplaySize.y);
     ViewfinderOptions options;

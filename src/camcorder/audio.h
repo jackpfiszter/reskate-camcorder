@@ -129,16 +129,27 @@ EarPlacement ear_placement(const std::array<float, 16> &camera, const std::array
 // The game's sound as the camera would hear it: further off it is quieter and duller (the air takes
 // the highs), and it comes from the skater's side of the picture. Close to the skater (handheld) it
 // leaves the sound alone. Changes glide, so a cut between tripods or a fast pan doesn't click.
+// How far sound carries to the camera (a handling.json's "sound"; the defaults are as built).
+struct EarSettings {
+    float near{3};      // metres: closer than this, the game's sound as it is
+    float floor{0.12f}; // the quietest a far-off skater gets (of their level close by)
+    float air{10};      // metres beyond `near` over which the top end halves (the air takes the highs)
+    float pan{0.7f};    // how far a far-off skater's sound moves to their side of the picture, 0 to 1
+    bool operator==(const EarSettings &) const = default;
+};
+
 class CameraEar {
 public:
+    explicit CameraEar(EarSettings settings = {}) : settings_(settings) {}
     // Interleaved stereo floats, in place, heard from `where`.
     void process(float *interleaved, std::size_t frames, EarPlacement where) noexcept;
     // What it does at a distance, at rest (for tests and the docs): the level and the top it keeps.
-    static float gain_at(float distance) noexcept;
-    static float cutoff_at(float distance) noexcept; // Hz
-    static float pan_amount_at(float distance) noexcept; // 0: the game's stereo, 1: all re-panned
+    float gain_at(float distance) const noexcept;
+    float cutoff_at(float distance) const noexcept;     // Hz
+    float pan_amount_at(float distance) const noexcept; // 0: the game's stereo, 1: all re-panned
 
 private:
+    EarSettings settings_;
     bool started_{};
     float gain_{1}, cutoff_{20000}, side_{}, amount_{};
     float low_[audio_channels]{};

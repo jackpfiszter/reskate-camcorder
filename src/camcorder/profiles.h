@@ -36,6 +36,9 @@ struct CameraProfile {
     LookProfile look;
     StampProfile stamp;
     MicProfile mic;                  // its own microphone (`camcorder sound mic`)
+    LightProfile light;              // the lamp on it (`camcorder light`)
+    // The viewfinder's readouts: their colour, and the REC light's.
+    std::array<std::uint8_t, 3> viewfinder_text{240, 240, 240}, viewfinder_rec{235, 40, 40};
     std::string source;              // the mod folder it came from; empty when built in
     bool operator==(const CameraProfile &) const = default;
 };
@@ -62,6 +65,7 @@ struct Handling {
     float aim_damping{0.7f}; // under 1 a flick carries on a little past
     float hunting{1};        // a person's small corrections chasing a subject (0: none)
     HandShake::Amounts shake;
+    EarSettings sound;            // how far sound carries to the camera
     // Tripods.
     float tripod_height{1.1f};    // a new tripod's
     float tripod_drag{0.35f};     // seconds the fluid head takes to answer the handle

@@ -15,10 +15,26 @@
     "sharpen": 0,
     "grain": 0.45,
     "chroma_width": 0,
-    "softness": 1
+    "softness": 1,
+    "grain_size": 2.5,
+    "grain_colour": 0.6,
+    "highlight_knee": 0.85,
+    "highlight_spread": 0.15,
+    "drift_seconds": [20, 6]
   },
   "stamp": {
     "lines": "date",
-    "colour": [255, 140, 40]
+    "colour": [255, 140, 40],
+    "size": 1.3,
+    "outline": false
+  },
+  "light": {
+    "strength": 3,
+    "reach": 0.7,
+    "colour": [255, 220, 170]
+  },
+  "viewfinder": {
+    "text": [255, 190, 90],
+    "rec": [255, 90, 40]
   }
 }

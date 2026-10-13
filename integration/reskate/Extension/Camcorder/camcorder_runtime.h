@@ -11,6 +11,7 @@
 #include "camcorder/audio.h"
 #include "camcorder/camcorder.h"
 #include "camcorder/look.h"
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -62,6 +63,7 @@ struct Published {
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
     bool closest{};                   // filming whoever is nearest (subject: who that is now)
     bool light{};                     // the light on the camera (`camcorder light`)
+    std::array<std::uint8_t, 3> viewfinder_text{240, 240, 240}, viewfinder_rec{235, 40, 40}; // the camera's readouts
     std::string subject;  // who is, empty for nobody
     bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
     camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`

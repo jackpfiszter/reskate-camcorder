@@ -51,7 +51,8 @@ HandShake::Offset HandShake::step(float dt, float speed, bool on_board, float st
     // Three bands of noise an axis, about as fast as breathing, the arm and the wrist (the noise
     // swings about half as far as a sine of the same size: hence the 1.6).
     const auto band = [&](int index, float rate) {
-        return 1.6f * smooth_noise(seed_ * 16 + static_cast<std::uint32_t>(index), static_cast<double>(t) * rate * 2 + phases_[index]);
+        const double speed = std::clamp(std::isfinite(amounts.speed) ? amounts.speed : 1.0f, 0.1f, 8.0f);
+        return 1.6f * smooth_noise(seed_ * 16 + static_cast<std::uint32_t>(index), static_cast<double>(t) * rate * 2 * speed + phases_[index]);
     };
     const auto wave = [&](int axis, float a, float b, float c) {
         return a * band(axis * 3, 0.31f) + b * band(axis * 3 + 1, 0.87f) + c * band(axis * 3 + 2, 2.3f);

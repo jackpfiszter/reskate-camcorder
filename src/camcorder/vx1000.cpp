@@ -10,7 +10,7 @@ constexpr float widest_approximate = 100.0f;  // degrees: the most a flat stand-
 } // namespace
 
 const Adapter &century_fisheye() {
-    static const Adapter century{"century", "Century Optics 0.3x fisheye", true, 125.0f, 1, 1.08f, 0.35f, {}};
+    static const Adapter century{"century", "Century Optics 0.3x fisheye", true, 125.0f, Projection::equidistant, 1, 1.08f, 0.35f, {}};
     return century;
 }
 
@@ -24,6 +24,16 @@ float rectilinear_fov(float extent_mm, float focal_mm) noexcept {
     return 2 * std::atan(extent_mm * 0.5f / focal_mm) / degrees;
 }
 
+float fisheye_angle(Projection projection, float rho, float half) noexcept {
+    switch (projection) {
+    case Projection::equisolid: return 2 * std::asin(std::min(rho * std::sin(half * 0.5f), 1.0f));
+    case Projection::stereographic: return 2 * std::atan(rho * std::tan(half * 0.5f));
+    case Projection::orthographic: return std::asin(std::min(rho * std::sin(std::min(half, pi * 0.5f)), 1.0f));
+    case Projection::equidistant: break;
+    }
+    return rho * half;
+}
+
 Tangent fisheye_source(const Optics &o, float x, float y) noexcept {
     const float half = o.horizontal_fov * 0.5f * degrees;
     if (!o.fisheye) {
@@ -32,7 +42,7 @@ Tangent fisheye_source(const Optics &o, float x, float y) noexcept {
     }
     const float rho = std::sqrt(x * x + y * y);
     if (!(rho > 1e-6f)) return {};
-    const float t = std::tan(std::min(rho * half, widest_ray)) / rho;
+    const float t = std::tan(std::min(fisheye_angle(o.projection, rho, half), widest_ray)) / rho;
     return {x * t, y * t};
 }
 
@@ -64,6 +74,7 @@ Optics optics(const Adapter *adapter, float zoom, FisheyeRender render, float re
     }
     // Equidistant: the angle shrinks in step with zoom, and is linear in the distance from centre.
     o.fisheye = true;
+    o.projection = adapter->projection;
     o.horizontal_fov = adapter->fisheye_fov / o.zoom_ratio;
     o.vertical_fov = o.horizontal_fov * picture_half_height;
     o.vignette_radius = shadow(adapter->vignette_radius, adapter->vignette_growth);

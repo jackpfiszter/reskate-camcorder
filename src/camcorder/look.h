@@ -61,19 +61,38 @@ struct LookProfile {
     float grain{0.04f};              // noise, 0 none, 1 heavy (a CCD in shade: a little)
     float chroma_width{4};           // colour averaged over this many pixels of a 720-wide picture
     float softness{0};               // blur, in pixels of a 720-wide picture (VHS about 1.5)
+    // How each of those behaves (the amounts above say how strong):
+    float highlight_knee{0.925f};    // where a clipped channel starts to bleed into the others (of white)
+    float highlight_spread{0.075f};  // how far above the knee it is fully white
+    float grain_size{1};             // the grain's size, in pixels of a 720-wide picture (film: 2 or 3)
+    float grain_colour{0};           // 0 the same on every channel (a CCD's), 1 colour noise (cheap tape, film)
+    float sharpen_radius{1};         // the halo's reach, in pixels of a 720-wide picture
+    std::array<float, 2> drift_seconds{37, 11}; // the white balance's two wanders: a slow one and a quicker one
     bool operator==(const LookProfile &) const = default;
 };
 
 // How a camera's date stamp looks.
 struct StampProfile {
-    enum class Corner : std::uint8_t { bottom_right, bottom_left };
+    enum class Corner : std::uint8_t { bottom_right, bottom_left, top_right, top_left };
     enum class Lines : std::uint8_t { time_over_date, date_only, date_over_time };
     enum class Date : std::uint8_t { month_day_year, day_month_year };
     Corner corner{Corner::bottom_right};
     Lines lines{Lines::time_over_date};
     Date date{Date::month_day_year};
     std::array<std::uint8_t, 3> colour{235, 235, 235}; // R, G, B
+    float size{1};                                       // 1 as a VX1000's: a dot is 1/130 of the picture's height
+    std::array<float, 2> margin{0.07f, 0.08f};           // from the picture's side and its top or bottom, in fractions of it
+    bool outline{true};                                  // a dark edge round each dot
+    std::array<std::uint8_t, 3> outline_colour{16, 16, 16};
     bool operator==(const StampProfile &) const = default;
+};
+
+// A lamp on the camera (`camcorder light`): what the picture's middle is lit by.
+struct LightProfile {
+    float strength{2.5f};                                // how much it brightens the middle (light times 1 + this)
+    float reach{0.8f};                                   // the beam's width, in half picture widths
+    std::array<std::uint8_t, 3> colour{255, 245, 224};   // a halogen lamp on a camera balanced for daylight
+    bool operator==(const LightProfile &) const = default;
 };
 
 // The player's switches for the look.
@@ -99,6 +118,8 @@ struct Finish {
     LookProfile look;
     StampProfile stamp;
     MicProfile mic;
+    LightProfile light;
+    EarSettings ear; // how far sound carries to the camera (the handling's)
     bool operator==(const Finish &) const = default;
     // A clip's frames are fields: the look's fields on an interlaced camera.
     bool fields() const { return dv.on && dv.fields && interlaced(motion); }
@@ -124,7 +145,7 @@ void burn_date(Image &image, const std::tm &local_time, int year, const StampPro
 // them. burn_date draws these; the overlay draws the same on screen.
 struct StampMarks {
     std::vector<PixelBox> edges, dots;
-    std::array<std::uint8_t, 3> colour{};
+    std::array<std::uint8_t, 3> colour{}, outline_colour{};
 };
 StampMarks stamp_marks(int width, int height, const std::tm &local_time, int year, const StampProfile & = {});
 
@@ -151,6 +172,8 @@ struct ScreenLook {
     float red_gain{1}, blue_gain{1};
     float sharpen{}, grain{};
     float chroma_width{}, softness{}; // in pixels of a 720-wide picture
+    float highlight_knee{0.925f}, highlight_spread{0.075f};
+    float grain_size{1}, grain_colour{}, sharpen_radius{1}; // sizes in pixels of a 720-wide picture
 };
 ScreenLook screen_look(const Finish &, const DvClip &, double seconds);
 // How often the screen shows a new picture for a film-like camera (24p, Super 8's 18), so it moves

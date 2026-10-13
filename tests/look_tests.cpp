@@ -1,5 +1,6 @@
 #include "camcorder/look.h"
 #include "check.h"
+#include <algorithm>
 #include <cstdlib>
 
 using namespace dingosdk::camcorder;
@@ -260,4 +261,47 @@ TEST(the_camera_clock_can_be_set) {
     CHECK(!clock_offset("12/10/1996", "", now));
     CHECK(!clock_offset("1996-10-12", "25:00", now));
     CHECK(clock_offset("1996-10-12", "", now).has_value()); // the time of day kept
+}
+
+TEST(a_stamp_sits_where_and_as_big_as_its_camera_says) {
+    const auto when = moment(1996, 10, 12, 16, 3, 22);
+    StampProfile stamp;
+    const auto normal = stamp_marks(640, 480, when, 0, stamp);
+    stamp.size = 2;
+    stamp.corner = StampProfile::Corner::top_left;
+    stamp.outline = false;
+    const auto big = stamp_marks(640, 480, when, 0, stamp);
+    CHECK(big.edges.empty());                                   // no outline
+    CHECK(big.dots.front().width >= 2 * normal.dots.front().width - 1); // about twice (whole pixels)
+    int lowest = 480, leftmost = 640;
+    for (const auto &d : big.dots) {
+        lowest = std::min(lowest, d.y);
+        leftmost = std::min(leftmost, d.x);
+    }
+    CHECK(lowest < 100 && leftmost < 100);                      // top left
+}
+
+TEST(grain_comes_in_cells_of_its_size_and_can_be_colour) {
+    DvLook look;
+    look.on = true;
+    look.fields = look.highlights = look.white_balance = look.sharpen = look.chroma = false;
+    LookProfile coarse;
+    coarse.grain = 1;
+    coarse.grain_size = 4; // 4 pixels of a 720-wide picture: about 3.6 here
+    Image grey;
+    grey.resize(720, 8);
+    std::fill(grey.pixels.begin(), grey.pixels.end(), std::uint8_t{128});
+    auto image = grey;
+    apply_dv(image, look, coarse, {}, 5, 30.0);
+    CHECK(pixel(image, 0, 0)[0] == pixel(image, 1, 0)[0] && pixel(image, 1, 0)[0] == pixel(image, 2, 0)[0]);
+    CHECK(pixel(image, 0, 0)[0] == pixel(image, 0, 1)[0]);
+    bool grey_noise = true;
+    for (int x = 0; x < 720; ++x) grey_noise = grey_noise && pixel(image, x, 0)[0] == pixel(image, x, 0)[2];
+    CHECK(grey_noise); // a CCD's: the same on every channel
+    coarse.grain_colour = 1;
+    image = grey;
+    apply_dv(image, look, coarse, {}, 5, 30.0);
+    bool coloured = false;
+    for (int x = 0; x < 720; ++x) coloured = coloured || pixel(image, x, 0)[0] != pixel(image, x, 0)[2];
+    CHECK(coloured);
 }

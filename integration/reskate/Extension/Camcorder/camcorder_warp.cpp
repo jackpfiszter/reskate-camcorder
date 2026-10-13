@@ -65,7 +65,10 @@ cbuffer Constants : register(b0) {
     float4 colour;  // red gain, blue gain, sharpen, grain
     float4 tape;    // chroma width, softness (both in pixels of a 720-wide picture), screen pixels per such pixel, frame
     float4 output;  // transfer (0 SDR, 1 scRGB, 2 HDR10), white (nits), highlight bleed (0 / 1), unused
-    float4 camera;  // the camera's lines (0: the screen's own), light strength (0 off), light reach (picture half widths), unused
+    float4 camera;  // the camera's lines (0: the screen's own), light strength (0 off), light reach (picture half widths), sharpen radius (720ths)
+    float4 detail;  // highlight knee, highlight spread, grain size (720ths), grain colour (0 the same on each channel, 1 its own)
+    float4 lamp;    // the light's colour (red, green, blue), unused
+    float4 bend;    // the fisheye's projection (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic), unused
 };
 Texture2D picture : register(t0);
 SamplerState linear_clamp : register(s0);
@@ -86,7 +89,12 @@ float2 source_uv(float2 pixel) {
     if (lens.x < 0.5) return pixel * screen.zw;
     float2 p = picture_point(pixel);
     float rho = length(p);
-    float2 t = rho > 1e-6 ? p * (tan(min(rho * lens.y, 1.4835298)) / rho) : float2(0, 0);
+    // The angle off-axis there, by the fisheye's projection (vx1000.cpp fisheye_angle).
+    float angle = rho * lens.y;
+    if (bend.x > 2.5) angle = asin(min(rho * sin(min(lens.y, 1.5707963)), 1));
+    else if (bend.x > 1.5) angle = 2 * atan(rho * tan(lens.y * 0.5));
+    else if (bend.x > 0.5) angle = 2 * asin(min(rho * sin(lens.y * 0.5), 1));
+    float2 t = rho > 1e-6 ? p * (tan(min(angle, 1.4835298)) / rho) : float2(0, 0);
     return float2(0.5 + 0.5 * t.x / (lens.z * lens.w), 0.5 - 0.5 * t.y / lens.z);
 }
 
@@ -155,13 +163,13 @@ float3 camera_light(float3 c, float2 pixel) {
     float r = length(p) / max(camera.z, 0.05);
     float beam = exp(-r * r * 1.6);
     float3 lin = srgb_decode(c);
-    float3 warm = float3(1.0, 0.96, 0.88); // a halogen lamp on a camera balanced for daylight
-    lin *= 1 + camera.y * beam * warm;
+    lin *= 1 + camera.y * beam * lamp.rgb; // the lamp's colour: a halogen's is warm on a daylight-balanced camera
     return srgb_encode(lin);
 }
-// Noise for one 720-wide pixel and frame, about -1 to 1 (two draws added, as in look.cpp).
-float grain_noise(float2 cell, float frame) {
-    uint h = (uint)cell.x * 0x85EBCA6Bu ^ (uint)cell.y * 0xC2B2AE35u ^ (uint)frame * 0x9E3779B9u;
+// Noise for one grain cell and frame, about -1 to 1 (two draws added, as in look.cpp); `salt` an
+// independent draw (a colour channel's own).
+float grain_noise(float2 cell, float frame, uint salt) {
+    uint h = (uint)cell.x * 0x85EBCA6Bu ^ (uint)cell.y * 0xC2B2AE35u ^ (uint)frame * 0x9E3779B9u ^ salt * 0x27D4EB2Fu;
     h ^= h >> 15;
     h *= 0x2C1B3C6Du;
     h ^= h >> 12;
@@ -172,7 +180,7 @@ float grain_noise(float2 cell, float frame) {
 // an SDR camera's range, which would clip an HDR picture's highlights everywhere.
 float3 light_gain(float2 pixel) {
     float r = length(picture_point(pixel)) / max(camera.z, 0.05);
-    return 1 + camera.y * exp(-r * r * 1.6) * float3(1.0, 0.96, 0.88);
+    return 1 + camera.y * exp(-r * r * 1.6) * lamp.rgb;
 }
 
 float4 picture_ps(float4 position : SV_Position) : SV_Target {
@@ -203,8 +211,9 @@ float4 picture_ps(float4 position : SV_Position) : SV_Target {
     }
     float y = bright / bright_count;
     // The camera's edge enhancement, on brightness, a 720-wide pixel either side.
-    float detail = 2 * luma(centre) - luma(sample_at(pixel, -step_px)) - luma(sample_at(pixel, step_px));
-    y += detail * colour.z * 0.5;
+    float halo = step_px * max(camera.w, 0.25); // the sharpening's reach
+    float edges = 2 * luma(centre) - luma(sample_at(pixel, -halo)) - luma(sample_at(pixel, halo));
+    y += edges * colour.z * 0.5;
     float3 c = camera_light(y + chroma / chroma_count, pixel);
     // White balance, dense blacks, early white, saturation, and blown highlights going white.
     c *= float3(colour.x, 1, colour.y);
@@ -212,10 +221,12 @@ float4 picture_ps(float4 position : SV_Position) : SV_Target {
     float l = luma(c);
     c = l + (c - l) * tone.w;
     float top = max(c.r, max(c.g, c.b));
-    if (output.z > 0.5 && top > 236.0 / 255) c += (1 - c) * saturate((top - 236.0 / 255) / (19.0 / 255));
-    // Grain, the same on every channel.
-    float2 cell = floor((pixel - rect.xy) / max(step_px, 1e-3));
-    c += grain_noise(cell, tape.w) * colour.w * (56.0 / 255);
+    if (output.z > 0.5 && top > detail.x) c += (1 - c) * saturate((top - detail.x) / max(detail.y, 0.005));
+    // Grain: the same on every channel (a CCD's), or partly each channel's own.
+    float2 cell = floor((pixel - rect.xy) / max(step_px * max(detail.z, 0.25), 1e-3));
+    float common_noise = grain_noise(cell, tape.w, 0);
+    float3 own = float3(grain_noise(cell, tape.w, 1), grain_noise(cell, tape.w, 2), grain_noise(cell, tape.w, 3));
+    c += lerp(float3(common_noise, common_noise, common_noise), own, saturate(detail.w)) * colour.w * (56.0 / 255);
     return float4(out_of_look(saturate(c)), 1);
 }
 )hlsl";

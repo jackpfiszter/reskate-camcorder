@@ -53,6 +53,7 @@ struct Shot {
 // How much of each kind of hand shake (1 as built; a data mod's handling.json sets them).
 struct ShakeAmounts {
     float hands{1}, wheels{1}, footsteps{1};
+    float speed{1}; // how quickly the hands wander: 2 twice as fast and jittery, 0.5 slow and floaty
     bool operator==(const ShakeAmounts &) const = default;
 };
 

@@ -76,15 +76,43 @@ at that many lines from top to bottom. Each can also be switched off by the play
 | `grain` | `0.04` | 0 to 1 | Noise or film grain, new every frame |
 | `chroma_width` | `4` | 0 to 16 | Colour is smeared over this many pixels of a 720-wide picture (DV's 4:1:1 is 4); 0 for none |
 | `softness` | `0` | 0 to 8 | Sideways blur, in pixels of a 720-wide picture (analogue tape: 1 to 2) |
+| `highlight_knee` | `0.925` | 0.5 to 1 | Where a clipped colour starts bleeding into the others, so blown highlights go white (of full white) |
+| `highlight_spread` | `0.075` | 0.005 to 0.5 | How far above the knee they are fully white: small is a hard edge, large a soft bloom |
+| `grain_size` | `1` | 0.25 to 8 | The grain's size, in pixels of a 720-wide picture. Film: 2 to 3 |
+| `grain_colour` | `0` | 0 to 1 | 0: the same on every colour (a CCD's noise); 1: each colour its own (cheap tape, film) |
+| `sharpen_radius` | `1` | 0.25 to 8 | How wide the sharpening's halo is, in pixels of a 720-wide picture |
+| `drift_seconds` | `[37, 11]` | 1 to 3600 each | The white balance's two wanders, a slow one and a quicker one, in seconds a sway |
 
 ### `stamp`
 
 | Field | Default | Choices | What it is |
 |---|---|---|---|
-| `corner` | `"bottom-right"` | `bottom-right` `bottom-left` | Where it sits |
+| `corner` | `"bottom-right"` | `bottom-right` `bottom-left` `top-right` `top-left` | Where it sits |
 | `lines` | `"time-date"` | `time-date` `date-time` `date` | What it shows, top line first |
 | `date` | `"month-day-year"` | `month-day-year` `day-month-year` | `OCT 12 1996` or `12 OCT 1996` |
 | `colour` | `[235, 235, 235]` | 0 to 255 each | Red, green, blue. Film cameras' stamps were orange |
+| `size` | `1` | 0.25 to 4 | How big: 1 is a VX1000's (a dot 1/130 of the picture's height) |
+| `margin` | `[0.07, 0.08]` | 0 to 0.4 each | From the picture's side, and from its bottom (or top), in fractions of its width and height |
+| `outline` | `true` | | A dark edge round each dot, so it reads over anything |
+| `outline_colour` | `[16, 16, 16]` | 0 to 255 each | That edge's colour |
+
+### `light`
+
+The lamp on the camera (the CAMCORDER card's Camera light, or `camcorder light`). It brightens
+the middle of the picture, falling off to the edges.
+
+| Field | Default | Range | What it is |
+|---|---|---|---|
+| `strength` | `2.5` | 0 to 10 | How much it brightens the middle: the light there is times 1 + this |
+| `reach` | `0.8` | 0.1 to 3 | The beam's width, in half picture widths |
+| `colour` | `[255, 245, 224]` | 0 to 255 each | Its colour: a halogen is warm on a daylight-balanced camera, an LED cold |
+
+### `viewfinder`
+
+| Field | Default | Range | What it is |
+|---|---|---|---|
+| `text` | `[240, 240, 240]` | 0 to 255 each | The readouts' colour (counter, tape, battery, zoom bar) |
+| `rec` | `[235, 40, 40]` | 0 to 255 each | The REC light's |
 
 ### `mic`
 
@@ -141,6 +169,11 @@ How filming feels. Every number is optional; the defaults are the camcorder's ow
 | | `damping` | `0.7` | 0.1 to 2 | Under 1 a quick turn carries on a little past and settles |
 | | `hunting` | `1` | 0 to 5 | A person's small corrections chasing a subject (0: none) |
 | `shake` | `hands`, `wheels`, `footsteps` | `1` each | 0 to 5 | How much of each kind of shake |
+| | `speed` | `1` | 0.1 to 8 | How quickly the hands wander: 2 is twice as jittery, 0.5 slow and floaty |
+| `sound` | `near` | `3` | 0.5 to 100 | Metres: closer to the skater than this, the camera hears the game's sound as it is |
+| | `floor` | `0.12` | 0 to 1 | The quietest a far-off skater gets, of their level close by |
+| | `air` | `10` | 1 to 1000 | Metres beyond `near` over which the highs halve (the air takes them) |
+| | `pan` | `0.7` | 0 to 1 | How far a far-off skater's sound moves to their side of the picture |
 | `tripod` | `height` | `1.1` | 0.15 to 2 | A new tripod's height |
 | | `drag` | `0.35` | 0.02 to 3 | Seconds the fluid head takes to answer |
 | | `pan_speed` | `1.4` | 0.1 to 10 | Radians a second at full handle, at wide |
@@ -166,6 +199,7 @@ A lens goes on the front of any camera.
 | `name` | the id | up to 48 characters | What the menu shows |
 | `fisheye` | `true` | | A fisheye bends straight lines; otherwise it is a flat converter |
 | `fov` | `125` | 60 to 170 | A fisheye's degrees across the 4:3 picture at the camera's widest. A flat game picture cannot feed more than 170 |
+| `projection` | `"equidistant"` | `equidistant` `equisolid` `stereographic` `orthographic` | How a fisheye bends. Equidistant: the Century's. Equisolid: most modern fisheyes, the edges squeezed a little more. Stereographic: shapes stay rounder toward the edges. Orthographic: the edges squeezed hardest, a bubble |
 | `magnification` | `1` | 0.25 to 4 | A flat converter's effect on focal length: `0.5` for a half wide, `1.5` for a tele converter |
 | `vignette` | `[1.08, 0.35]` | radius 0 to 1.25, growth 0 to 2 | The housing's round shadow: its radius at full wide, in half picture widths (the corners are at 1.25), and how far it opens with each 1x of zoom. `[0, 0]` for none; a flat converter has none unless it says so |
 
@@ -175,6 +209,8 @@ A lens goes on the front of any camera.
   16:9 bodies like the HVX200 need the picture's shape to become part of a camera; it is planned.
 - **A camera you can see.** Showing a camcorder model in the filmer's hands, or picking one in the
   character menu, needs the game's character attachments worked out with the ReSkate developers.
-- **New kinds of effect.** A profile sets how strongly each built-in effect works. An effect the
-  camcorder does not have yet (VHS tracking lines, light leaks, gate weave) needs adding to the
-  camcorder first; ask for it.
+- **New kinds of effect.** A profile sets how each built-in effect looks and behaves. An effect the
+  camcorder does not have yet (VHS tracking lines, light leaks, gate weave, dust and scratches)
+  needs adding to the camcorder first; ask for it.
+- **The viewfinder's layout and lettering.** A camera sets its readouts' colours, not where they
+  sit or their font.
