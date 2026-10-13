@@ -55,7 +55,7 @@ bool idle(const Warp &w) { return !w.fence || w.fence->GetCompletedValue() >= w.
 // The picture pass's shader (checked with Microsoft's dxc in development; compiled here as SM 5.0).
 constexpr char picture_shader[] = R"hlsl(
 // The camcorder's picture: the game's frame (a copy, t0) bent through the fisheye and given the
-// camera's look, drawn over the 4:3 picture. camcorder_warp.cpp fills the constants.
+// camera's look, drawn over the picture. camcorder_warp.cpp fills the constants.
 // (Named Constants: "pass" is a keyword to the D3DCompile compiler, which takes "Pass" for it too.)
 cbuffer Constants : register(b0) {
     float4 rect;    // the picture on screen: left, top, width, height (pixels)
@@ -79,9 +79,10 @@ float4 picture_vs(uint id : SV_VertexID) : SV_Position {
     return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
 }
 
-// A screen pixel as a point of the picture: x right in [-1, 1], y up in [-0.75, 0.75].
+// A screen pixel as a point of the picture, in half picture widths: x right in [-1, 1], y up (to
+// 0.75 at a 4:3 picture's top, 0.5625 at a 16:9's).
 float2 picture_point(float2 pixel) {
-    return float2((pixel.x - rect.x) / rect.z * 2 - 1, (0.5 - (pixel.y - rect.y) / rect.w) * 1.5);
+    return float2((pixel.x - rect.x) / rect.z * 2 - 1, (0.5 - (pixel.y - rect.y) / rect.w) * 2 * rect.w / rect.z);
 }
 // Where that point is in the game's frame: through the equidistant fisheye (vx1000.h,
 // fisheye_source and warp_uv), or straight across for a flat lens.

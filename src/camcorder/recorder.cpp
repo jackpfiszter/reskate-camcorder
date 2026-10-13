@@ -80,9 +80,9 @@ void store(std::uint8_t *to, float r, float g, float b) {
 }
 } // namespace
 
-PixelBox capture_box(int width, int height) noexcept {
+PixelBox capture_box(int width, int height, float aspect) noexcept {
     if (width < 2 || height < 2) return {};
-    const auto r = picture_rect(static_cast<float>(width), static_cast<float>(height));
+    const auto r = picture_rect(static_cast<float>(width), static_cast<float>(height), aspect);
     PixelBox box;
     box.width = std::min(even_down(r.width), width & ~1);
     box.height = std::min(even_down(r.height), height & ~1);
@@ -92,9 +92,13 @@ PixelBox capture_box(int width, int height) noexcept {
 }
 
 VideoSize video_size(Quality quality, const PixelBox &capture, int own_lines) noexcept {
-    const int tallest = quality == Quality::dv ? std::clamp(own_lines, 120, 1080) : 1080;
+    if (capture.width < 2 || capture.height < 2) return {2, 2};
+    const double aspect = static_cast<double>(capture.width) / capture.height;
+    int tallest = quality == Quality::dv ? std::clamp(own_lines, 120, 1080) : 1080;
+    if (quality == Quality::hd) tallest = std::min(tallest, static_cast<int>(1920 / aspect));
     const int height = std::max(2, std::min(tallest, capture.height) & ~1);
-    return {std::max(2, (height * 4 / 3) & ~1), height};
+    const int width = 2 * static_cast<int>(std::lround(height * aspect * 0.5)); // the nearest even
+    return {std::clamp(width, 2, capture.width & ~1), height};
 }
 
 std::uint32_t video_bitrate(const VideoSize &size, double frame_rate) noexcept {

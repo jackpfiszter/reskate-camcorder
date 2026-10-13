@@ -33,6 +33,19 @@ TEST(picture_is_four_by_three_in_any_window) {
     CHECK_NEAR(tall.height, 450, 1e-3);
     CHECK_NEAR(tall.y, 275, 1e-3);
     CHECK_NEAR(picture_rect(0, 100).width, 0, 0);
+    // Any other shape: a 16:9 camera fills a 16:9 screen, a square one is pillarboxed.
+    const auto sixteen = picture_rect(1920, 1080, 16.0f / 9.0f);
+    CHECK_NEAR(sixteen.x, 0, 1e-3);
+    CHECK_NEAR(sixteen.width, 1920, 1e-3);
+    CHECK_NEAR(picture_rect(1920, 1080, 1).width, 1080, 1e-3);
+}
+
+TEST(viewfinder_frames_the_cameras_shape) {
+    auto frame = on_frame();
+    frame.optics.aspect = 16.0f / 9.0f;
+    const auto v = layout_viewfinder(frame, 1920, 1080);
+    CHECK_NEAR(v.picture.width, 1920, 1e-3);
+    CHECK(v.bars.empty());
 }
 
 TEST(viewfinder_shows_standby_counter_and_tape) {

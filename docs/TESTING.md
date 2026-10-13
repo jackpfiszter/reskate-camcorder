@@ -158,7 +158,7 @@ Solo:
       notch. With a friend as subject the mouse nudges the framing; solo it aims freely and the
       aim turns with you. Open the ReSkate menu: the mouse works in it. Off again: all as before.
 - [ ] `camcorder still` (or TAKE A STILL, or a bound key): "Still saved." and a JPEG in
-      **Videos\ReSkate Camcorder\Stills** of the 4:3 picture, no readouts.
+      **Videos\ReSkate Camcorder\Stills** of the picture, no readouts.
 - [ ] The first time the camera comes on (or SHOW THE GUIDE): a short list of the controls over
       the viewfinder for about 15 seconds, then not again on later games.
 - [ ] CAMCORDER page > CONTROLS > SET UP KEYS: F5 to F10 show next to their jobs; F5 turns the
@@ -201,7 +201,7 @@ With a friend:
 
 ### Recording
 
-REC writes an MP4 of the 4:3 picture to **Videos\ReSkate Camcorder** ("ReSkate 2026-10-12 14-03-22
+REC writes an MP4 of the picture (the camera's shape: 4:3 for the VX1000) to **Videos\ReSkate Camcorder** ("ReSkate 2026-10-12 14-03-22
 clip 01.mp4"); STBY closes it and a notice says where it went. 29.97 frames a second, H.264, the
 fisheye's round corners included, the readouts and hints not. HD (1440 x 1080) by default;
 `camcorder quality dv` (or the menu) records at the VX1000's own 640 x 480.
@@ -273,12 +273,18 @@ also switches to the camera's own size (640 x 480 for the VX1000).
 Copy `examples/mods/Camcorder Extras` (or the zip from the Releases page) into the game's `Mods`
 folder, and make sure it is enabled in the mod list.
 
-- [ ] `camcorder mods`: lists vx2000, hi8 and super8, and wide-half, from Camcorder Extras, and
+- [ ] `camcorder mods`: lists vx2000, hi8, super8 and hvx200, and wide-half, from Camcorder Extras, and
       "Nothing wrong". The CAMCORDER card shows them as buttons (hover: which mod).
 - [ ] VX2000: zooms further than the VX1000 (12x). Hi8: its look is softer, less saturated, a
       little grainy, with a yellow stamp bottom left. Super 8: its clips are 18 frames a second,
       grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
       about 3 minutes 20.
+- [ ] HVX200: a 16:9 picture. On a 16:9 screen it fills it with no black bars; on a 4:3 or
+      ultrawide screen, bars where the shapes differ. With the fisheye, the housing's shadow and the
+      bend still sit centred, and nothing at the picture's edges is cut off or stretched. Its clips
+      are 1920 x 1080 (HD) or 1280 x 720 (OWN), 24 frames, and the menu's QUALITY row says so.
+      CAPTURE THE TAPE with clips from it and from the VX1000 on one tape: the ones of the other
+      shape are left out and named.
 - [ ] The 0.5x wide converter: about twice as wide, no bend, slightly dark corners at full wide.
 - [ ] Rigs: MORE SETTINGS > HANDHELD shows Rig: Handheld, Pole cam (high overhead, looking down,
       wobblier) and Board cam (just off the ground, looking slightly up). Without the mod there

@@ -85,6 +85,22 @@ TEST(a_camera_needs_only_what_differs) {
     CHECK(read_camera("{}", "plain").profile->name == "plain");
 }
 
+TEST(a_camera_gives_its_pictures_shape) {
+    const auto ratio = read_camera(R"({"aspect": [16, 9]})", "wide");
+    CHECK(ratio.notes.empty());
+    CHECK_NEAR(ratio.profile->lens.aspect(), 16.0 / 9.0, 1e-4);
+    CHECK_NEAR(ratio.profile->lens.sensor_width_mm, 4.8, 1e-4); // the chip keeps its width
+    const auto number = read_camera(R"({"sensor_mm": [5.79, 4.01], "aspect": 1})", "square");
+    CHECK_NEAR(number.profile->lens.aspect(), 1, 1e-4);
+    // Too thin is brought in; nonsense keeps the sensor's.
+    CHECK_NEAR(read_camera(R"({"aspect": 9})", "thin").profile->lens.aspect(), 3, 1e-4);
+    const auto bad = read_camera(R"({"aspect": "wide"})", "bad");
+    CHECK(mentions(bad.notes, "aspect should be"));
+    CHECK_NEAR(bad.profile->lens.aspect(), 4.0 / 3.0, 1e-4);
+    // Written out and read back, the shape is the sensor's.
+    CHECK_NEAR(read_camera(write_camera(*ratio.profile), "again").profile->lens.aspect(), 16.0 / 9.0, 1e-3);
+}
+
 TEST(out_of_range_values_are_brought_in_and_noted) {
     const auto read = read_camera(R"({
         "zoom_mm": [5, 4000], "lines": 5000, "motion": "120p", "colour": 1,
@@ -199,7 +215,7 @@ TEST(the_example_mod_loads_without_a_note) {
         case ProfileKind::handling: check_one(read_handling(text.str(), Handling{})); break;
         }
     }
-    CHECK(profiles == 6);
+    CHECK(profiles == 7);
     // Super 8 runs at 18 frames, with no fields to switch.
     std::ifstream in(std::filesystem::path(CAMCORDER_EXAMPLE_MODS) / "Camcorder Extras" / "camcorders" / "super8.camera.json");
     std::stringstream text;

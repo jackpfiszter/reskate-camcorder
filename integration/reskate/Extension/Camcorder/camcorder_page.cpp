@@ -3,6 +3,7 @@
 #include "camcorder_runtime.h"
 #include "Extension/UI/Overlay/skate_menu_internal.h"
 #include "camcorder/commands.h"
+#include "camcorder/recorder.h"
 #include <imgui.h>
 #include <cmath>
 #include <cstdio>
@@ -188,8 +189,15 @@ void camcorder_page(SkateMenu &menu, const Model &model, const CallbacksV3 &call
     begin_card(menu, "camcorder-tape", "TAPE AND SOUND", "Every REC to STBY is a clip: an MP4 in Videos\\ReSkate Camcorder.");
     field(menu, "Quality", "HD for sharing, or the camera's own size.");
     int quality = published.dv ? 1 : 0;
-    const std::string own = "OWN " + std::to_string(published.own_lines * 4 / 3) + " x " + std::to_string(published.own_lines);
-    if (choice(menu, "camcorder-quality", quality, {"HD 1440 x 1080", own.c_str()}))
+    // The clip's sizes for this camera's shape (recorder.h, video_size).
+    const float aspect = published.frame.optics.aspect;
+    const auto size_text = [&](Quality q, int lines) {
+        const auto box = PixelBox{0, 0, static_cast<int>(std::lround(4320 * aspect)) & ~1, 4320};
+        const auto size = video_size(q, box, lines);
+        return std::to_string(size.width) + " x " + std::to_string(size.height);
+    };
+    const std::string hd = "HD " + size_text(Quality::hd, 1080), own = "OWN " + size_text(Quality::dv, published.own_lines);
+    if (choice(menu, "camcorder-quality", quality, {hd.c_str(), own.c_str()}))
         run(menu, callbacks, quality ? "quality dv" : "quality hd");
     field(menu, "Sound", "The game's own sound as the camera hears it from where it stands (nothing else on your PC), or through the camera's mic. Turn the game's music down for clean session sound.");
     int sound = static_cast<int>(published.sound);

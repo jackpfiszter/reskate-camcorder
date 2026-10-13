@@ -1,5 +1,6 @@
 #include "camcorder/recorder.h"
 #include "check.h"
+#include <cmath>
 #include <cstring>
 
 using namespace dingosdk::camcorder;
@@ -35,6 +36,10 @@ TEST(capture_box_is_the_even_sized_four_by_three_picture) {
     CHECK(odd.width % 2 == 0 && odd.height % 2 == 0);
     CHECK(odd.x + odd.width <= 1366 && odd.y + odd.height <= 767);
     CHECK(capture_box(1, 1) == PixelBox{});
+    // A 16:9 camera fills a 16:9 screen; on a 4:3 one it is letterboxed.
+    CHECK(capture_box(1920, 1080, 16.0f / 9.0f) == (PixelBox{0, 0, 1920, 1080}));
+    const auto boxed = capture_box(1600, 1200, 16.0f / 9.0f);
+    CHECK(boxed.width == 1600 && boxed.height == 900 && boxed.y == 150);
 }
 
 TEST(video_sizes_for_hd_and_dv) {
@@ -42,6 +47,12 @@ TEST(video_sizes_for_hd_and_dv) {
     CHECK(video_size(Quality::hd, {240, 0, 1440, 1080}) == (VideoSize{1440, 1080}));
     CHECK(video_size(Quality::hd, {0, 0, 800, 600}) == (VideoSize{800, 600}));
     CHECK(video_size(Quality::dv, {240, 0, 1440, 1080}) == (VideoSize{640, 480}));
+    // Other shapes keep theirs: 16:9 HD is 1920 x 1080, a wide one no wider than 1920.
+    CHECK(video_size(Quality::hd, {0, 0, 2560, 1440}) == (VideoSize{1920, 1080}));
+    CHECK(video_size(Quality::dv, {0, 0, 2560, 1440}, 480) == (VideoSize{854, 480}));
+    const auto scope = video_size(Quality::hd, {0, 280, 2560, 1072});
+    CHECK(scope.width <= 1920 && scope.height < 1080 && std::abs(scope.width / double(scope.height) - 2560 / 1072.0) < 0.01);
+    CHECK(video_size(Quality::hd, {0, 0, 1080, 1080}) == (VideoSize{1080, 1080}));
     CHECK(video_bitrate({1440, 1080}) > 8000000 && video_bitrate({1440, 1080}) < 20000000);
     CHECK(video_bitrate({640, 480}) < video_bitrate({1440, 1080}));
 }

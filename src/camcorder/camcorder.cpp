@@ -188,6 +188,7 @@ std::string Camcorder::shot_label() const {
 Frame Camcorder::tick(const TickInput &in) {
     const float dt = std::isfinite(in.dt) ? std::clamp(in.dt, 0.0f, 0.25f) : 0.0f;
     Frame frame;
+    frame.optics.aspect = std::clamp(settings_.camera.lens.aspect(), 0.25f, 4.0f); // the picture's shape, on or off
     if (powered_) {
         zoom_.step(in.controls.zoom, dt, settings_.camera.lens);
         frame.optics = optics(settings_.adapter ? &*settings_.adapter : nullptr, zoom_.position, settings_.fisheye_render,

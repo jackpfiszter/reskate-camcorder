@@ -1,5 +1,5 @@
 // Draws the viewfinder (src/camcorder/viewfinder.h) on ImGui's background draw list, under
-// ReSkate's own menus and chat, taking no input: the 4:3 bars, the fisheye housing's shadow
+// ReSkate's own menus and chat, taking no input: the bars beside the picture, the fisheye housing's shadow
 // and the VX1000-style readouts. Call draw_camcorder() from overlay_render.cpp beside
 // draw_hall_of_meat(), and count camcorder_pending() among the reasons to render with the
 // menu closed.
@@ -64,10 +64,11 @@ void straight_output(const ImDrawList *, const ImDrawCmd *) {
     render->CommandList->SetGraphicsRoot32BitConstants(0, 4, none, 16);
 }
 
-// The flat render, bent into the fisheye's picture: a grid over the 4:3 picture, each point
+// The flat render, bent into the fisheye's picture: a grid over the picture, each point
 // sampling the copy of the game's frame where the lens would have seen it (vx1000.h, warp_uv).
 void warp(ImDrawList *list, ImTextureID texture, const Optics &optics, const Rect &picture, float aspect) {
     constexpr int columns = 64, rows = 48;
+    const float half_height = 1 / optics.aspect; // the picture's top, in half picture widths
     list->AddCallback(straight_output, nullptr);
     list->PushTextureID(texture);
     list->PrimReserve(columns * rows * 6, (columns + 1) * (rows + 1));
@@ -75,7 +76,7 @@ void warp(ImDrawList *list, ImTextureID texture, const Optics &optics, const Rec
     for (int j = 0; j <= rows; ++j)
         for (int i = 0; i <= columns; ++i) {
             const float s = static_cast<float>(i) / columns, r = static_cast<float>(j) / rows;
-            const auto uv = warp_uv(optics, -1 + 2 * s, 0.75f - 1.5f * r, aspect);
+            const auto uv = warp_uv(optics, -1 + 2 * s, half_height * (1 - 2 * r), aspect);
             list->PrimWriteVtx({picture.x + picture.width * s, picture.y + picture.height * r},
                                {std::clamp(uv.u, 0.0f, 1.0f), std::clamp(uv.v, 0.0f, 1.0f)}, IM_COL32_WHITE);
         }

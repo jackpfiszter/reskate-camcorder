@@ -1,0 +1,21 @@
+{
+  "name": "Panasonic HVX200 (16:9)",
+  "sensor_mm": [4.8, 2.7],
+  "aspect": [16, 9],
+  "zoom_mm": [4.5, 58.5],
+  "zoom_seconds": [3, 15],
+  "motion": "24p",
+  "lines": 720,
+  "tape_minutes": 64,
+  "look": {
+    "format": "DVCPRO HD",
+    "black_crush": 0.03,
+    "highlight_gain": 1.05,
+    "saturation": 1.0,
+    "white_balance_drift": 0.01,
+    "sharpen": 0.3,
+    "grain": 0.03,
+    "chroma_width": 3,
+    "softness": 0.6
+  }
+}

@@ -4,7 +4,7 @@
 // the player captures the screen, so a clean feed keeps the frame and the lens and drops the
 // readouts.
 //
-// - The 4:3 picture: the game renders the full window; the bars either side (or above and
+// - The picture, the camera's shape (4:3 for the VX1000): the game renders the full window; the bars either side (or above and
 //   below) are painted black.
 // - The fisheye housing's shadow: black outside a circle, while the zoom is wide enough to see it.
 // - The readouts, after the VX1000's viewfinder: STBY or a red REC, the tape counter, the minutes
@@ -46,7 +46,7 @@ struct Battery {
 
 struct ViewfinderOptions {
     bool clean_feed{};   // the frame and the lens only
-    bool pillarbox{true}; // paint outside the 4:3 picture black
+    bool pillarbox{true}; // paint outside the picture black
     float blink_time{};  // seconds, for things that blink (the battery when it is low)
     // A line of control hints along the bottom of the picture, outside the clean feed
     // ("Mouse: aim   Q / E: zoom"). Empty: none.

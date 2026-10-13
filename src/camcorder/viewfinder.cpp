@@ -17,7 +17,7 @@ Viewfinder layout_viewfinder(const Frame &frame, float width, float height, cons
     const auto &s = frame.status;
     if (!s.powered || !frame.shot.valid || !(width > 0) || !(height > 0)) return v;
     v.visible = true;
-    v.picture = options.pillarbox ? picture_rect(width, height) : Rect{0, 0, width, height};
+    v.picture = options.pillarbox ? picture_rect(width, height, frame.optics.aspect) : Rect{0, 0, width, height};
     const auto &p = v.picture;
     if (options.pillarbox) {
         if (p.x > 0.5f) {

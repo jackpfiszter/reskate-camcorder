@@ -31,7 +31,7 @@ struct CameraProfile {
     std::string name{"Sony DCR-VX1000"};
     LensSpec lens;                   // its own lens and sensor
     Motion motion{Motion::ntsc_60i};
-    int lines{480};                  // its own recording height (the width is 4:3 of it)
+    int lines{480};                  // its own recording height (the width is the picture's shape of it)
     double tape_minutes{60};         // one cassette
     LookProfile look;
     StampProfile stamp;

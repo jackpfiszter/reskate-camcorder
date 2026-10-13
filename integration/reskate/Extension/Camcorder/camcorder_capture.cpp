@@ -415,7 +415,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
         c.still_served = published.still;
         return;
     }
-    const auto box = capture_box(static_cast<int>(desc.Width), static_cast<int>(desc.Height));
+    const auto box = capture_box(static_cast<int>(desc.Width), static_cast<int>(desc.Height), published.frame.optics.aspect);
     if (box.width < 16 || box.height < 16) return;
     int due = 0;
     if (video) {

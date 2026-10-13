@@ -15,18 +15,21 @@ struct PixelBox {
     int x{}, y{}, width{}, height{};
     bool operator==(const PixelBox &) const = default;
 };
-// The 4:3 picture in a `width` x `height` back buffer, centred, with even sizes (H.264 needs them).
-PixelBox capture_box(int width, int height) noexcept;
+// The `aspect` picture (width over height: the camera's) in a `width` x `height` back buffer,
+// centred, with even sizes (H.264 needs them).
+PixelBox capture_box(int width, int height, float aspect = 4.0f / 3.0f) noexcept;
 
 enum class Quality : std::uint8_t {
-    hd, // 1440 x 1080 (or the picture's own size when smaller): sharp, for sharing today
+    hd, // 1080 lines (1440 x 1080 at 4:3, 1920 x 1080 at 16:9; no wider than 1920, nor bigger than the
+        // picture on screen): sharp, for sharing today
     dv, // the camera's own: 640 x 480 for the VX1000 (720 x 480 DV shown at 4:3), a profile's `lines`
 };
 struct VideoSize {
     int width{}, height{};
     bool operator==(const VideoSize &) const = default;
 };
-// `own_lines`: the camera's own height (CameraProfile::lines), for Quality::dv.
+// The clip has the capture's shape. `own_lines`: the camera's own height (CameraProfile::lines), for
+// Quality::dv.
 VideoSize video_size(Quality, const PixelBox &capture, int own_lines = 480) noexcept;
 // Bits a second for the encoder: about what the picture needs at `frame_rate` (29.97 or 59.94).
 std::uint32_t video_bitrate(const VideoSize &, double frame_rate = 30000.0 / 1001.0) noexcept;

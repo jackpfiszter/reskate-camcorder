@@ -178,6 +178,22 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id) {
     Fields f{*value, "", reading.notes};
     f.text("name", camera.name, 48);
     f.pair("sensor_mm", camera.lens.sensor_width_mm, camera.lens.sensor_height_mm, 1, 40, 1, 40);
+    // The picture's shape, a number (1.778) or [width, height] ([16, 9]): the sensor keeps its width
+    // and is cut (or extended) to it, as a camera recording 16:9 from a 4:3 chip does.
+    f.known.emplace_back("aspect");
+    if (const auto *a = value->find("aspect")) {
+        double ratio = 0;
+        if (a->is(Kind::number)) ratio = a->number;
+        else if (a->is(Kind::array) && a->items.size() == 2 && a->items[0].is(Kind::number) && a->items[1].is(Kind::number) &&
+                 a->items[1].number > 0)
+            ratio = a->items[0].number / a->items[1].number;
+        if (!(ratio > 0) || !std::isfinite(ratio)) {
+            reading.notes.emplace_back("aspect should be a number (1.778) or [width, height] ([16, 9]); the sensor's shape is kept.");
+        } else {
+            const float kept = f.clamp_note("aspect", ratio, 0.5, 3);
+            camera.lens.sensor_height_mm = camera.lens.sensor_width_mm / kept;
+        }
+    }
     if (f.pair("zoom_mm", camera.lens.wide_mm, camera.lens.tele_mm, 1, 200, 1, 2000) && camera.lens.tele_mm < camera.lens.wide_mm) {
         reading.notes.emplace_back("zoom_mm: tele is shorter than wide; the lens is fixed at wide.");
         camera.lens.tele_mm = camera.lens.wide_mm;
@@ -379,7 +395,7 @@ Reading<Adapter> read_adapter(std::string_view text, std::string id) {
     f.word("projection", lens.projection, {{"equidistant", Projection::equidistant}, {"equisolid", Projection::equisolid},
                                            {"stereographic", Projection::stereographic}, {"orthographic", Projection::orthographic}});
     f.number("magnification", lens.magnification, 0.25, 4);
-    if (!f.pair("vignette", lens.vignette_radius, lens.vignette_growth, 0, 1.25, 0, 2) && !value->find("vignette") &&
+    if (!f.pair("vignette", lens.vignette_radius, lens.vignette_growth, 0, 2.5, 0, 2) && !value->find("vignette") &&
         !lens.fisheye) {
         lens.vignette_radius = lens.vignette_growth = 0; // a flat converter casts no shadow unless it says so
     }

@@ -29,7 +29,7 @@ void register_camcorder_commands(Commands &registry) {
         {"tape", "List the clips, join them into one file, or put in a new tape", "clips|capture|new"},
         {"still", "Save a still of the camcorder's picture (Videos\\ReSkate Camcorder\\Stills)", nullptr},
         {"clean", "Hide the viewfinder readouts (keep the frame and lens)", "[on|off|toggle]"},
-        {"quality", "Record in HD (1440 x 1080) or at the VX1000's own 640 x 480", "hd|dv"},
+        {"quality", "Record in HD (1080 lines) or at the camera's own size (the VX1000's 640 x 480)", "hd|dv"},
         {"sound", "Clips without sound, with the game's, or through the camera's own mic", "off|game|mic"},
         {"camera", "The camera: the VX1000, or one a mod adds", "<id>|next|list"},
         {"mods", "The cameras and lenses mods add, and what is wrong with any", "[reload]"},

@@ -1,5 +1,5 @@
 #pragma once
-// The camcorder's recording, the overlay's side: while REC runs, copies the 4:3 picture off the game's
+// The camcorder's recording, the overlay's side: while REC runs, copies the picture off the game's
 // back buffer (after the fisheye's warp is drawn, camcorder_warp.h, and before the viewfinder's
 // readouts, so the file has the lens but a clean picture) into a small ring of readback buffers, and hands the pixels to the video writer
 // (camcorder_video.h) once the GPU is done with them. Never waits on the GPU: with every buffer

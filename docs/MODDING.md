@@ -51,10 +51,11 @@ to `Mods/My Camcorder`.
 |---|---|---|---|
 | `name` | the id | up to 48 characters | What the menu shows |
 | `sensor_mm` | `[4.8, 3.6]` | 1 to 40 each | The sensor's (or film frame's) width and height, mm. With the focal lengths, sets the angle of view |
+| `aspect` | the sensor's (4:3) | 0.5 to 3 | The picture's shape: a number (`1.778`) or `[width, height]` (`[16, 9]`). The sensor keeps its width and is cut to this shape, as a camera recording 16:9 from a 4:3 chip does. The viewfinder, the fisheye and the clips all take it: `[16, 9]` fills a 16:9 screen and records 1920 x 1080, `1` is square. Or give the real `sensor_mm` (Super 8's frame is `[5.79, 4.01]`) and leave this out |
 | `zoom_mm` | `[5.9, 59]` | wide 1 to 200; at most 50x | The lens's focal length at wide and at tele, mm. Equal numbers: a fixed lens |
 | `zoom_seconds` | `[4.1, 20]` | 0.5 to 120 | Wide to tele with the rocker pressed fully, and pressed lightly |
 | `motion` | `"60i"` | `60i` `50i` `30p` `25p` `24p` `18p` | How it records motion. `60i` is NTSC video, `50i` PAL; with the look's fields on, those record 59.94 or 50 frames a second. `18p` is Super 8 |
-| `lines` | `480` | 120 to 1080 | Its own recording height (quality OWN); the width is 4:3 of it |
+| `lines` | `480` | 120 to 1080 | Its own recording height (quality OWN); the width follows the picture's shape |
 | `tape_minutes` | `60` | 1 to 600 | One cassette (or film cartridge: Super 8 is about 3.3 minutes at 18 frames) |
 | `look` | see below | | What its sensor, processing and tape do to the picture |
 | `stamp` | see below | | Its date stamp |
@@ -198,15 +199,13 @@ A lens goes on the front of any camera.
 |---|---|---|---|
 | `name` | the id | up to 48 characters | What the menu shows |
 | `fisheye` | `true` | | A fisheye bends straight lines; otherwise it is a flat converter |
-| `fov` | `125` | 60 to 170 | A fisheye's degrees across the 4:3 picture at the camera's widest. A flat game picture cannot feed more than 170 |
+| `fov` | `125` | 60 to 170 | A fisheye's degrees across the picture at the camera's widest. A flat game picture cannot feed more than 170 |
 | `projection` | `"equidistant"` | `equidistant` `equisolid` `stereographic` `orthographic` | How a fisheye bends. Equidistant: the Century's. Equisolid: most modern fisheyes, the edges squeezed a little more. Stereographic: shapes stay rounder toward the edges. Orthographic: the edges squeezed hardest, a bubble |
 | `magnification` | `1` | 0.25 to 4 | A flat converter's effect on focal length: `0.5` for a half wide, `1.5` for a tele converter |
-| `vignette` | `[1.08, 0.35]` | radius 0 to 1.25, growth 0 to 2 | The housing's round shadow: its radius at full wide, in half picture widths (the corners are at 1.25), and how far it opens with each 1x of zoom. `[0, 0]` for none; a flat converter has none unless it says so |
+| `vignette` | `[1.08, 0.35]` | radius 0 to 2.5, growth 0 to 2 | The housing's round shadow: its radius at full wide, in half picture widths (a 4:3 picture's corners are at 1.25, a 16:9's at 1.15), and how far it opens with each 1x of zoom. `[0, 0]` for none; a flat converter has none unless it says so |
 
 ## Not yet
 
-- **Widescreen cameras.** Every camera is 4:3 for now (the frame, the lens maths and the files).
-  16:9 bodies like the HVX200 need the picture's shape to become part of a camera; it is planned.
 - **A camera you can see.** Showing a camcorder model in the filmer's hands, or picking one in the
   character menu, needs the game's character attachments worked out with the ReSkate developers.
 - **New kinds of effect.** A profile sets how each built-in effect looks and behaves. An effect the

@@ -141,6 +141,14 @@ struct Capture::Impl {
                     skip(clip, "cannot be read");
                     continue;
                 }
+                // A clip from a camera of another shape would be stretched to the tape's: left out.
+                VideoSize own{};
+                if (clip_size(reader.Get(), own) &&
+                    std::abs(static_cast<double>(own.width) * size.height - static_cast<double>(size.width) * own.height) >
+                        0.02 * static_cast<double>(size.width) * own.height) {
+                    skip(clip, "a camera of another shape filmed it");
+                    continue;
+                }
                 const auto video = static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM);
                 const auto audio = static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
                 // Ask for NV12 at the tape's size, and 48 kHz 16-bit stereo.

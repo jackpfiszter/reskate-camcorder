@@ -137,3 +137,34 @@ TEST(warp_uv_maps_the_picture_into_the_flat_render) {
     const float a = warp_uv(o, 0.25f, 0, aspect).u - 0.5f, b = warp_uv(o, 0.5f, 0, aspect).u - 0.5f;
     CHECK(b > 2 * a);
 }
+
+TEST(the_picture_takes_the_sensors_shape) {
+    LensSpec wide_chip = vx1000_lens;
+    wide_chip.sensor_height_mm = wide_chip.sensor_width_mm * 9 / 16;
+    const auto flat = optics(nullptr, 0, FisheyeRender::approximate, 16.0f / 9.0f, wide_chip);
+    CHECK_NEAR(flat.aspect, 16.0 / 9.0, 1e-4);
+    // A 16:9 picture on a 16:9 screen: the game's camera is the picture's.
+    CHECK_NEAR(flat.render_vertical_fov, flat.vertical_fov, 1e-3);
+    // A picture wider than the screen (2.39:1 on 16:9) fills its width: the game's camera opens up.
+    LensSpec scope = vx1000_lens;
+    scope.sensor_height_mm = scope.sensor_width_mm / 2.39f;
+    const auto cinema = optics(nullptr, 0, FisheyeRender::approximate, 16.0f / 9.0f, scope);
+    const double across = std::tan(cinema.render_vertical_fov * 0.5 * 3.14159265 / 180) * 16 / 9;
+    CHECK_NEAR(across, std::tan(cinema.horizontal_fov * 0.5 * 3.14159265 / 180), 1e-3);
+    // Through the warp, every point of a 16:9 or a square picture is inside the render.
+    for (const float shape : {16.0f / 9.0f, 1.0f}) {
+        LensSpec lens = vx1000_lens;
+        lens.sensor_height_mm = lens.sensor_width_mm / shape;
+        const auto o = optics(&century_fisheye(), 0.2f, FisheyeRender::warp, 16.0f / 9.0f, lens);
+        CHECK_NEAR(o.aspect, shape, 1e-4);
+        const float top = 1 / shape, corner = std::sqrt(1 + top * top);
+        const float radius = o.vignette_radius > 0 ? o.vignette_radius : corner;
+        for (int i = 0; i <= 40; ++i)
+            for (int j = 0; j <= 40; ++j) {
+                const float x = -1 + 2.0f * i / 40, y = top * (-1 + 2.0f * j / 40);
+                if (x * x + y * y > radius * radius) continue;
+                const auto uv = warp_uv(o, x, y, 16.0f / 9.0f);
+                CHECK(uv.u >= -1e-3f && uv.u <= 1.001f && uv.v >= -1e-3f && uv.v <= 1.001f);
+            }
+    }
+}

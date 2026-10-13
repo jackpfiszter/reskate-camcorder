@@ -2,8 +2,6 @@
 
 namespace dingosdk::camcorder {
 namespace {
-constexpr float picture_corner = 1.25f; // the 4:3 picture's corner, in half picture widths
-constexpr float picture_half_height = 0.75f;
 constexpr float widest_ray = 85.0f * degrees; // a flat render cannot reach 90 degrees off-axis
 constexpr float widest_render = 150.0f;       // degrees: past this a flat render falls apart
 constexpr float widest_approximate = 100.0f;  // degrees: the most a flat stand-in is given
@@ -55,6 +53,10 @@ TextureUv warp_uv(const Optics &o, float x, float y, float render_aspect) noexce
 
 Optics optics(const Adapter *adapter, float zoom, FisheyeRender render, float render_aspect, const LensSpec &lens) noexcept {
     Optics o;
+    o.aspect = std::clamp(lens.aspect(), 0.25f, 4.0f);
+    // The picture's top edge and its corner, in half picture widths.
+    const float picture_half_height = 1 / o.aspect;
+    const float picture_corner = std::sqrt(1 + picture_half_height * picture_half_height);
     o.focal_mm = focal_length(zoom, lens);
     o.zoom_ratio = o.focal_mm / lens.wide_mm;
     const auto shadow = [&](float radius, float growth) {
@@ -67,9 +69,12 @@ Optics optics(const Adapter *adapter, float zoom, FisheyeRender render, float re
         o.horizontal_fov = rectilinear_fov(lens.sensor_width_mm, o.focal_mm * magnification);
         o.vertical_fov = rectilinear_fov(lens.sensor_height_mm, o.focal_mm * magnification);
         if (adapter) o.vignette_radius = shadow(adapter->vignette_radius, adapter->vignette_growth);
-        // The 4:3 picture is cut from the middle of the game's wider one, top to bottom: the game's
-        // vertical FOV is the picture's.
-        o.render_vertical_fov = o.vertical_fov;
+        // The picture is cut from the middle of the game's, top to bottom when the game's is wider:
+        // the game's vertical FOV is the picture's. A picture wider than the game's is cut from its
+        // whole width, so the game's camera opens until its width covers the picture's.
+        const float aspect = std::isfinite(render_aspect) && render_aspect > 0.2f ? render_aspect : 16.0f / 9.0f;
+        const float across = std::tan(o.horizontal_fov * 0.5f * degrees) / aspect;
+        o.render_vertical_fov = std::max(o.vertical_fov, 2 * std::atan(across) / degrees);
         return o;
     }
     // Equidistant: the angle shrinks in step with zoom, and is linear in the distance from centre.

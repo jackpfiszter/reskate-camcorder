@@ -10,8 +10,8 @@
 // adapter about 125 degrees across. At full wide its housing shows in the frame as round black
 // corners; a touch of zoom clears them. Both are modelled here.
 //
-// A 1/3" sensor's active area is 4.8 x 3.6 mm (4:3). Angles below are of the 4:3 picture the
-// camcorder records.
+// A 1/3" sensor's active area is 4.8 x 3.6 mm (4:3). Angles below are of the picture the camcorder
+// records, whose shape is its sensor's (a camera profile can give any: 16:9, Super 8's 1.44, square).
 #include "camera_math.h"
 #include <cstdint>
 #include <string>
@@ -23,7 +23,8 @@ struct LensSpec {
     float wide_mm = 5.9f, tele_mm = 59.0f;
     float max_aperture = 1.6f;
     float fastest_zoom_s = 4.1f, slowest_zoom_s = 20.0f; // servo, wide to tele
-    float aspect() const { return sensor_width_mm / sensor_height_mm; }
+    // The picture's width over its height: the sensor's.
+    float aspect() const { return sensor_width_mm > 0 && sensor_height_mm > 0 ? sensor_width_mm / sensor_height_mm : 4.0f / 3.0f; }
     bool operator==(const LensSpec &) const = default;
 };
 inline constexpr LensSpec vx1000_lens{};
@@ -40,13 +41,13 @@ struct Adapter {
     std::string id;   // short, for commands and the settings file: "century"
     std::string name; // "Century Optics 0.3x fisheye"
     bool fisheye{};
-    // A fisheye's degrees across the 4:3 picture with the camera's lens at its widest.
+    // A fisheye's degrees across the picture with the camera's lens at its widest.
     float fisheye_fov{};
     Projection projection{Projection::equidistant};
     // A flat converter's effect on focal length: 0.5 for a half-wide, 1.5 for a tele converter.
     float magnification{1};
-    // The housing's round shadow, as a radius in half picture widths (the picture's corners are at
-    // 1.25), at full wide, and how far it opens with each 1x of zoom. 0 means no shadow.
+    // The housing's round shadow, as a radius in half picture widths (a 4:3 picture's corners are at
+    // 1.25, a 16:9's at 1.15), at full wide, and how far it opens with each 1x of zoom. 0 means no shadow.
     float vignette_radius{}, vignette_growth{};
     std::string source; // the mod folder it came from (profiles.h); empty when built in
     bool operator==(const Adapter &) const = default;
@@ -69,7 +70,8 @@ enum class FisheyeRender : std::uint8_t {
 struct Optics {
     float zoom_ratio{1};      // 1 at wide, 10 at tele
     float focal_mm{5.9f};     // of the camcorder's own lens
-    float horizontal_fov{};   // degrees across the 4:3 picture the viewer sees
+    float aspect{4.0f / 3.0f}; // the picture's width over its height (the sensor's)
+    float horizontal_fov{};   // degrees across the picture the viewer sees
     float vertical_fov{};     // degrees up and down it
     bool fisheye{};
     Projection projection{Projection::equidistant}; // a fisheye's
@@ -84,13 +86,13 @@ float focal_length(float zoom, const LensSpec & = vx1000_lens) noexcept;
 // Degrees across `extent_mm` of sensor through a flat lens of `focal_mm`.
 float rectilinear_fov(float extent_mm, float focal_mm) noexcept;
 // `render_aspect` is the game's back buffer's width over height (16:9 is 1.778): with the warp, the
-// flat camera must cover the 4:3 picture cut from its middle.
+// flat camera must cover the picture (the lens's sensor's shape) cut from its middle.
 // `adapter` null: the camera's own lens alone.
 Optics optics(const Adapter *adapter, float zoom, FisheyeRender = FisheyeRender::approximate,
               float render_aspect = 16.0f / 9.0f, const LensSpec & = vx1000_lens) noexcept;
 
 // For the warp: a point of the recorded picture, x and y in half picture widths from its centre
-// (x right in [-1, 1], y up in [-0.75, 0.75]), to where it is in the flat render, as tangents
+// (x right in [-1, 1], y up in [-1 / aspect, 1 / aspect]), to where it is in the flat render, as tangents
 // (screen x = tan / tan(half horizontal render FOV)). How the angle off-axis grows with the
 // distance from the centre is the fisheye's projection.
 struct Tangent {

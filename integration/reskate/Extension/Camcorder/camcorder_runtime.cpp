@@ -13,6 +13,7 @@
 #include "camcorder/preferences.h"
 #include "camcorder/presence.h"
 #include "camcorder/profiles.h"
+#include "camcorder/recorder.h"
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -927,7 +928,11 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         if (!words.empty() && (words[0] == "dv" || words[0] == "hd")) s.dv = words[0] == "dv";
         else if (!words.empty()) return "Usage: camcorder quality hd|dv";
         save();
-        return s.dv ? "Recording at 640 x 480, the VX1000's own size." : "Recording in HD (1440 x 1080).";
+        const auto &camera = s.camcorder.settings().camera;
+        const auto box = PixelBox{0, 0, static_cast<int>(std::lround(4320 * camera.lens.aspect())) & ~1, 4320};
+        const auto size = video_size(s.dv ? Quality::dv : Quality::hd, box, camera.lines);
+        const auto shown = std::to_string(size.width) + " x " + std::to_string(size.height);
+        return s.dv ? "Recording at " + shown + ", the camera's own size." : "Recording in HD (" + shown + ").";
     }
     if (verb == "still" || verb == "photo") {
         if (!s.camcorder.powered()) return "Turn the camcorder on first.";

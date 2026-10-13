@@ -1,7 +1,7 @@
 #pragma once
 // The camcorder's picture on screen: the fisheye's bend and the camera's look. The game renders a
 // flat picture (opened wide enough for the warp: camcorder/vx1000.h, FisheyeRender::warp); the
-// overlay copies that frame into a texture and draws it back over the 4:3 picture through a pixel
+// overlay copies that frame into a texture and draws it back over the picture through a pixel
 // shader (the picture pass) that bends it as the fisheye did and gives it the camera's tone,
 // colour, sharpening, grain and tape smear (camcorder/look.h, ScreenLook). Clips and stills are
 // copied after the pass is drawn (camcorder_capture.h), so they have what the screen has.
