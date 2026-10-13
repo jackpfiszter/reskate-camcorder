@@ -396,7 +396,7 @@ Finish recorded_finish(Finish finish, bool look_on_screen, bool stamp_on_screen)
 void finish_frame(Image &image, const Finish &finish, const DvClip &clip, std::int64_t index, double frame_rate,
                   const std::tm &local_time) {
     dv_camera(image, finish.dv, finish.look, finish.fields(), clip, index, frame_rate);
-    if (finish.date_stamp) burn_date(image, local_time, finish.stamp_year, finish.stamp);
+    if (finish.stamped()) burn_date(image, local_time, finish.stamp_year, finish.stamp);
     dv_tape(image, finish.dv, finish.look);
 }
 std::optional<std::int64_t> clock_offset(std::string_view date, std::string_view time, std::time_t now) {

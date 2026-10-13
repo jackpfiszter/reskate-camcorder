@@ -378,7 +378,7 @@ int table_slot(Warp &w, ID3D12GraphicsCommandList *commands, const camcorder::Lu
     return slot;
 }
 
-// The chain: the lens from the copy, the light, each effect, then out onto the back buffer.
+// The chain: the lens from the copy, each effect, then out onto the back buffer.
 void draw_chain(Warp &w, ID3D12GraphicsCommandList *commands, ID3D12Resource *back_buffer) {
     const auto back = back_buffer->GetDesc();
     if (!make_targets(w, back.Width, back.Height)) return;
@@ -455,8 +455,7 @@ void draw_chain(Warp &w, ID3D12GraphicsCommandList *commands, ID3D12Resource *ba
         commands->DrawInstanced(3, 1, 0, 0);
     };
 
-    const bool light = c.light[0] > 0;
-    const bool direct = !c.look && !light && c.passes.empty();
+    const bool direct = !c.look && c.passes.empty();
     if (direct) transition(commands, back_buffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     // The lens.
     std::array<float, camcorder::effect_values> values{};
@@ -466,13 +465,6 @@ void draw_chain(Warp &w, ID3D12GraphicsCommandList *commands, ID3D12Resource *ba
     draw(0, -1, -1, direct ? -1 : current, 1, false, values, -1);
     if (!direct) {
         const auto next = [&]() -> int { return current == picture_a ? picture_b : picture_a; };
-        if (light) {
-            values = {};
-            std::copy(std::begin(c.light), std::end(c.light), values.begin());
-            values[7] = c.look ? 1.0f : 0.0f;
-            draw(1, current, -1, next(), 1, false, values, -1);
-            current = next();
-        }
         for (const auto &pass : c.passes) {
             const auto slot = [&](Slot s) {
                 switch (s) {

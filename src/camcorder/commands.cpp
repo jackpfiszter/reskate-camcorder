@@ -50,7 +50,7 @@ std::string describe(const Status &s) {
     line += format_counter(s.counter_seconds);
     line += s.mode == Mode::tripod ? ", tripod " + std::to_string(s.active_tripod + 1) + " (" +
                                          std::string(head_word(s.head)) + (s.tripod_setup ? ", setup" : "") + ")"
-                                   : ", handheld (" + (s.grip_id == long_grip().id ? std::string() : s.grip_name + ", ") +
+                                   : ", " + std::string(s.grip_id == board_cam().id ? "board cam" : "handheld") + " (" +
                                          (s.lock_on ? "lock on" : "free") + ")";
     line += ", " + s.camera_name + ", " + s.lens_name;
     char zoom[32];
@@ -129,35 +129,18 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
         cam.set_adapter(adapter ? std::optional<Adapter>(*adapter) : std::nullopt);
         return adapter ? adapter->name + "." : std::string("The camera's own lens.");
     }
-    // A height of the hand (`grip hip` before rigs: the settings files of older versions say it).
-    const auto hand_height = [&](std::string_view word) -> const GripProfile * {
-        return same(word, "low") ? &long_grip() : same(word, "hip") ? &hip_grip() : same(word, "eye") ? &eye_grip() : nullptr;
-    };
-    const auto hold_at = [&](const GripProfile &height) {
-        const auto &rig = cam.handheld();
-        const float base = rig.settings().grip.height_on(true);
-        cam.set_handheld_lift(std::clamp(height.height_on(true), rig.settings().lowest, std::max(rig.settings().highest, rig.settings().lowest)) - base);
-    };
+    // In the hand, or on the board. (Older settings files say `grip low|hip|eye`: the hand.)
     if (same(verb, "grip") || same(verb, "rig")) {
-        const auto current = cam.handheld().settings().grip.id;
-        if (same(first, "list")) {
-            std::string list;
-            for (const auto &g : catalogue.grips())
-                list += (list.empty() ? "" : "\n") + g.id + "  " + g.name + (g.source.empty() ? "" : "  (" + g.source + ")") +
-                        (g.id == current ? "  <- this one" : "");
-            return list;
-        }
-        std::string id(first);
-        for (auto &c : id) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        const GripProfile *grip = first.empty() || same(first, "next") ? &catalogue.next_grip(current) : catalogue.grip(id);
-        if (!grip && hand_height(id)) {
-            cam.set_grip(*catalogue.grip(long_grip().id));
-            hold_at(*hand_height(id));
-            return "Handheld, at " + std::string(same(id, "low") ? "a skate's height" : same(id, "hip") ? "the hip" : "eye level") + ".";
-        }
-        if (!grip) return "No rig called " + std::string(first) + " (camcorder rig list).";
-        cam.set_grip(*grip);
-        return grip->name + ".";
+        const bool board = cam.handheld().settings().grip.mounted;
+        bool want = board;
+        if (first.empty() || same(first, "toggle") || same(first, "next")) want = !board;
+        else if (same(first, "board")) want = true;
+        else if (same(first, "handheld") || same(first, "hand") || same(first, "long") || same(first, "low") || same(first, "hip") ||
+                 same(first, "eye"))
+            want = false;
+        else return "Usage: camcorder rig handheld|board|toggle";
+        if (want != board) cam.set_grip(want ? board_cam() : long_grip());
+        return want ? "Board cam: on the board's nose, just off the ground." : "Handheld.";
     }
     if (same(verb, "lockon")) {
         const auto on = switch_word(words, 0, cam.status().lock_on);
@@ -212,27 +195,11 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
     if (same(verb, "height")) {
         // A step a press: bound to a key or a button, it moves the camera a hand's width.
         const float step = cam.handling().height_step;
-        // The next of the three heights up from where the camera is now (round to low).
-        std::string_view word = first;
-        if (same(first, "next") && cam.status().mode != Mode::tripod) {
-            // Compared with where each height really puts it (a mod's handling can cap them).
-            const auto &held = cam.handheld().settings();
-            const float lowest = held.lowest, highest = std::max(held.highest, held.lowest);
-            const auto at = [&](const GripProfile &g) { return std::clamp(g.height_on(true), lowest, highest); };
-            const float now = cam.handheld().lens_height(true);
-            word = now < at(hip_grip()) - 0.05f ? "hip" : now < at(eye_grip()) - 0.05f ? "eye" : "low";
-        }
-        if (const auto *preset = hand_height(word); preset && cam.status().mode != Mode::tripod) {
-            hold_at(*preset);
-            char held[64];
-            std::snprintf(held, sizeof(held), "Camera held %.2f m up.", static_cast<double>(cam.handheld().lens_height(true)));
-            return held;
-        }
         const bool up = same(first, "up"), down = same(first, "down"), reset = same(first, "reset");
         float metres{};
         const auto [end, error] = std::from_chars(first.data(), first.data() + first.size(), metres);
         const bool number = !first.empty() && error == std::errc{} && end == first.data() + first.size() && std::isfinite(metres);
-        if (!up && !down && !reset && !number) return "Usage: camcorder height up|down|low|hip|eye|next|reset|<metres>";
+        if (!up && !down && !reset && !number) return "Usage: camcorder height up|down|reset|<metres>";
         char text[64];
         const auto status = cam.status();
         if (status.mode == Mode::tripod) {
@@ -243,8 +210,9 @@ std::string run_command(Camcorder &cam, std::string_view verb, const std::vector
             std::snprintf(text, sizeof(text), "Tripod height %.2f m.", static_cast<double>(cam.tripod(slot)->settings().height));
             return text;
         }
-        // From where the lens really is (a tall rig can sit above the highest), a step at a time.
+        // From where the lens really is, a step at a time. (On the board it stays on the board.)
         const auto &rig = cam.handheld();
+        if (rig.settings().grip.mounted) return "The board cam is fixed to the board.";
         const float base = rig.settings().grip.height_on(true), now = rig.lens_height(true);
         const float target = up ? now + step : down ? now - step : reset ? base : metres;
         const float low = rig.settings().lowest, high = std::max(rig.settings().highest, low);

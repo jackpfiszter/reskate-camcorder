@@ -60,12 +60,11 @@ struct ViewfinderOptions {
     // ("Mouse: aim   Q / E: zoom"). Empty: none.
     std::string hint;
     const ViewfinderLayout *layout{}; // the camera's; none: the VX1000's
-    // For the text fields beyond the frame's: {format}, {date} and {time}, the light.
+    // For the text fields beyond the frame's: {format}, {date} and {time}.
     std::string format;
     std::optional<std::tm> clock;
     int year{}; // 0: the clock's own
     StampProfile::Date date_order{StampProfile::Date::month_day_year};
-    bool light{};
 };
 
 struct Viewfinder {

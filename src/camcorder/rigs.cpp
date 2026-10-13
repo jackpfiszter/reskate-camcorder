@@ -96,12 +96,8 @@ const GripProfile &long_grip() {
     static const GripProfile grip{};
     return grip;
 }
-const GripProfile &hip_grip() {
-    static const GripProfile grip{"hip", "Hip", 1.0f, 0.3f, 0.3f, -3, 0.92f, 1, {}};
-    return grip;
-}
-const GripProfile &eye_grip() {
-    static const GripProfile grip{"eye", "Eye level", 1.6f, 0.08f, 0.3f, -3, 0.92f, 1, {}};
+const GripProfile &board_cam() {
+    static const GripProfile grip{"board", "Board cam", 0.15f, 0, 0.45f, 8, 1, 0.6f, true};
     return grip;
 }
 
@@ -110,8 +106,9 @@ float HandheldRig::lens_height(bool on_board) const {
     return std::clamp(settings_.grip.height_on(on_board) + lift_, low, high);
 }
 
-Vec3 HandheldRig::grip_position(const Filmer &filmer) const {
-    const auto forward = flat_forward(filmer.forward);
+Vec3 HandheldRig::grip_position(const Filmer &filmer, std::optional<float> aim_yaw) const {
+    const bool aimed = aim_yaw && std::isfinite(*aim_yaw) && !settings_.grip.mounted;
+    const auto forward = aimed ? Vec3{std::sin(*aim_yaw), 0, std::cos(*aim_yaw)} : flat_forward(filmer.forward);
     const auto right = flat_right(forward);
     // Out to the right hand and ahead of the body, as the grip holds it.
     const float side = settings_.grip.side, ahead = settings_.grip.ahead;
@@ -149,12 +146,12 @@ Shot HandheldRig::step(const Filmer &filmer, const Subject *subject, const Opera
         }
     }
     // LB / RB (or R / F, or `camcorder height`) raise and lower it, about a metre in a second and a bit.
-    if (const float raise = clamp_unit(input.raise); raise != 0) {
+    if (const float raise = settings_.grip.mounted ? 0.0f : clamp_unit(input.raise); raise != 0) {
         const float now = lens_height(filmer.on_board);
         const float low = std::max(settings_.lowest, 0.0f), high = std::max(settings_.highest, low);
         set_lift(lift_ + std::clamp(now + raise * settings_.raise_speed * dt, low, high) - now);
     }
-    const auto grip = grip_position(filmer);
+    const auto grip = grip_position(filmer, started_ ? std::optional<float>(yaw_.value) : std::nullopt);
     // The arms: the camera hangs from the body, so the body's pushes, stops, turns and landings
     // swing it before it settles; at a steady speed it rides along (the body's acceleration, not
     // its speed, moves it). A jump in place (a respawn) starts it again.

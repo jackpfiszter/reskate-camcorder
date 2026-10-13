@@ -33,11 +33,14 @@ TEST(commands_change_the_lens_grip_and_lock_on) {
     CHECK(run_command(cam, "lens", {"stock"}) == "The camera's own lens.");
     CHECK(!cam.settings().adapter);
     CHECK(run_command(cam, "lens", {}) == "Century Optics 0.3x fisheye.");
-    // One rig built in, the hand; older settings' grips are its heights.
-    CHECK(run_command(cam, "grip", {"eye"}) == "Handheld, at eye level.");
-    CHECK_NEAR(cam.status().handheld_height, eye_grip().height_on(true), 1e-5);
-    CHECK(run_command(cam, "rig", {"next"}) == "Handheld.");
+    // In the hand or on the board; older settings' grips are the hand.
+    CHECK(starts(run_command(cam, "rig", {"board"}), "Board cam"));
+    CHECK(cam.handheld().settings().grip.mounted);
+    CHECK(run_command(cam, "height", {"up"}) == "The board cam is fixed to the board.");
+    CHECK(run_command(cam, "rig", {"toggle"}) == "Handheld.");
+    CHECK(run_command(cam, "grip", {"eye"}) == "Handheld.");
     CHECK_NEAR(cam.status().handheld_height, long_grip().height_on(true), 1e-5); // a rig starts at its own height
+    CHECK(starts(run_command(cam, "rig", {"pole"}), "Usage"));
     CHECK(starts(run_command(cam, "lockon", {"off"}), "Lock on off"));
     CHECK(!cam.status().lock_on);
     CHECK(starts(run_command(cam, "lockon", {}), "Lock on:"));
@@ -88,31 +91,12 @@ TEST(commands_list_and_replace_the_tape) {
     CHECK(starts(run_command(cam, "dance", {}), "Unknown camcorder command"));
 }
 
-TEST(height_steps_the_handheld_camera_and_a_grip_resets_it) {
+TEST(height_steps_the_handheld_camera) {
     Camcorder cam;
     CHECK(starts(run_command(cam, "height", {"up"}), "Camera held 0.56 m up"));
     CHECK(starts(run_command(cam, "height", {"0.2"}), "Camera held 0.20 m up"));
     CHECK(starts(run_command(cam, "height", {"down"}), "Camera held 0.12 m up")); // the lowest
-    run_command(cam, "grip", {"hip"});
-    CHECK_NEAR(cam.status().handheld_height, hip_grip().height_on(true), 1e-5);
-    CHECK(starts(run_command(cam, "height", {"eye"}), "Camera held 1.47 m up")); // 1.6 m, crouched on a board
-    CHECK(starts(run_command(cam, "height", {"low"}), "Camera held 0.41 m up"));
-    CHECK(starts(run_command(cam, "height", {"next"}), "Camera held 0.92 m up")); // the hip
-    CHECK(starts(run_command(cam, "height", {"next"}), "Camera held 1.47 m up")); // eye level
-    CHECK(starts(run_command(cam, "height", {"next"}), "Camera held 0.41 m up")); // round to low
+    CHECK(starts(run_command(cam, "height", {"reset"}), "Camera held 0.41 m up")); // the hand's own, crouched on a board
     CHECK(starts(run_command(cam, "height", {"sideways"}), "Usage"));
 }
 
-TEST(height_next_goes_round_even_when_the_handling_caps_the_height) {
-    Camcorder cam;
-    auto handling = cam.handling();
-    handling.highest = 1.0f;
-    cam.set_handling(handling);
-    std::string last;
-    bool low_again = false;
-    for (int i = 0; i < 6; ++i) {
-        last = run_command(cam, "height", {"next"});
-        if (i > 0 && cam.status().handheld_height < 0.5f) low_again = true;
-    }
-    CHECK(low_again);
-}

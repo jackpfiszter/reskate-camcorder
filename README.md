@@ -6,8 +6,8 @@ like they came off a MiniDV tape.
 
 https://github.com/user-attachments/assets/0f3513a0-e78b-4346-97ff-7b38b3346e1e
 
-<sub>Filmed in game with the camcorder (an earlier version: the on-screen look and the camera light
-have come on since).</sub>
+<sub>Filmed in game with the camcorder (an earlier version: the on-screen look has come on
+since).</sub>
 
 > **Early days.** It works and it's being tested. Expect rough edges, and please
 > [tell us](https://github.com/jackpfiszter/reskate-camcorder/issues) what you find.
@@ -16,16 +16,17 @@ have come on since).</sub>
 
 - 📹 **The VX1000 and the Century fisheye.** Real zoom, the round black corners at full wide, and
   straight lines bending like through the real glass.
-- 🛹 **Film handheld while you skate.** Low on a long grip for the classic follow shot, at the hip,
-  or at eye level. It keeps your friend in frame for you, a beat late like a real filmer.
+- 🛹 **Film handheld while you skate.** Low for the classic follow shot or up high, raised and
+  lowered as you go, or fixed to your board as a board cam. It keeps your friend in frame for you,
+  a beat late like a real filmer, and you nudge the framing and zoom without stopping.
 - 🔭 **Tripods.** Set up to four at a spot, aim them, and cut between angles.
-- 📼 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, a date stamp set to any
-  day you like, and a camera light for night sessions.
+- 📼 **The MiniDV look.** Soft 480-line picture, hard whites, colour bleed, and a date stamp set to
+  any day you like.
 - 🔊 **The game's sound in your clips,** heard from where the camera stands. Nothing else from your
   PC gets in.
 - 💾 **Clips straight to your Videos folder** as MP4s, ready to edit. Or join a whole "tape" into
   one file.
-- 🧩 **Make your own cameras.** Hi8, a worn VHS camcorder, Super 8, a 16:9 HVX200, a pole cam:
+- 🧩 **Make your own cameras.** Hi8, a worn VHS camcorder, Super 8, a 16:9 HVX200:
   every camera is a small mod anyone can make. Its picture is built from 34 effects (VHS tracking,
   film dust and light leaks, bloom, colour grades from a `.cube`...), and its viewfinder and
   picture shape are its own. A few come with it.
@@ -55,16 +56,18 @@ release into your `Mods` folder.
 |---|---|---|
 | Camera on / off | F5 | *bind it in Settings > Controls* |
 | Record / stop | F6 | |
-| Quick menu (camera, lens, look, light, height, tripod) | F7 | |
+| Quick menu (camera, lens, look, handheld / board cam, tripod) | F7 | |
 | Take a still | F8 | |
-| Pointing: automatic, or you aim it as you skate | F9 | |
+| Next tripod | F9 | |
 | Set up a tripod, then done | F10, F10 again | |
-| Aim (when you aim it) | Mouse | Right stick |
-| Zoom | Mouse wheel (Q / E setting up a tripod) | Triggers |
-| Camera higher / lower | R / F setting up a tripod | Bumpers |
+| Aim (nudge the framing; set up a tripod) | Mouse | Right stick |
+| Zoom | Q / E, or the mouse wheel | Triggers |
+| Camera higher / lower | R / F | Bumpers |
 | Back out of the quick menu or a tripod's setup | Esc | Start |
 
 The F keys are what **SET UP KEYS** gives you. Change any of them in ReSkate's Settings > Controls.
+Aim, zoom and height work the same handheld, on the board cam and setting up a tripod, and while
+you skate: while you film handheld those keys and sticks are the camera's, not the skater's.
 
 ## Your clips
 
@@ -74,7 +77,7 @@ on the CAMCORDER page takes you there.
 ## Make your own camera
 
 A camera is a few lines of JSON in an ordinary ReSkate mod: zoom, frame rate, picture shape, its
-picture as a stack of effects, its viewfinder, its date stamp, its mic. [docs/MODDING.md](docs/MODDING.md) explains every setting, and
+picture as a stack of effects, its viewfinder, its date stamp. [docs/MODDING.md](docs/MODDING.md) explains every setting, and
 [examples/mods/Camcorder Extras](examples/mods/Camcorder%20Extras) is one to copy.
 
 ## Help and feedback
@@ -101,12 +104,12 @@ with no ReSkate update.
 
 | Path | What |
 |---|---|
-| `src/camcorder/` | the model: cameras, lenses, rigs, tape, look, sound. No game types; builds anywhere |
+| `src/camcorder/` | the model: cameras, lenses, handheld and board cam, tripods, tape, look, sound. No game types; builds anywhere |
 | `tests/` | its unit tests |
 | `integration/reskate/` | the ReSkate side: its files, the patch, and `install.ps1` |
 | `docs/DESIGN.md` | the design |
 | `docs/TESTING.md` | testing: unit tests, builds, the in-game checklist |
-| `docs/MODDING.md` | camera, lens, rig and handling files |
+| `docs/MODDING.md` | camera, lens and handling files |
 | `examples/mods/` | the example camera mod |
 
 ### Build and test the model
@@ -123,7 +126,7 @@ picture shader with fxc. Building ReSkate yourself is in [docs/TESTING.md](docs/
 
 ### Console commands
 
-Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|warp|rig|lockon|subject|frame|aim|tripod|head|height|tape|clean|quality|sound|look|dv|date|light|sensitivity|invert|guide|open|review|mods|effects|export|status`.
+Every action is a console command (`~` in game): `camcorder power|rec|stop|still|quick|mode|camera|lens|rig|lockon|subject|frame|tripod|head|height|tape|clean|sound|look|dv|date|sensitivity|invert|guide|open|review|mods|effects|export|status`.
 Settings are kept in `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt`.
 
 ### Releases

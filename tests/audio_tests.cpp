@@ -75,69 +75,6 @@ TEST(timeline_starts_with_the_clip) {
     CHECK(out[out.size() - 1] == 4 && out[0] == 0);
 }
 
-TEST(vx_mic_levels_and_colours_the_sound) {
-    VxMic mic;
-    // Silence stays silence.
-    std::vector<std::int16_t> quiet(9600, 0);
-    mic.process(quiet.data(), 4800);
-    CHECK(rms(quiet) == 0);
-    // A quiet room comes up, a loud slam comes down: the level control.
-    VxMic a, b;
-    auto soft = sine(0.02f, 1000, 48000), loud = sine(0.9f, 1000, 48000);
-    const double soft_in = rms(soft), loud_in = rms(loud);
-    a.process(soft.data(), 48000);
-    b.process(loud.data(), 48000);
-    CHECK(rms(soft, soft.size() / 2) > soft_in * 2);
-    CHECK(rms(loud, loud.size() / 2) < loud_in);
-    // Rumble below the capsule's range comes out much weaker than the voice of the board.
-    VxMic c;
-    auto mix = sine(0.2f, 30, 48000);
-    const auto tone = sine(0.2f, 1000, 48000);
-    for (std::size_t i = 0; i < mix.size(); ++i) mix[i] = static_cast<std::int16_t>(mix[i] + tone[i]);
-    const double before = strength(mix, 30) / strength(mix, 1000);
-    c.process(mix.data(), 48000);
-    CHECK(strength(mix, 30) / strength(mix, 1000) < before * 0.4);
-    // A constant offset (DC) is removed.
-    VxMic e;
-    std::vector<std::int16_t> dc(96000, 8000);
-    e.process(dc.data(), 48000);
-    CHECK(std::abs(dc.back()) < 200);
-}
-
-namespace {
-// The biggest step from one sample to the next in the left channel: a click is a big step.
-double biggest_step(const std::vector<std::int16_t> &s, std::size_t from = 0, std::size_t to = SIZE_MAX) {
-    double most = 0;
-    to = std::min(to, s.size() / audio_channels);
-    for (std::size_t i = from + 1; i < to; ++i)
-        most = std::max(most, std::abs(static_cast<double>(s[i * audio_channels]) - s[(i - 1) * audio_channels]) / 32768.0);
-    return most;
-}
-} // namespace
-
-TEST(the_limiter_rounds_loud_hits_under_full_scale) {
-    // A board slam far over full scale, in the middle of a steady tone.
-    std::vector<float> s(48000 * audio_channels);
-    for (std::size_t i = 0; i < s.size() / audio_channels; ++i)
-        for (int c = 0; c < audio_channels; ++c)
-            s[i * audio_channels + c] = 0.3f * std::sin(2 * 3.14159265f * 440 * i / audio_rate) +
-                                        (i >= 20000 && i < 20400 ? 2.5f * std::sin(2 * 3.14159265f * 180 * i / audio_rate) : 0.0f);
-    Limiter limiter;
-    limiter.process(s.data(), s.size() / audio_channels);
-    float loudest = 0;
-    for (const float v : s) loudest = std::max(loudest, std::abs(v));
-    CHECK(loudest <= 1.0f);
-    CHECK(loudest > 0.8f); // brought down to the ceiling, not crushed
-    // Away from the hit the tone comes through untouched (only late by the lookahead).
-    const auto at = static_cast<std::size_t>(10000 + Limiter::lookahead) * audio_channels;
-    CHECK_NEAR(s[at], 0.3f * std::sin(2 * 3.14159265f * 440 * 10000 / audio_rate), 1e-4);
-    // No sample jumps more than a smooth wave of that size could.
-    double step = 0;
-    for (std::size_t i = 1; i < s.size() / audio_channels; ++i)
-        step = std::max(step, static_cast<double>(std::abs(s[i * audio_channels] - s[(i - 1) * audio_channels])));
-    CHECK(step < 0.15);
-}
-
 TEST(the_sound_track_matches_the_timeline_when_steady) {
     const auto tone = sine(0.5f, 440, 4800);
     AudioTimeline plain;
@@ -156,6 +93,17 @@ TEST(the_sound_track_matches_the_timeline_when_steady) {
     for (std::size_t i = SoundTrack::fade * audio_channels; i < a.size(); ++i) same = same && a[i] == b[i];
     CHECK(same);
 }
+
+namespace {
+// The biggest step from one sample to the next in the left channel: a click is a big step.
+double biggest_step(const std::vector<std::int16_t> &s, std::size_t from = 0, std::size_t to = SIZE_MAX) {
+    double most = 0;
+    to = std::min(to, s.size() / audio_channels);
+    for (std::size_t i = from + 1; i < to; ++i)
+        most = std::max(most, std::abs(static_cast<double>(s[i * audio_channels]) - s[(i - 1) * audio_channels]) / 32768.0);
+    return most;
+}
+} // namespace
 
 TEST(gaps_and_trims_do_not_click) {
     // 100 ms packets of a tone that is never at zero where they meet.
@@ -178,29 +126,6 @@ TEST(gaps_and_trims_do_not_click) {
     for (const auto &[at, n] : arrivals) place_packet(plain, at, packet(n), size, raw);
     CHECK(biggest_step(raw) > 0.2);
     CHECK(raw.size() == out.size()); // and both keep the same time
-}
-
-TEST(vx_mic_pops_round_off_instead_of_crunching) {
-    // Quiet room, then a sudden loud pop: the old level control let it through at four times the
-    // gain into the converter for 5 ms.
-    std::vector<float> s(24000 * audio_channels, 0.0f);
-    for (std::size_t i = 0; i < s.size() / audio_channels; ++i)
-        for (int c = 0; c < audio_channels; ++c)
-            s[i * audio_channels + c] = (i < 12000 ? 0.01f : 0.7f) * std::sin(2 * 3.14159265f * 1500 * i / audio_rate);
-    VxMic mic;
-    mic.process(s.data(), s.size() / audio_channels);
-    // Cut flat at full scale is the crunch: samples sitting on it, run after run. Rounded off, the
-    // wave never quite reaches it.
-    int flat = 0, longest = 0;
-    float loudest = 0;
-    for (std::size_t i = 0; i < s.size() / audio_channels; ++i) {
-        const float v = std::abs(s[i * audio_channels]);
-        flat = v >= 0.999f ? flat + 1 : 0;
-        longest = std::max(longest, flat);
-        loudest = std::max(loudest, v);
-    }
-    CHECK(longest < 2);
-    CHECK(loudest > 0.5f); // the pop is still loud
 }
 
 TEST(the_camera_hears_the_skater_from_where_it_stands) {

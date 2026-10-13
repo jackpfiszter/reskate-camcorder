@@ -40,9 +40,12 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
 
 3. **Skater positions** (`Extension/Multiplayer/Session/session.cpp`): wherever
    `note_local_skater(...)` is called (solo and in a session), also call
-   `camcorder_runtime::note_local_skater(...)`. In a session, after the remote players are placed,
-   call `camcorder_runtime::note_players(...)` with each visible player's id, name and
-   `render_pose.root`. This is the one genuinely new piece of plumbing.
+   `camcorder_runtime::note_local_skater(pose)`, and let `camcorder_runtime::wants_full_pose()`
+   decide whether that tick's `capture_local` reads the board too (a few times a second while the
+   camera is on: the board says where the skater's feet are). In a session, after the remote
+   players are placed, call `camcorder_runtime::note_players(...)` with
+   `camcorder_runtime::filmable(id, name, render_pose)` for each visible player. This is the one
+   genuinely new piece of plumbing.
 
 4. **One camera lease.** `update_party_camera` keeps a single static lease. Spectate and the
    camcorder must never both drive it: Spectate should refuse (and say why) while
@@ -59,10 +62,9 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
 7. **Bindings** (`Engine/Game/Input/controller_bindings.h`, `action_binds`): add switches so a
    player can put the camcorder on buttons, e.g.
    `{"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"}`,
-   `{"camcorder_rec", "rec", "Camcorder REC / STBY", "camcorder rec"}`,
-   `{"camcorder_aim", "camaim", "Camcorder: you aim it / it aims itself", "camcorder aim toggle"}`,
-   `{"camcorder_tripod", "tripod", "Camcorder: set up a tripod", "camcorder tripod place"}`,
-   `{"camcorder_cut", "cut", "Camcorder: next tripod", "camcorder tripod next"}`.
+   `{"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"}`,
+   `{"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"}`,
+   `{"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"}`.
 
    (The patch has the full list: take a still and the quick menu too.)
 
@@ -73,11 +75,13 @@ upstream. ReSkate is GPL-3.0, and so is this repository, so the code can go eith
    present path, before the readouts are drawn (`camcorder_capture.cpp`); Media Foundation and
    process-loopback audio are linked in `cmake/UI.cmake`.
 
-10. **You aim it** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
+10. **Filming handheld** (`Extension/UI/Overlay/input_capture.cpp`, `overlay_input.cpp`): a
     partial hold beside Freecam's full one. `DingoSDKOverlaySetCameraAimCapture` keeps the right
-    stick, the triggers and the mouse from the game (XInput, PlayStation HID reports, raw mouse
-    records, mouse messages, the cursor) and leaves it the keyboard, the left stick and the
-    buttons; `DingoSDKOverlayReadMouseWheel` gives the camera the wheel.
+    stick, the triggers, the bumpers, the mouse and the Q / E / R / F keys (`camera_aim_key`) from
+    the game (XInput, PlayStation HID reports, raw mouse and keyboard records, key state, mouse
+    and key messages, the cursor) and leaves it the rest of the keyboard, the left stick and the
+    buttons; `DingoSDKOverlayReadMouseWheel` gives the camera the wheel. Key releases still reach
+    the game, so nothing is left held down.
 
 11. **The fisheye warp** (`overlay_render.cpp`): the SRV heap gets a third slot for the copy of the
     game's frame (`camcorder_warp.cpp`), copied before the overlay draws; the clip's copy moves

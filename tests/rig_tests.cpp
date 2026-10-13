@@ -73,13 +73,12 @@ TEST(handheld_grips_hold_the_camera_at_their_heights) {
     const auto f = standing({0, 10, 0});
     rig.settings().grip = long_grip();
     CHECK_NEAR(rig.grip_position(f)[1], 10.45, 1e-4);
-    rig.settings().grip = eye_grip();
-    CHECK_NEAR(rig.grip_position(f)[1], 11.6, 1e-4);
-    // Clear of the filmer's own head (about 0.15 m from its centre to the face).
-    CHECK(rig.grip_position(f)[2] >= 0.25f);
-    // Held in the right hand: facing +Z, right is -X.
-    rig.settings().grip = hip_grip();
-    CHECK(rig.grip_position(f)[0] < 0);
+    // Held in the right hand, out in front: facing +Z, right is -X.
+    CHECK(rig.grip_position(f)[0] < 0 && rig.grip_position(f)[2] >= 0.25f);
+    // The board cam: just off the ground, on the board's line, ahead.
+    rig.settings().grip = board_cam();
+    CHECK_NEAR(rig.grip_position(f)[1], 10.15, 1e-4);
+    CHECK_NEAR(rig.grip_position(f)[0], 0, 1e-4);
 }
 
 TEST(handheld_lock_on_keeps_a_moving_skater_framed) {
@@ -287,9 +286,9 @@ TEST(handheld_heights_are_from_the_feet_whatever_the_root) {
         Shot shot;
         for (int i = 0; i < 30; ++i) shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
         CHECK_NEAR(shot.camera[13], 0.45, 0.06); // the long grip: low, whatever the root
-        rig.settings().grip = eye_grip();
+        rig.settings().grip = board_cam();
         shot = rig.step(f, nullptr, {}, 1.0f / 30, 1);
-        CHECK_NEAR(shot.camera[13], 1.6, 0.08);
+        CHECK_NEAR(shot.camera[13], 0.15, 0.08);
     }
 }
 
@@ -468,4 +467,16 @@ TEST(framing_is_measured_from_the_feet) {
     for (int i = 0; i < 20; ++i) h.update(0.6f, 0.016f); // crouching on landing
     CHECK(*h.value < 0.62f);
     CHECK_NEAR(*h.update(std::nullopt, 0.016f), *h.value, 0); // no ground found: kept
+}
+
+TEST(the_camera_swings_round_the_filmer_not_into_them) {
+    // Facing +Z, aimed straight back: the lens is out behind them, not inside their body.
+    HandheldRig rig;
+    const auto f = standing({0, 0, 0});
+    const auto back = rig.grip_position(f, pi);
+    CHECK(back[2] < -0.4f);
+    CHECK(std::sqrt(back[0] * back[0] + back[2] * back[2]) > 0.5f);
+    // On the board it stays on the board, whatever the aim.
+    rig.settings().grip = board_cam();
+    CHECK(rig.grip_position(f, pi)[2] > 0.3f);
 }

@@ -112,7 +112,7 @@ struct Writer::Impl {
             const auto left = recorded_finish(finish, frame->look_on_screen, frame->stamp_on_screen);
             const bool styled = left.fields() || (left.dv.on && (left.dv.highlights || left.dv.white_balance || left.dv.sharpen ||
                                                                 left.dv.chroma || left.dv.grain)) ||
-                                left.date_stamp;
+                                left.stamped();
             if (!styled) bgra_to_nv12(scaled, nv12);
             Image finished;
             for (int i = 0; i < frame->repeats && !failed; ++i) {
@@ -205,7 +205,7 @@ bool Writer::start(const std::wstring &path, VideoSize size, Sound sound, double
         // Each clip's white balance starts somewhere of its own in its wander.
         s.dv_clip.seed = static_cast<float>(origin_seconds - std::floor(origin_seconds));
     }
-    if (with_sound) s.audio.start(origin_seconds, sound, finish.mic, finish.ear);
+    if (with_sound) s.audio.start(origin_seconds, finish.ear);
     s.thread = std::thread([&s] { s.run(); });
     return true;
 }

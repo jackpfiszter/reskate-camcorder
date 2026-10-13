@@ -53,25 +53,25 @@ answer.
 
 The camera rides on your skater, held in your right hand.
 
-- **Grips.** *Long grip*: low (about 45 cm) and out in front, the fisheye follow shot, a board
-  length behind the skater. *Hip*: waist height. *Eye level*: through the viewfinder, the
-  long-lens shot.
+- **Handheld or board cam.** Handheld, the camera is held out ahead of the filmer along where
+  it aims, so it swings round their body rather than into it, at any height from just off the
+  ground (the fisheye follow shot) to overhead, raised and lowered as you skate. Heights are from
+  the filmer's feet: their board under them, or the ground ray off it. The board cam is fixed to
+  the nose of the board, looking slightly up, its height not yours to change. Either way the lens
+  is kept a few centimetres above the surface under it.
 - **Lock on.** Pick a subject (`camcorder subject <player>|next`) and the filmer keeps them
   framed by themself, a little late like a person (a critically damped "operator" spring, aiming
-  slightly ahead of where they are going). You keep both hands on skating; the stick, when the
-  camera has it, only nudges the framing, which drifts back when you let go.
-- **Pointing: automatic or you aim it.** By default the camera points itself (lock on, above)
-  and you just skate. One setting, one key, turns it over to you. skate.'s right stick does the
-  tricks, so the camera cannot share it without taking it: there used to be a separate
-  "operate" mode that stopped the skater and gave the whole pad to the camera, but it overlapped
-  with aiming and confused people, so it went. Full control of a standing camera is setting up
-  a tripod.
-- **You aim it.** Following a friend's line you need both: `camcorder aim you` splits the
-  input instead of taking all of it. The game keeps the keyboard, the left stick and the
-  buttons; the camera takes the right stick, the triggers and the mouse (the wheel zooms, a
-  notch at a time like a thumb on the rocker). ReSkate's overlay does the split where it already
-  holds input back for Freecam (`input_capture.cpp`: XInput, PlayStation HID reports, raw mouse
-  records, the cursor), so skate. simply sees a centred right stick and a still mouse.
+  slightly ahead of where they are going). You keep both hands on skating; the mouse or stick
+  only nudges the framing, which drifts back when you let go. With nobody picked, you aim it.
+- **One set of controls.** Handheld (and on the board cam) the input is split, not taken: the
+  game keeps the left stick, the buttons and the rest of the keyboard; the camera takes the
+  mouse and right stick (aim), Q / E and the triggers (zoom; the wheel too, a notch at a time like
+  a thumb on the rocker), R / F and the bumpers (height). The same keys do the same on a tripod's
+  setup, so there is nothing to switch. A filmer gives up the grabs and right-stick tricks while
+  filming, as a real one does. ReSkate's overlay does the split where it already holds input back
+  for Freecam (`input_capture.cpp`: XInput, PlayStation HID reports, raw mouse and keyboard
+  records, the cursor), so skate. simply sees a centred right stick, a still mouse and those four
+  keys up. Watching from a tripod gives everything back to the game.
 - **Hand shake.** A person breathing and holding 1.5 kg, the wheels' buzz rising with speed on
   a board, a dip with each footstep on foot. Repeatable, small (under 2.5 degrees), steadier as
   `steadiness` goes up, and naturally worse at tele because the frame is narrower.
@@ -88,8 +88,7 @@ The camera rides on your skater, held in your right hand.
   place, and a Build Kit item would save into the park; a stand-in needs a placement that
   isn't saved, which ReSkate does not have yet.
 - **The head.** *Locked off*: nothing moves, the skater rolls through the frame. *Follow*:
-  pans and tilts after the subject (or you, solo), late the way a fluid head drags. *Manual*: a
-  friend operating it pans against the drag.
+  pans and tilts after the subject (or you, solo), late the way a fluid head drags.
 - **Up to four tripods** at a spot; `camcorder tripod next` cuts between them, live. With
   slots, a solo player can set up a multi-angle line and cut between angles while skating it.
 
@@ -120,8 +119,9 @@ What "record" can mean, from cheapest to most real:
    NV12 and encodes H.264 to MP4 with Windows' own Media Foundation (`camcorder_video.cpp`). The
    pixel work and the 29.97 pacing are in the tested model (`recorder.h`). Sound is the game's
    process only (WASAPI process loopback, `camcorder_audio.cpp`), placed on the picture's clock
-   (gaps filled, overlaps trimmed: `audio.h`) and encoded as AAC beside the H.264; the VX mic
-   colours it like the camera's own microphone and level control.
+   (gaps filled, overlaps trimmed: `audio.h`), heard from the camera's position (`CameraEar`:
+   quieter, duller and to one side with distance) and encoded as AAC beside the H.264. Nothing
+   else is done to it.
    **Stills** (`camcorder still`) are the next picture off the same readback, saved as a JPEG to
    Videos\ReSkate Camcorder\Stills. **Capturing the tape** joins the current tape's clips, in order,
    into one MP4, the way a MiniDV tape went into the computer: each clip is decoded and encoded
@@ -184,7 +184,7 @@ through the camcorder and steer by it, as real filmers do.
    order its file lists them; a camera with no stack gets one from its look's numbers. Mods stay
    data: the blocks are the camcorder's own code, one pixel shader whose programs they are
    (`camcorder_shader.h`). Before the overlay draws, `camcorder_warp.cpp` copies the game's
-   frame and draws the picture back over it pass by pass: the lens, the camera light, each block
+   frame and draws the picture back over it pass by pass: the lens, each block
    (a block may take several passes, through spare textures: a two-way blur, bloom), then out to
    the screen, through 16-bit float textures. What moves over time (white balance drift, gate
    weave, flicker, a tracking band's roll) is worked out per frame in the model
@@ -206,7 +206,7 @@ action is also a console command.
 |---|---|
 | Camera on / off | `camcorder power toggle` |
 | REC / STBY | `camcorder rec` |
-| Pointing: automatic / you aim it | `camcorder aim toggle` |
+| Handheld / board cam | `camcorder rig toggle` |
 | Frame on board / whole skater / head | `camcorder frame next` |
 | Take a still | `camcorder still` |
 | Capture the tape | `camcorder tape capture` |
@@ -216,9 +216,9 @@ action is also a console command.
 | Fisheye / stock lens | `camcorder lens toggle` |
 | Next subject | `camcorder subject next` |
 
-With the pad on the camera: right stick aims, triggers zoom (left wide, right tele). In tripod
-setup: left stick carries it, right stick aims, triggers raise and lower the head, and with the
-boost button held the triggers zoom instead.
+Handheld, on the board cam and in tripod setup alike: mouse / right stick aims, Q / E, the wheel
+or the triggers zoom (left wide, right tele), R / F or the bumpers raise and lower it. In tripod
+setup WASD / the left stick also carry it.
 
 ## Milestones
 
@@ -234,7 +234,8 @@ boost button held the triggers zoom instead.
 
 ## Open questions
 
-- With "you aim it", is giving up skate.'s mouse and right-stick tricks while filming acceptable?
+- Is giving up skate.'s mouse, right-stick tricks and Q / E / R / F while filming handheld
+  acceptable? (If R / F matter to skate., the height keys are one line to change.)
 - The game's camera at very narrow FOVs (full tele is about 3.5 degrees vertical): LOD and
   streaming are tuned for the gameplay camera's distance, not a 10x lens across a plaza.
 - Hall of Meat's slow motion is single-player only; any camcorder slow-mo (overcranking was

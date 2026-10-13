@@ -109,13 +109,6 @@ PictureChain chain_numbers(const camcorder_runtime::Published &p, const Rect &pi
     chain.lens[3] = width / height;
     chain.projection = static_cast<float>(static_cast<int>(o.projection));
     chain.look = p.finish.dv.on;
-    if (p.light) {
-        const auto &lamp = p.finish.light;
-        chain.light[0] = std::clamp(lamp.strength, 0.0f, 10.0f);
-        chain.light[1] = std::clamp(lamp.reach, 0.1f, 3.0f);
-        chain.light[2] = std::clamp(lamp.exposure, 0.0f, 1.0f);
-        for (int i = 0; i < 3; ++i) chain.light[4 + i] = static_cast<float>(lamp.colour[static_cast<std::size_t>(i)]) / 255.0f;
-    }
     const double seconds = seconds_now() - start;
     chain.frame = static_cast<float>(frame % 65536u);
     chain.seconds = static_cast<float>(std::fmod(seconds, 65536.0));
@@ -173,9 +166,9 @@ void draw_guide(ImDrawList *list, ImFont *font, const Rect &picture) {
     static constexpr const char *lines[] = {
         "THE CAMCORDER, QUICKLY",
         "REC / STBY: F6 after SET UP KEYS (the CAMCORDER page), or REC there",
-        "It points itself at who you film. F9: you aim it (mouse or right stick) as you skate",
-        "Zoom: wheel or triggers      Height: LB / RB",
-        "Quick menu: F7: camera, lens, look, light, height, tripod",
+        "Filming someone, it follows them; nobody picked, you aim it. Mouse or right stick aims",
+        "Zoom: Q / E, the wheel or the triggers      Height: R / F or the bumpers",
+        "Quick menu: F7: camera, lens, look, who to frame, hold it, tripod",
         "Tripod: F10 sets one up; move and aim it; F10 again (or REC), then skate",
         "Esc or Start: back out of the quick menu or a tripod's setup",
         "Everything else: the CAMCORDER page in the ReSkate menu",
@@ -246,7 +239,6 @@ void draw_camcorder() {
     }
     options.year = p.finish.stamp_year;
     options.date_order = p.finish.stamp.date;
-    options.light = p.light;
     // While the camcorder's picture is up the overlay must draw something every frame, or it skips
     // the frame and the picture is not copied for a clip or a still (camcorder_capture.h): one
     // pixel, all but transparent.
@@ -275,7 +267,7 @@ void draw_camcorder() {
         if (copy) next_picture = (now - next_picture > 0.25 ? now : next_picture) + 1 / film_rate;
     }
     bool look_on_screen = false;
-    const bool chain_wanted = warped || p.finish.dv.on || film_rate > 0 || p.light;
+    const bool chain_wanted = warped || p.finish.dv.on || film_rate > 0;
     if (chain_wanted && height > 0 && camcorder_picture_pass_ready()) {
         if (camcorder_warp_request(copy)) {
             if (copy) ++pictures; // the grain changes with the picture
@@ -292,10 +284,10 @@ void draw_camcorder() {
     {
         static double missing_since = 0;
         static bool said = false;
-        const bool wanted = p.finish.dv.on || p.light;
+        const bool wanted = p.finish.dv.on;
         // (While the shader is still being built, a moment after the camera first comes on, it is not missing.)
         const bool building = !camcorder_picture_pass_ready() && !camcorder_picture_pass_failed();
-        if (!wanted || look_on_screen || building || (p.light && camcorder_picture_pass_ready() && camcorder_warp_why_not().empty())) {
+        if (!wanted || look_on_screen || building) {
             missing_since = 0;
         } else if (missing_since == 0) {
             missing_since = now;
@@ -309,13 +301,13 @@ void draw_camcorder() {
     }
     // With fields, a stamp in the copy would be split between them and twitter up and down in
     // clips: the recording then burns its own after the fields, and the screen's comes after the copy.
-    const bool stamp_in_copy = p.finish.date_stamp && !p.finish.fields();
+    const bool stamp_in_copy = p.finish.stamped() && !p.finish.fields();
     if (stamp_in_copy) draw_stamp(list, p, v.picture);
     // A clip's or a still's copy of the picture is made here: after the picture pass and the stamp,
     // before the readouts. It is told what the screen already did, so it is not done twice.
     camcorder_capture_screen(look_on_screen, stamp_in_copy);
     list->AddCallback(camcorder_capture_draw, nullptr);
-    if (p.finish.date_stamp && !stamp_in_copy) draw_stamp(list, p, v.picture);
+    if (p.finish.stamped() && !stamp_in_copy) draw_stamp(list, p, v.picture);
     if (v.vignette) shadow(list, *v.vignette, v.picture);
     for (const auto &bar : v.bars)
         list->AddRectFilled({bar.x, bar.y}, {bar.x + bar.width, bar.y + bar.height}, IM_COL32(0, 0, 0, 255));

@@ -5,7 +5,7 @@ namespace {
 constexpr std::string_view anchor_words[]{"top-left", "top", "top-right", "left", "centre", "right", "bottom-left", "bottom", "bottom-right"};
 constexpr std::string_view show_words[]{"text", "dot", "battery", "zoom-bar", "box", "centre", "grid", "corners"};
 constexpr std::string_view condition_words[]{"recording", "zooming", "tripod", "setup", "handheld",
-                                             "low-battery", "low-tape", "tape-end", "fisheye", "light"};
+                                             "low-battery", "low-tape", "tape-end", "fisheye"};
 template <class Enum, std::size_t N> std::optional<Enum> find_word(const std::string_view (&words)[N], std::string_view word) {
     for (std::size_t i = 0; i < N; ++i)
         if (words[i] == word) return static_cast<Enum>(i);

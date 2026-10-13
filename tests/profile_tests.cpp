@@ -59,7 +59,6 @@ TEST(a_written_camera_reads_back_the_same) {
     camera.stamp.margin = {0.1f, 0.05f};
     camera.stamp.outline = false;
     camera.stamp.outline_colour = {40, 0, 0};
-    camera.light = {1.5f, 1.2f, 0.3f, {200, 220, 255}};
     camera.viewfinder.text = {120, 255, 120};
     camera.viewfinder.rec = {255, 255, 0};
     const auto read = read_camera(write_camera(camera), "test");
@@ -211,11 +210,10 @@ TEST(the_example_mod_loads_without_a_note) {
         switch (kind->first) {
         case ProfileKind::camera: check_one(read_camera(text.str(), kind->second)); break;
         case ProfileKind::lens: check_one(read_adapter(text.str(), kind->second)); break;
-        case ProfileKind::grip: check_one(read_grip(text.str(), kind->second)); break;
         case ProfileKind::handling: check_one(read_handling(text.str(), Handling{})); break;
         }
     }
-    CHECK(profiles == 8);
+    CHECK(profiles == 6);
     // Super 8 runs at film's 24 frames (as sound Super 8 did), with no fields to switch.
     std::ifstream in(std::filesystem::path(CAMCORDER_EXAMPLE_MODS) / "Camcorder Extras" / "camcorders" / "super8.camera.json");
     std::stringstream text;
@@ -228,28 +226,10 @@ TEST(the_example_mod_loads_without_a_note) {
 }
 #endif
 
-TEST(grips_are_data) {
-    const auto pole = read_grip(R"({"name": "Pole cam", "height": 2.6, "ahead": 1.2, "pitch": -25, "shake": 1.8})", "pole");
-    CHECK(pole.profile && pole.notes.empty());
-    CHECK(pole.profile->name == "Pole cam" && pole.profile->height == 2.6f);
-    CHECK_NEAR(pole.profile->side, long_grip().side, 1e-6); // the rest is the long grip's
-    for (const auto *grip : {&long_grip(), &hip_grip(), &eye_grip()}) {
-        const auto again = read_grip(write_grip(*grip), grip->id);
-        CHECK(again.profile && *again.profile == *grip);
-    }
-    CHECK(read_grip(R"({"height": 9})", "tall").profile->height == 3.0f);
-    CHECK(profile_file("pole.grip.json")->first == ProfileKind::grip);
+TEST(rigs_are_not_mod_files_any_more) {
+    // A mod's old .grip.json is not a profile: the camera is in the hand or on the board.
+    CHECK(!profile_file("pole.grip.json"));
     CHECK(profile_file("handling.json")->first == ProfileKind::handling);
-    // Chosen by id, with mods' rigs beside the built-in hand.
-    Catalogue catalogue;
-    catalogue.add(*pole.profile);
-    Camcorder cam;
-    CommandContext context;
-    context.catalogue = &catalogue;
-    CHECK(run_command(cam, "grip", {"pole"}, context) == "Pole cam.");
-    CHECK(cam.status().grip_id == "pole");
-    CHECK(run_command(cam, "rig", {"next"}, context) == "Handheld."); // round to the first
-    CHECK(run_command(cam, "grip", {"list"}, context).find("pole  Pole cam") != std::string::npos);
 }
 
 TEST(handling_files_layer_over_each_other) {
@@ -286,18 +266,10 @@ TEST(handling_reaches_the_rigs_and_standing_tripods) {
     CHECK(run_command(cam, "height", {"up"}).find("0.91") != std::string::npos); // 0.41 + a half-metre step
 }
 
-TEST(a_camera_has_its_own_mic) {
-    const auto read = read_camera(R"({"mic": {"low_cut": 5000, "most_gain": 6}})", "lofi");
-    CHECK(read.profile && read.notes.empty());
-    CHECK(read.profile->mic.low_cut == 5000.0f && read.profile->mic.most_gain == 6.0f);
-    CHECK(read.profile->mic.high_cut == MicProfile{}.high_cut);
-}
-
-TEST(a_camera_sets_how_its_look_light_and_stamp_behave) {
+TEST(a_camera_sets_how_its_look_and_stamp_behave) {
     const auto read = read_camera(R"({
         "look": {"grain_size": 3, "grain_colour": 1, "highlight_knee": 0.85, "drift_seconds": [5, 90]},
         "stamp": {"corner": "top-right", "size": 2, "outline": false},
-        "light": {"strength": 4, "colour": [180, 200, 255]},
         "viewfinder": {"text": [255, 200, 0]}
     })", "led");
     CHECK(read.profile && read.notes.empty());
@@ -306,9 +278,8 @@ TEST(a_camera_sets_how_its_look_light_and_stamp_behave) {
     CHECK_NEAR(c.look.highlight_knee, 0.85, 1e-6);
     CHECK(c.look.drift_seconds[0] == 90 && c.look.drift_seconds[1] == 5); // the slow one first
     CHECK(c.stamp.corner == StampProfile::Corner::top_right && c.stamp.size == 2 && !c.stamp.outline);
-    CHECK(c.light.strength == 4 && c.light.colour[2] == 255 && c.light.reach == LightProfile{}.reach);
     CHECK(c.viewfinder.text[1] == 200 && c.viewfinder.rec == vx1000().viewfinder.rec);
-    const auto wrong = read_camera(R"({"light": {"colour": [1, 2]}, "stamp": {"size": 9}})", "x");
+    const auto wrong = read_camera(R"({"viewfinder": {"text": [1, 2]}, "stamp": {"size": 9}})", "x");
     CHECK(wrong.notes.size() == 2); // a colour needs three numbers; a size is kept to 4
 }
 
@@ -360,4 +331,15 @@ TEST(a_camera_brings_its_own_viewfinder) {
     CHECK(again.notes.empty() && again.profile->viewfinder == v);
     CHECK(write_camera(vx1000()).find("layout") == std::string::npos);
     CHECK(read_camera("{}", "plain").profile->viewfinder == vx1000_viewfinder());
+}
+
+TEST(a_film_camera_has_no_date_stamp) {
+    const auto read = read_camera(R"({"stamp": false})", "film");
+    CHECK(read.profile && read.notes.empty() && !read.profile->stamp.fitted);
+    CHECK(read_camera(write_camera(*read.profile), "film").profile == read.profile);
+    Finish finish;
+    finish.date_stamp = true;
+    CHECK(finish.stamped());
+    finish.stamp = read.profile->stamp;
+    CHECK(!finish.stamped()); // the player's switch can't give a camera one it doesn't have
 }

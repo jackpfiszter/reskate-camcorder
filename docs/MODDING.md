@@ -12,7 +12,6 @@ Mods/
       vx2000.camera.json           a camera
       hi8.camera.json              another
       wide-half.lens.json          a lens
-      pole.grip.json               a rig (a way of holding it)
       handling.json                how it all feels (optional; one per mod)
 ```
 
@@ -22,8 +21,8 @@ feels, is data like this, so it can change from one mod release to the next with
 update.
 
 `examples/mods/Camcorder Extras` in this repository is a complete one (the VX2000, a Hi8
-handycam, Super 8 film, a 0.5x wide converter, a pole cam and a board cam): copy it and change
-it. The quickest start is in the game: choose the camera, lens and rig closest to what you want,
+handycam, a VHS-C camcorder, Super 8 film, a 16:9 HVX200 and a 0.5x wide converter): copy it and
+change it. The quickest start is in the game: choose the camera and lens closest to what you want,
 then type `camcorder export`. That writes them, and the handling in use, every field filled in,
 to `Mods/My Camcorder`.
 
@@ -33,7 +32,7 @@ to `Mods/My Camcorder`.
   (`camcorder camera vx2000`) and the settings file. Ids are lowercase letters, digits, `-` and
   `_`, up to 32.
 - **Every field is optional.** What a camera leaves out is the VX1000's, what a lens leaves out
-  is the Century fisheye's, and what a rig leaves out is the hand's (the built-in "Handheld"). So the VX2000 is just
+  is the Century fisheye's. So the VX2000 is just
   its name and its longer zoom.
 - `handling.json` is layered instead: each mod's changes only the numbers it gives, a higher
   mod's over a lower one's, over the camcorder's own.
@@ -51,15 +50,15 @@ to `Mods/My Camcorder`.
 |---|---|---|---|
 | `name` | the id | up to 48 characters | What the menu shows |
 | `sensor_mm` | `[4.8, 3.6]` | 1 to 40 each | The sensor's (or film frame's) width and height, mm. With the focal lengths, sets the angle of view |
-| `aspect` | the sensor's (4:3) | 0.5 to 3 | The picture's shape: a number (`1.778`) or `[width, height]` (`[16, 9]`). The sensor keeps its width and is cut to this shape, as a camera recording 16:9 from a 4:3 chip does. The viewfinder, the fisheye and the clips all take it: `[16, 9]` fills a 16:9 screen and records 1920 x 1080, `1` is square. Or give the real `sensor_mm` (Super 8's frame is `[5.79, 4.01]`) and leave this out |
+| `aspect` | the sensor's (4:3) | 0.5 to 3 | The picture's shape: a number (`1.778`) or `[width, height]` (`[16, 9]`). The sensor keeps its width and is cut to this shape, as a camera recording 16:9 from a 4:3 chip does. The viewfinder, the fisheye and the clips all take it: `[16, 9]` fills a 16:9 screen and records 16:9 clips (`lines` tall), `1` is square. Or give the real `sensor_mm` (Super 8's frame is `[5.79, 4.01]`) and leave this out |
 | `zoom_mm` | `[5.9, 59]` | wide 1 to 200; at most 50x | The lens's focal length at wide and at tele, mm. Equal numbers: a fixed lens |
 | `zoom_seconds` | `[4.1, 20]` | 0.5 to 120 | Wide to tele with the rocker pressed fully, and pressed lightly |
 | `motion` | `"60i"` | `60i` `50i` `30p` `25p` `24p` `18p` | How it records motion. `60i` is NTSC video, `50i` PAL; with the look's fields on, those record 59.94 or 50 frames a second. `24p` and `18p` are film speeds: the screen shows the camera's own frames (choppier, as film looks), and `18p` is silent Super 8's |
-| `lines` | `480` | 120 to 1080 | Its own recording height (quality OWN); the width follows the picture's shape |
+| `lines` | `480` | 120 to 1080 | The height of its clips; the width follows the picture's shape (480 at 4:3 is 640 x 480) |
 | `tape_minutes` | `60` | 1 to 600 | One cassette (or film cartridge: Super 8 is about 3.3 minutes at 18 frames, 2.5 at 24) |
 | `look` | see below | | What its sensor, processing and tape do to the picture: a few numbers |
 | `effects` | the look's | up to 32 | Or the picture as a list of effects, in order, for full control: see below |
-| `stamp` | see below | | Its date stamp |
+| `stamp` | see below | | Its date stamp; `false` for a camera that had none (film) |
 
 ### `look`
 
@@ -518,20 +517,6 @@ Red, green and blue out of register. Part: `tape`.
 | `outline` | `true` | | A dark edge round each dot, so it reads over anything |
 | `outline_colour` | `[16, 16, 16]` | 0 to 255 each | That edge's colour |
 
-### `light`
-
-The lamp on the camera (the CAMCORDER card's Camera light, or `camcorder light`). It lights what
-the camera points at, falling off to the edges, and the camera exposes for it as a camcorder does
-under its own lamp: the lit middle comes out right, the background falls darker, and the
-brightest parts roll off rather than clip.
-
-| Field | Default | Range | What it is |
-|---|---|---|---|
-| `strength` | `2.5` | 0 to 10 | How bright the lamp is, against a night scene's own light |
-| `reach` | `0.8` | 0.1 to 3 | The beam's width, in half picture widths |
-| `exposure` | `0.6` | 0 to 1 | How far the camera's auto exposure stops down for the lamp: 0 not at all (the middle brightens, the rest stays), 1 fully (the background goes darkest) |
-| `colour` | `[255, 245, 224]` | 0 to 255 each | Its colour: a halogen is warm on a daylight-balanced camera, an LED cold |
-
 ### `viewfinder`
 
 | Field | Default | Range | What it is |
@@ -572,7 +557,7 @@ at any resolution and on any picture shape.
 | `text` | | up to 64 characters | A text's words, with fields filled in each frame (below) |
 | `colour` | `"text"` | `"text"` `"rec"` `"warning"`, or `[red, green, blue]` | The viewfinder's colours above, or its own |
 | `opacity` | `1` | 0 to 1 | |
-| `when` | always | a condition or a list | Shown only while all are so: `recording`, `zooming`, `tripod`, `setup`, `handheld`, `low-battery`, `low-tape` (under 5 minutes), `tape-end`, `fisheye`, `light`. `"!recording"`: while not |
+| `when` | always | a condition or a list | Shown only while all are so: `recording`, `zooming`, `tripod`, `setup`, `handheld`, `low-battery`, `low-tape` (under 5 minutes), `tape-end`, `fisheye`. `"!recording"`: while not |
 | `blink` | `0` | 0 to 10 | Seconds a blink, on for the first half; 0 steady |
 | `length` | `0.28` | 0.02 to 1 | A zoom bar's, of the picture's width |
 | `width`, `height` | | 0 to 2000 | A box's |
@@ -594,37 +579,6 @@ at any resolution and on any picture shape.
 - **`grid`**: lines across the picture: `size` 3 is thirds.
 - **`corners`**: brackets at the picture's corners, `offset` in from them.
 
-### `mic`
-
-The camera's own microphone, used when the player records with `camcorder sound mic` (CAMERA MIC).
-
-| Field | Default (VX1000) | Range | What it is |
-|---|---|---|---|
-| `high_cut` | `120` | 10 to 2000 | Hz: little below this (a small capsule has no bass) |
-| `low_cut` | `9000` | 1000 to 23000 | Hz: rolled off above this |
-| `target` | `0.25` | 0.02 to 0.9 | The level its automatic level control aims for |
-| `most_gain` | `3` | 0 to 10 | The most it turns a quiet room up (the pumping) |
-| `attack` | `0.01` | 0.001 to 0.5 | Seconds to duck a slam |
-| `release` | `0.4` | 0.02 to 5 | Seconds to bring the room back up |
-| `drive` | `1.2` | 0.1 to 5 | How hard it pushes into the converter: loud hits round off |
-
-## Rigs (`<id>.grip.json`)
-
-A way of holding the camera handheld: a pole cam, a board-mounted cam. The built-in rig is the
-hand ("Handheld", id `long`); the player moves it up and down on the fly (LB / RB, or the low, hip
-and eye presets), so a rig is for what differs in more than height: reach, tilt, shake. The menu
-shows a Rig choice once a mod adds one. (The files keep the name `.grip.json`.)
-
-| Field | Default (Handheld) | Range | What it is |
-|---|---|---|---|
-| `name` | the id | up to 48 characters | What the menu shows |
-| `height` | `0.45` | 0.05 to 3 | The lens above the feet, standing, metres |
-| `side` | `0.35` | -1 to 1 | Out to the right (negative: left) |
-| `ahead` | `0.55` | -1 to 2 | In front of the body (negative: behind) |
-| `pitch` | `5` | -60 to 60 | Degrees it starts tilted up (negative: down) |
-| `crouch` | `0.92` | 0.5 to 1.2 | On a board the filmer crouches: heights times this (1 for a rig fixed to the board) |
-| `shake` | `1` | 0 to 4 | The hand shake times this: a pole wobbles more, a mount less |
-
 ## Handling (`handling.json`)
 
 How filming feels. Every number is optional; the defaults are the camcorder's own.
@@ -637,7 +591,7 @@ How filming feels. Every number is optional; the defaults are the camcorder's ow
 | | `lead` | `0.12` | 0 to 1 | Seconds: aim where the subject is going |
 | | `steadiness` | `0.5` | 0 to 1 | 0 a nervous first-timer, 1 a seasoned filmer |
 | | `max_nudge` | `25` | 0 to 60 | Degrees the stick shifts the framing off a locked-on subject |
-| | `raise_speed` | `0.8` | 0.05 to 5 | Metres a second the camera rises and drops (LB / RB) |
+| | `raise_speed` | `0.8` | 0.05 to 5 | Metres a second the camera rises and drops (R / F, LB / RB) |
 | | `lowest`, `highest` | `0.12`, `2.3` | 0.02 to 4 | The handheld lens's range above the feet |
 | | `height_step` | `0.15` | 0.01 to 1 | Metres a `camcorder height up` / `down` moves it |
 | `arms` | `sway` | `2.5` | 0.3 to 15 | Hz: how stiffly the arms hold the camera side to side and front to back |

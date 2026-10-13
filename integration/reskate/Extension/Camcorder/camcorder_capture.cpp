@@ -429,7 +429,7 @@ void camcorder_capture_record(ID3D12Device *device, ID3D12GraphicsCommandList *c
                 const double origin = now_seconds();
                 if (!folder.empty()) {
                     const auto path = camcorder_media::unique_path(folder + L"\\" + camcorder_media::widen(clip_file_name(status.clip, local_now())));
-                    started = c.writer.start(path, video_size(published.dv ? Quality::dv : Quality::hd, box, published.own_lines),
+                    started = c.writer.start(path, video_size(Quality::dv, box, published.own_lines),
                                              published.sound, origin, published.finish, stamp_clock(std::time(nullptr), published.finish), error);
                 }
                 if (started) {

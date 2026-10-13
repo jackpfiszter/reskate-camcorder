@@ -402,7 +402,7 @@ std::vector<ViewfinderElement> read_layout(const Value &list, std::vector<std::s
                 const auto condition = w->is(Kind::string) ? when_from_word(w->text) : std::nullopt;
                 if (condition) e.when.push_back(*condition);
                 else notes.push_back(where + "when: " + (w->is(Kind::string) ? "\"" + w->text + "\"" : std::string("a non-text")) +
-                                     " is not one of recording, zooming, tripod, setup, handheld, low-battery, low-tape, tape-end, fisheye, light (! for not); left out of it.");
+                                     " is not one of recording, zooming, tripod, setup, handheld, low-battery, low-tape, tape-end, fisheye (! for not); left out of it.");
             }
         }
         f.unknown();
@@ -534,7 +534,11 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id, const 
         // What a recording does where the screen cannot show the effects: their nearest classic look.
         camera.look = classic_look(*camera.effects, camera.look);
     }
-    if (const auto *stamp = f.get("stamp", Kind::object, "an object, { ... }")) {
+    // "stamp": false: a camera with no date stamp (film had none).
+    if (const auto *none = value->find("stamp"); none && none->is(Kind::boolean)) {
+        f.known.emplace_back("stamp");
+        camera.stamp.fitted = none->boolean;
+    } else if (const auto *stamp = f.get("stamp", Kind::object, "an object, { ... }")) {
         Fields s{*stamp, "stamp.", reading.notes};
         auto &p = camera.stamp;
         s.word("corner", p.corner, {{"bottom-right", StampProfile::Corner::bottom_right}, {"bottom-left", StampProfile::Corner::bottom_left},
@@ -549,27 +553,6 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id, const 
         s.colour("outline_colour", p.outline_colour);
         s.unknown();
     }
-    if (const auto *mic = f.get("mic", Kind::object, "an object, { ... }")) {
-        Fields m{*mic, "mic.", reading.notes};
-        auto &p = camera.mic;
-        m.number("high_cut", p.high_cut, 10, 2000);
-        m.number("low_cut", p.low_cut, 1000, 23000);
-        m.number("target", p.target, 0.02, 0.9);
-        m.number("most_gain", p.most_gain, 0, 10);
-        m.number("attack", p.attack, 0.001, 0.5);
-        m.number("release", p.release, 0.02, 5);
-        m.number("drive", p.drive, 0.1, 5);
-        m.unknown();
-    }
-    if (const auto *light = f.get("light", Kind::object, "an object, { ... }")) {
-        Fields g{*light, "light.", reading.notes};
-        auto &p = camera.light;
-        g.number("strength", p.strength, 0, 10);
-        g.number("reach", p.reach, 0.1, 3);
-        g.number("exposure", p.exposure, 0, 1);
-        g.colour("colour", p.colour);
-        g.unknown();
-    }
     if (const auto *finder = f.get("viewfinder", Kind::object, "an object, { ... }")) {
         Fields v{*finder, "viewfinder.", reading.notes};
         v.colour("text", camera.viewfinder.text);
@@ -581,30 +564,6 @@ Reading<CameraProfile> read_camera(std::string_view text, std::string id, const 
     }
     f.unknown();
     reading.profile = std::move(camera);
-    return reading;
-}
-
-Reading<GripProfile> read_grip(std::string_view text, std::string id) {
-    Reading<GripProfile> reading;
-    if (!valid_id(id)) {
-        reading.error = "\"" + id + "\" cannot be an id: use 1 to 32 of a-z, 0-9, - and _.";
-        return reading;
-    }
-    const auto value = root(text, reading);
-    if (!value) return reading;
-    GripProfile grip = long_grip();
-    grip.id = std::move(id);
-    grip.name = grip.id;
-    Fields f{*value, "", reading.notes};
-    f.text("name", grip.name, 48);
-    f.number("height", grip.height, 0.05, 3);
-    f.number("side", grip.side, -1, 1);
-    f.number("ahead", grip.ahead, -1, 2);
-    f.number("pitch", grip.pitch, -60, 60);
-    f.number("crouch", grip.crouch, 0.5, 1.2);
-    f.number("shake", grip.shake, 0, 4);
-    f.unknown();
-    reading.profile = std::move(grip);
     return reading;
 }
 
@@ -748,32 +707,19 @@ std::string write_camera(const CameraProfile &c) {
         for (std::size_t i = 0; i < c.effects->size(); ++i) out += std::string(i ? ",\n" : "\n") + "    " + effect_text((*c.effects)[i]);
         out += c.effects->empty() ? "],\n" : "\n  ],\n";
     }
-    out += "  \"stamp\": {\n";
-    out += "    \"corner\": \"" + std::string(corner_word(s.corner)) + "\",\n";
-    out += "    \"lines\": \"" + std::string(lines_word(s.lines)) + "\",\n";
-    out += "    \"date\": \"" + std::string(date_word(s.date)) + "\",\n";
-    out += "    \"colour\": " + colour_text(s.colour) + ",\n";
-    out += "    \"size\": " + number_text(s.size) + ",\n";
-    out += "    \"margin\": [" + number_text(s.margin[0]) + ", " + number_text(s.margin[1]) + "],\n";
-    out += std::string("    \"outline\": ") + (s.outline ? "true" : "false") + ",\n";
-    out += "    \"outline_colour\": " + colour_text(s.outline_colour) + "\n";
-    out += "  },\n";
-    const auto &m = c.mic;
-    out += "  \"mic\": {\n";
-    out += "    \"high_cut\": " + number_text(m.high_cut) + ",\n";
-    out += "    \"low_cut\": " + number_text(m.low_cut) + ",\n";
-    out += "    \"target\": " + number_text(m.target) + ",\n";
-    out += "    \"most_gain\": " + number_text(m.most_gain) + ",\n";
-    out += "    \"attack\": " + number_text(m.attack) + ",\n";
-    out += "    \"release\": " + number_text(m.release) + ",\n";
-    out += "    \"drive\": " + number_text(m.drive) + "\n";
-    out += "  },\n";
-    out += "  \"light\": {\n";
-    out += "    \"strength\": " + number_text(c.light.strength) + ",\n";
-    out += "    \"reach\": " + number_text(c.light.reach) + ",\n";
-    out += "    \"exposure\": " + number_text(c.light.exposure) + ",\n";
-    out += "    \"colour\": " + colour_text(c.light.colour) + "\n";
-    out += "  },\n";
+    if (!s.fitted) out += "  \"stamp\": false,\n";
+    else {
+        out += "  \"stamp\": {\n";
+        out += "    \"corner\": \"" + std::string(corner_word(s.corner)) + "\",\n";
+        out += "    \"lines\": \"" + std::string(lines_word(s.lines)) + "\",\n";
+        out += "    \"date\": \"" + std::string(date_word(s.date)) + "\",\n";
+        out += "    \"colour\": " + colour_text(s.colour) + ",\n";
+        out += "    \"size\": " + number_text(s.size) + ",\n";
+        out += "    \"margin\": [" + number_text(s.margin[0]) + ", " + number_text(s.margin[1]) + "],\n";
+        out += std::string("    \"outline\": ") + (s.outline ? "true" : "false") + ",\n";
+        out += "    \"outline_colour\": " + colour_text(s.outline_colour) + "\n";
+        out += "  },\n";
+    }
     out += "  \"viewfinder\": {\n";
     out += "    \"text\": " + colour_text(c.viewfinder.text) + ",\n";
     out += "    \"rec\": " + colour_text(c.viewfinder.rec) + ",\n";
@@ -786,18 +732,6 @@ std::string write_camera(const CameraProfile &c) {
         out += c.viewfinder.elements.empty() ? "]" : "\n    ]";
     }
     out += "\n  }\n}\n";
-    return out;
-}
-
-std::string write_grip(const GripProfile &g) {
-    std::string out = "{\n";
-    out += "  \"name\": " + quoted(g.name) + ",\n";
-    out += "  \"height\": " + number_text(g.height) + ",\n";
-    out += "  \"side\": " + number_text(g.side) + ",\n";
-    out += "  \"ahead\": " + number_text(g.ahead) + ",\n";
-    out += "  \"pitch\": " + number_text(g.pitch) + ",\n";
-    out += "  \"crouch\": " + number_text(g.crouch) + ",\n";
-    out += "  \"shake\": " + number_text(g.shake) + "\n}\n";
     return out;
 }
 
@@ -848,8 +782,7 @@ bool valid_id(std::string_view id) {
 std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view name) {
     if (name == "handling.json") return std::pair{ProfileKind::handling, std::string("handling")};
     for (const auto &[suffix, kind] : {std::pair{std::string_view(".camera.json"), ProfileKind::camera},
-                                      std::pair{std::string_view(".lens.json"), ProfileKind::lens},
-                                      std::pair{std::string_view(".grip.json"), ProfileKind::grip}}) {
+                                      std::pair{std::string_view(".lens.json"), ProfileKind::lens}}) {
         if (name.size() <= suffix.size() || name.substr(name.size() - suffix.size()) != suffix) continue;
         std::string id(name.substr(0, name.size() - suffix.size()));
         if (!valid_id(id)) return std::nullopt;
@@ -858,28 +791,7 @@ std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view
     return std::nullopt;
 }
 
-Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()}, grips_{long_grip()} {}
-
-void Catalogue::add(GripProfile profile) {
-    for (auto &g : grips_)
-        if (g.id == profile.id) {
-            g = std::move(profile);
-            return;
-        }
-    grips_.push_back(std::move(profile));
-}
-
-const GripProfile *Catalogue::grip(std::string_view id) const {
-    for (const auto &g : grips_)
-        if (g.id == id) return &g;
-    return nullptr;
-}
-
-const GripProfile &Catalogue::next_grip(std::string_view id) const {
-    for (std::size_t i = 0; i < grips_.size(); ++i)
-        if (grips_[i].id == id) return grips_[(i + 1) % grips_.size()];
-    return grips_.front();
-}
+Catalogue::Catalogue() : cameras_{vx1000()}, adapters_{century_fisheye()} {}
 
 void Catalogue::add(CameraProfile profile) {
     for (auto &c : cameras_)

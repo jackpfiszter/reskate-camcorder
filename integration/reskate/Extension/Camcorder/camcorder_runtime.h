@@ -22,14 +22,20 @@
 namespace dingosdk::camcorder_runtime {
 // Whether the camcorder is on. The session only reads the local skater for it while it is.
 bool powered() noexcept;
-// Session, client thread, every tick: the local skater as the game placed them.
-void note_local_skater(const multiplayer::Transform &root) noexcept;
+// Session, client thread, every tick: the local skater as the game placed them (their root and
+// their board: the board says where their feet are).
+void note_local_skater(const multiplayer::Pose &pose) noexcept;
+// Session, client thread: whether this tick's capture of the local skater should read the whole
+// pose (the board with it), a few times a second while the camera is on.
+bool wants_full_pose() noexcept;
 // Session, client thread, every tick: the other skaters a camera could film.
 struct Player {
     std::uint64_t id{};
     std::string name;
     multiplayer::Transform root;
+    std::optional<float> feet; // the height of their feet, from their board under them; unknown off it
 };
+Player filmable(std::uint64_t id, std::string name, const multiplayer::Pose &pose);
 void note_players(std::vector<Player> players) noexcept;
 
 // Client thread, every tick, after the session placed the remote skaters (beside
@@ -56,29 +62,25 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
 struct Published {
     camcorder::Frame frame;
     bool clean_feed{};
-    bool aiming{};        // `camcorder aim`: the player aims the camera (otherwise it points itself)
     int frame_on{1};      // `camcorder frame`: 0 board, 1 the whole skater, 2 head
     float blink{};        // seconds, for blinking readouts
     std::string hint;     // the viewfinder's control hints, empty for none
     std::vector<std::string> players; // who could be filmed (the menu's subject list)
     bool closest{};                   // filming whoever is nearest (subject: who that is now)
-    bool light{};                     // the light on the camera (`camcorder light`)
     camcorder::ViewfinderLayout viewfinder = camcorder::vx1000_viewfinder(); // the camera's readouts
     std::string subject;  // who is, empty for nobody
-    bool dv{};            // `camcorder quality dv`: record at the VX1000's own 640 x 480, not HD
     camcorder::Sound sound{camcorder::Sound::game}; // `camcorder sound off|game|vx`
     std::uint32_t still{};        // counts `camcorder still` requests: each new number takes one
     std::uint32_t tape{1};        // the tape in the camcorder (each `camcorder tape new` is the next)
     std::uint32_t capture_tape{}; // counts `camcorder tape capture` requests
     camcorder::Finish finish;     // `camcorder look|dv|date` and the camera's own look, motion and stamp
     camcorder::EffectStack effects; // the camera's picture (camcorder/effects.h): drawn on screen while the look is on
-    int own_lines{480};           // the camera's own recording height (quality dv)
-    bool warp{true};              // `camcorder warp`: the true fisheye
+    int own_lines{480};           // the camera's own recording height: its clips' size
     // The cameras and lenses to choose from (built in, and from mods: camcorder/profiles.h).
     struct Choice {
         std::string id, name, source; // source: the mod's name, empty when built in
     };
-    std::vector<Choice> cameras, lenses, grips;
+    std::vector<Choice> cameras, lenses;
     std::size_t mod_notes{};      // problems found in the mods' profiles (`camcorder mods`)
     // The quick menu (`camcorder quick`): its lines, label and value; quick_index -1 when closed.
     std::vector<std::pair<std::string, std::string>> quick;

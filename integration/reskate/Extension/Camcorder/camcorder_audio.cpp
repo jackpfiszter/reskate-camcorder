@@ -71,7 +71,7 @@ struct Capture::Impl {
     std::thread thread;
     HANDLE stop_event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
 
-    void run(double origin, Sound mode, MicProfile mic_profile, EarSettings ear_settings) {
+    void run(double origin, EarSettings ear_settings) {
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         const auto fail = [&](std::string why) {
             std::lock_guard lock(mutex);
@@ -112,9 +112,7 @@ struct Capture::Impl {
             if (SUCCEEDED(hr)) hr = client->Start();
             if (FAILED(hr)) return fail(failed("Setting up the game's sound capture", hr));
             track.start(origin);
-            VxMic mic(mic_profile);
             CameraEar ear(ear_settings);
-            Limiter limiter;
             std::vector<float> sound;
             std::vector<std::int16_t> packet;
             const HANDLE waits[]{stop_event, ready};
@@ -138,11 +136,8 @@ struct Capture::Impl {
                         }
                     }
                     capture->ReleaseBuffer(frames);
-                    // Heard from where the camera stands, then (CAMERA MIC) through its mic.
+                    // Heard from where the camera stands (anything over full scale is held at it).
                     ear.process(sound.data(), frames, camcorder_runtime::ear());
-                    if (mode == Sound::vx_mic) mic.process(sound.data(), frames);
-                    // Loud moments (several skaters at once) come down smoothly instead of clipping.
-                    limiter.process(sound.data(), frames);
                     packet.resize(count);
                     to_pcm16(sound.data(), count, packet.data());
                     // When it was played: the packet's own clock time (100 ns units of the
@@ -150,17 +145,15 @@ struct Capture::Impl {
                     const bool timed = qpc_position && !(flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR);
                     const double played = timed ? static_cast<double>(qpc_position) / 1e7
                                                 : now_seconds() - static_cast<double>(frames) / audio_rate;
-                    // The limiter hands each frame on its lookahead later than it came.
-                    const double at = played - static_cast<double>(Limiter::lookahead) / audio_rate;
                     std::lock_guard lock(mutex);
-                    track.add(at, packet.data(), frames, pending);
+                    track.add(played, packet.data(), frames, pending);
                 }
                 if (woke == WAIT_OBJECT_0) break;
                 if (woke == WAIT_TIMEOUT) {
                     // Nothing for 200 ms (the game silent, or the loopback paused): silence up to a
                     // tenth of a second ago, so the clip's sound keeps pace with its picture (the
                     // file writer waits for sound before it takes more picture).
-                    const double behind = now_seconds() - 0.1 - static_cast<double>(Limiter::lookahead) / audio_rate;
+                    const double behind = now_seconds() - 0.1;
                     std::lock_guard lock(mutex);
                     const auto gap = static_cast<std::int64_t>((behind - origin) * audio_rate) - track.written();
                     if (gap > audio_rate / 20) {
@@ -189,7 +182,7 @@ Capture::~Capture() {
     if (impl_->stop_event) CloseHandle(impl_->stop_event);
 }
 
-void Capture::start(double origin_seconds, Sound sound, MicProfile mic, EarSettings ear) {
+void Capture::start(double origin_seconds, EarSettings ear) {
     auto &s = *impl_;
     stop();
     {
@@ -198,7 +191,7 @@ void Capture::start(double origin_seconds, Sound sound, MicProfile mic, EarSetti
         s.error.clear();
     }
     ResetEvent(s.stop_event);
-    s.thread = std::thread([&s, origin_seconds, sound, mic, ear] { s.run(origin_seconds, sound, mic, ear); });
+    s.thread = std::thread([&s, origin_seconds, ear] { s.run(origin_seconds, ear); });
 }
 
 std::vector<std::int16_t> Capture::take() {

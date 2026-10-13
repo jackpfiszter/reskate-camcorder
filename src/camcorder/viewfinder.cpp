@@ -16,7 +16,7 @@ Rect picture_rect(float width, float height, float aspect) noexcept {
 }
 
 namespace {
-bool holds(const When &when, const Frame &frame, const ViewfinderOptions &options) {
+bool holds(const When &when, const Frame &frame) {
     const auto &s = frame.status;
     bool so = false;
     switch (when.what) {
@@ -29,7 +29,6 @@ bool holds(const When &when, const Frame &frame, const ViewfinderOptions &option
     case Condition::low_tape: so = s.tape_remaining < 5 * 60; break;
     case Condition::tape_end: so = s.tape_remaining <= 0; break;
     case Condition::fisheye: so = s.fisheye; break;
-    case Condition::light: so = options.light; break;
     }
     return so == when.is;
 }
@@ -107,7 +106,7 @@ Viewfinder layout_viewfinder(const Frame &frame, float width, float height, cons
     static const ViewfinderLayout vx1000 = vx1000_viewfinder();
     const auto &layout = options.layout ? *options.layout : vx1000;
     for (const auto &e : layout.elements) {
-        if (!std::all_of(e.when.begin(), e.when.end(), [&](const When &w) { return holds(w, frame, options); })) continue;
+        if (!std::all_of(e.when.begin(), e.when.end(), [&](const When &w) { return holds(w, frame); })) continue;
         if (e.blink > 0 && std::fmod(options.blink_time, e.blink) >= e.blink * 0.5f) continue;
         const auto rgb = e.ink == Ink::rec ? layout.rec : e.ink == Ink::warning ? layout.warning : e.ink == Ink::own ? e.colour : layout.text;
         const Colour colour{rgb[0], rgb[1], rgb[2], static_cast<std::uint8_t>(std::lround(std::clamp(e.opacity, 0.0f, 1.0f) * 255))};

@@ -4,12 +4,11 @@
 //
 //   Mods/<mod>/camcorders/<id>.camera.json   a camera body: its lens, motion, size, tape, look, stamp, mic
 //   Mods/<mod>/camcorders/<id>.lens.json     a lens for the front of any camera: a fisheye or a converter
-//   Mods/<mod>/camcorders/<id>.grip.json     a way of holding the camera: its height, reach, shake
 //   Mods/<mod>/camcorders/handling.json      how it all feels: the operator, the shake, tripods, controls
 //
 // The id is the file name's start ("vx2000.camera.json" is "vx2000"). A mod's profile with the id
 // of a built-in one, or of one in a mod lower in the load order, replaces it. Every field is
-// optional: what a file leaves out is the VX1000's (or the Century's, or the long grip's), so a
+// optional: what a file leaves out is the VX1000's (or the Century's), so a
 // camera can be a name and the two numbers that differ. handling.json files are layered: each
 // changes only the numbers it gives, a higher mod's over a lower one's. Values out of range are brought into range, and what was
 // changed or ignored is noted for `camcorder mods`. docs/MODDING.md has every field.
@@ -40,8 +39,6 @@ struct CameraProfile {
     // Its picture's effects, in order (effects.h); none: the look's numbers make them (stack_from_look).
     std::optional<EffectStack> effects;
     StampProfile stamp;
-    MicProfile mic;                  // its own microphone (`camcorder sound mic`)
-    LightProfile light;              // the lamp on it (`camcorder light`)
     // The viewfinder: its readouts' colours and what it shows where (viewfinder_layout.h).
     ViewfinderLayout viewfinder = vx1000_viewfinder();
     std::string source;              // the mod folder it came from; empty when built in
@@ -98,17 +95,15 @@ Reading<CameraProfile> read_camera(std::string_view json_text, std::string id, c
 // The effects a camera shows: its own, or its look's.
 EffectStack camera_effects(const CameraProfile &);
 Reading<Adapter> read_adapter(std::string_view json_text, std::string id);
-Reading<GripProfile> read_grip(std::string_view json_text, std::string id);
 // The numbers in the file over `base` (a handling.json changes only what it gives).
 Reading<Handling> read_handling(std::string_view json_text, const Handling &base);
 // The same as JSON, every field written out: a starting point for a mod (`camcorder export`).
 std::string write_camera(const CameraProfile &);
 std::string write_adapter(const Adapter &);
-std::string write_grip(const GripProfile &);
 std::string write_handling(const Handling &);
 
-enum class ProfileKind : std::uint8_t { camera, lens, grip, handling };
-// "vx2000.camera.json" is camera "vx2000", "pole.grip.json" grip "pole", "handling.json" the
+enum class ProfileKind : std::uint8_t { camera, lens, handling };
+// "vx2000.camera.json" is camera "vx2000", "wide.lens.json" lens "wide", "handling.json" the
 // handling; nothing for any other name. Ids are 1 to 32 of a-z, 0-9, '-' and '_' (lowercase, so
 // they type easily in the console).
 std::optional<std::pair<ProfileKind, std::string>> profile_file(std::string_view file_name);
@@ -117,17 +112,12 @@ bool valid_id(std::string_view id);
 // The cameras and lenses to choose from: the built-in ones, then the mods'.
 class Catalogue {
 public:
-    Catalogue(); // the VX1000, the Century fisheye, the three grips, the handling as built
+    Catalogue(); // the VX1000, the Century fisheye, the handling as built
     // Adds a profile, or replaces the one with its id.
     void add(CameraProfile profile);
     void add(Adapter profile);
-    void add(GripProfile profile);
     const std::vector<CameraProfile> &cameras() const { return cameras_; }
     const std::vector<Adapter> &adapters() const { return adapters_; }
-    const std::vector<GripProfile> &grips() const { return grips_; }
-    const GripProfile *grip(std::string_view id) const;
-    // The grip after `id` (the first after the last, or when `id` is unknown).
-    const GripProfile &next_grip(std::string_view id) const;
     // The handling, with every mod's handling.json layered on in load order.
     Handling handling;
     std::vector<std::string> handling_sources; // the mods that changed it
@@ -143,6 +133,5 @@ public:
 private:
     std::vector<CameraProfile> cameras_;
     std::vector<Adapter> adapters_;
-    std::vector<GripProfile> grips_;
 };
 } // namespace dingosdk::camcorder

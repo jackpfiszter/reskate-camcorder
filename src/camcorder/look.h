@@ -76,6 +76,7 @@ struct StampProfile {
     enum class Corner : std::uint8_t { bottom_right, bottom_left, top_right, top_left };
     enum class Lines : std::uint8_t { time_over_date, date_only, date_over_time };
     enum class Date : std::uint8_t { month_day_year, day_month_year };
+    bool fitted{true}; // the camera has one ("stamp": false: film cameras had none)
     Corner corner{Corner::bottom_right};
     Lines lines{Lines::time_over_date};
     Date date{Date::month_day_year};
@@ -85,15 +86,6 @@ struct StampProfile {
     bool outline{true};                                  // a dark edge round each dot
     std::array<std::uint8_t, 3> outline_colour{16, 16, 16};
     bool operator==(const StampProfile &) const = default;
-};
-
-// A lamp on the camera (`camcorder light`): what the picture's middle is lit by.
-struct LightProfile {
-    float strength{2.5f};                                // how bright it is, against a night scene's own light
-    float reach{0.8f};                                   // the beam's width, in half picture widths
-    float exposure{0.6f};                                // how far the camera's auto exposure stops down for it: 0 not at all, 1 fully
-    std::array<std::uint8_t, 3> colour{255, 245, 224};   // a halogen lamp on a camera balanced for daylight
-    bool operator==(const LightProfile &) const = default;
 };
 
 // The player's switches for the look.
@@ -114,14 +106,14 @@ struct Finish {
     bool date_stamp{};
     int stamp_year{}; // 0: the real year; otherwise the year the stamp says (1996, say)
     std::int64_t stamp_offset{}; // seconds the camera's clock runs ahead of the real one (set with `date set`)
-    // The camera's: how it records motion, its look, its stamp and its mic (profiles.h).
+    // The camera's: how it records motion, its look and its stamp (profiles.h).
     Motion motion{Motion::ntsc_60i};
     LookProfile look;
     StampProfile stamp;
-    MicProfile mic;
-    LightProfile light;
     EarSettings ear; // how far sound carries to the camera (the handling's)
     bool operator==(const Finish &) const = default;
+    // The date stamp is on (the player's switch) and the camera has one.
+    bool stamped() const { return date_stamp && stamp.fitted; }
     // A clip's frames are fields: the look's fields on an interlaced camera.
     bool fields() const { return dv.on && dv.fields && interlaced(motion); }
 };

@@ -91,9 +91,8 @@ private:
     std::uint32_t seed_{1};
 };
 
-// A rig: a way of holding the camera. The built-in one is the hand (on a long grip); mods add
-// more (profiles.h: <id>.grip.json), a pole cam, a skate-mounted follow cam. How high the hand
-// holds it is the player's (LB / RB, or the heights below).
+// How the camera is held: in the hand (on a long grip), how high the player's to change (LB / RB,
+// R / F), or fixed to the board, low and looking ahead (the board cam).
 struct GripProfile {
     std::string id{"long"};
     std::string name{"Handheld"};
@@ -102,17 +101,15 @@ struct GripProfile {
     float ahead{0.55f};  // in front of the body
     float pitch{5};      // degrees the camera starts tilted up (down is negative)
     float crouch{0.92f}; // on a board the filmer crouches: heights times this
-    float shake{1};      // the hand shake times this (a pole wobbles more)
-    std::string source;  // the mod it came from; empty when built in
+    float shake{1};      // the hand shake times this
+    bool mounted{};      // fixed to the board: no hand to raise or lower it
     bool operator==(const GripProfile &) const = default;
     float height_on(bool on_board) const { return on_board ? height * crouch : height; }
 };
-// In the hand, low on a long handle: the fisheye follow shot. The built-in rig.
+// In the hand, low on a long handle: the fisheye follow shot.
 const GripProfile &long_grip();
-// Where the hand can hold it (`camcorder height low|hip|eye`): these grips' heights. Hip: waist
-// height, the camera hanging from the hand. Eye: through the viewfinder, the long-lens shot.
-const GripProfile &hip_grip();
-const GripProfile &eye_grip();
+// On the board's nose, just off the ground, looking ahead and a touch up.
+const GripProfile &board_cam();
 
 class HandheldRig {
 public:
@@ -146,7 +143,10 @@ public:
     // `zoom_ratio` slows the stick at tele, as a careful operator would.
     Shot step(const Filmer &, const Subject *, const OperatorInput &, float dt, float zoom_ratio);
     // Where the camera is held, for a filmer standing at `filmer`.
-    Vec3 grip_position(const Filmer &) const;
+    // Where the hand holds the lens. In the hand it is out ahead of the body the way the camera
+    // points (`aim_yaw`; none: the way the body faces), so turning it toward the filmer swings it
+    // round them rather than into them; on the board, ahead of the body.
+    Vec3 grip_position(const Filmer &, std::optional<float> aim_yaw = std::nullopt) const;
     // Raising or lowering the camera from its grip's height (LB / RB, `camcorder height`), in
     // metres; the lens stays between the settings' lowest and highest above the feet. Up to 4 m
     // either way: a 3 m rig crouched down to a skate's height.

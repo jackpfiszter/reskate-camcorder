@@ -1,9 +1,9 @@
 #pragma once
-// The camcorder's picture on screen: the lens's bend, the camera light and the camera's effects
+// The camcorder's picture on screen: the lens's bend and the camera's effects
 // (camcorder/effects.h). The game renders a flat picture (opened wide enough for the bend:
 // camcorder/vx1000.h, FisheyeRender::warp); before the overlay draws, that frame is copied, and the
 // picture is drawn back over it pass by pass through the picture shader (camcorder_shader.h): the
-// lens, the light, each effect, then out to the screen. The overlay's readouts go over the result,
+// lens, each effect, then out to the screen. The overlay's readouts go over the result,
 // and clips and stills are copied after it (camcorder_capture.h), so they have what the screen has.
 //
 // Where the shader cannot be built, the bend alone is drawn through a fine ImGui mesh, and the
@@ -31,14 +31,13 @@ std::optional<ImTextureID> camcorder_warp_request(bool copy = true);
 // Why the last request had no picture (empty when it had one), for the player.
 std::string camcorder_warp_why_not();
 
-// This frame's picture: where it is, the lens, the light and the effects' passes.
+// This frame's picture: where it is, the lens and the effects' passes.
 struct PictureChain {
     float rect[4]{};   // the picture on screen: left, top, width, height (the overlay's units)
     float screen[2]{}; // the overlay's width and height
     float lens[4]{};   // bent (0 / 1), half the picture's width (radians), tan(half the render's height), render aspect
     float projection{}; // the fisheye's (0 equidistant, 1 equisolid, 2 stereographic, 3 orthographic)
     bool look{};       // the look is on: the picture goes into the look's values and back out
-    float light[8]{};  // strength (0: no light), reach, exposure, 0, red, green, blue, 0
     float frame{}, seconds{};
     std::vector<camcorder::EffectPass> passes; // camcorder::plan_effects
 };

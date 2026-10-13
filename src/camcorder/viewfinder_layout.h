@@ -28,7 +28,7 @@ enum class Show : std::uint8_t {
 };
 // What must be so for an element to show.
 enum class Condition : std::uint8_t {
-    recording, zooming, tripod, setup, handheld, low_battery, low_tape, tape_end, fisheye, light,
+    recording, zooming, tripod, setup, handheld, low_battery, low_tape, tape_end, fisheye,
 };
 struct When {
     Condition what{};

@@ -40,27 +40,26 @@ struct State {
     std::optional<multiplayer::Transform> local;
     Clock::time_point local_at{};
     VelocityEstimate local_velocity;
+    std::optional<float> local_feet;     // the local skater's feet, from the board under them
+    float local_lift{};                  // the root's height above them when the board last said
+    Clock::time_point local_lift_at{}, full_pose_at{};
     RootHeight local_root, subject_root; // how far each root sits above its feet (the framing's)
     int frame_on{1};                     // what the camera frames on someone: 0 board, 1 the whole skater, 2 head
     std::vector<Player> players;
     std::uint64_t subject{}; // 0: nobody (a tripod then films the local player)
     bool closest{};          // film whoever is nearest the camera (`camcorder subject closest`)
-    bool light{};            // the light on the camera (`camcorder light`)
     std::atomic<float> ear_distance{}, ear_side{}; // the local skater from the camera, for the sound
     std::uint64_t nearest{}; // that one now: 0 is the local player
     VelocityEstimate subject_velocity;
-    bool aiming{};           // the camera aims while the player skates (`camcorder aim`)
     bool captured{};         // we asked the overlay to hold the pad
     bool aim_captured{};     // we asked the overlay for the right stick, the triggers and the mouse
     float wheel_zoom{};      // seconds of zoom rocker left from the mouse wheel, signed
     bool owned{};            // update_party_camera holds the screen for us
     bool clean_feed{};
-    bool dv{};
     Sound sound{Sound::game};
     std::uint32_t still{}, tape{1}, capture_tape{};
     Finish finish{.dv = {.on = true}}; // the look (on unless turned off: it is the camera's character) and the stamp
-    bool warp{true};           // the true fisheye (camcorder_warp.h) rather than the flat stand-in
-    std::atomic<bool> warp_failed{}; // the overlay could not draw it on this display
+    std::atomic<bool> warp_failed{}; // the overlay could not draw the true fisheye on this display: the flat stand-in
     bool preferences_loaded{}, loading{};
     // The player's own feel (not a mod's): the mouse's speed and which way is up.
     float sensitivity{1};
@@ -141,10 +140,11 @@ std::optional<float> ground_under_tripod(const Camcorder &camcorder) {
 }
 
 // How far a subject's root sits above their feet (the root is the game's, around the hips): the
-// framing is measured from the feet, so "the whole skater" is not their face.
-std::optional<float> subject_root(State &s, const Vec3 &at, float dt) {
-    const auto ground = local_ground_height(at[0], at[2], at[1] + 0.5f, at[1] - 3.0f);
-    return s.subject_root.update(ground ? std::optional<float>(at[1] - *ground) : std::nullopt, dt);
+// framing is measured from the feet, so "the whole skater" is not their face. From the board under
+// them when they ride it, or else the ground found under them.
+std::optional<float> subject_root(State &s, const Vec3 &at, std::optional<float> feet, float dt) {
+    if (!feet) feet = local_ground_height(at[0], at[2], at[1] + 0.5f, at[1] - 3.0f);
+    return s.subject_root.update(feet ? std::optional<float>(at[1] - *feet) : std::nullopt, dt);
 }
 
 std::optional<Subject> subject_from(State &s, const Filmer &filmer, float dt) {
@@ -157,15 +157,18 @@ std::optional<Subject> subject_from(State &s, const Filmer &filmer, float dt) {
         else if (filmer.valid) camera = filmer.position;
         std::vector<Vec3> skaters;
         std::vector<std::uint64_t> ids;
+        std::vector<std::optional<float>> feet;
         if (tripod && filmer.valid) {
             skaters.push_back(filmer.position);
             ids.push_back(0);
+            feet.push_back(std::nullopt);
         }
         int current = -1;
         for (const auto &p : s.players) {
             if (p.id == s.nearest) current = static_cast<int>(skaters.size());
             skaters.push_back(to_vec(p.root.position));
             ids.push_back(p.id);
+            feet.push_back(p.feet);
         }
         if (tripod && filmer.valid && s.nearest == 0) current = 0;
         const int pick = camera ? closest_skater(*camera, skaters, current) : -1;
@@ -181,13 +184,13 @@ std::optional<Subject> subject_from(State &s, const Filmer &filmer, float dt) {
             return std::nullopt; // a tripod with nobody picked films the local player
         }
         const auto at = skaters[static_cast<std::size_t>(pick)];
-        return Subject{true, at, s.subject_velocity.update(at, dt), subject_root(s, at, dt)};
+        return Subject{true, at, s.subject_velocity.update(at, dt), subject_root(s, at, feet[static_cast<std::size_t>(pick)], dt)};
     }
     if (s.subject)
         for (const auto &p : s.players)
             if (p.id == s.subject) {
                 const auto at = to_vec(p.root.position);
-                return Subject{true, at, s.subject_velocity.update(at, dt), subject_root(s, at, dt)};
+                return Subject{true, at, s.subject_velocity.update(at, dt), subject_root(s, at, p.feet, dt)};
             }
     s.subject_velocity.reset();
     return std::nullopt;
@@ -219,15 +222,11 @@ Preferences current_preferences(const State &s) {
         {"version", "2"}, // 2: the look on by default (files without it said `look clean` for everyone)
         {"camera", status.camera_id},
         {"lens", status.lens_id.empty() ? std::string("stock") : status.lens_id},
-        {"warp", on_off(s.warp)},
         {"grip", status.grip_id},
-        {"lockon", on_off(status.lock_on)},
         {"head", status.head == TripodRig::Head::locked ? "locked" : status.head == TripodRig::Head::manual ? "manual" : "follow"},
-        {"aim", on_off(s.aiming)},
         {"frame", frame_words[std::clamp(s.frame_on, 0, 2)]},
         {"clean", on_off(s.clean_feed)},
-        {"quality", s.dv ? "dv" : "hd"},
-        {"sound", s.sound == Sound::off ? "off" : s.sound == Sound::game ? "game" : "vx"},
+        {"sound", s.sound == Sound::off ? "off" : "game"},
         {"look", dv.on ? "dv" : "clean"},
         {"dv-fields", on_off(dv.fields)},
         {"dv-highlights", on_off(dv.highlights)},
@@ -240,7 +239,6 @@ Preferences current_preferences(const State &s) {
         {"date-offset", std::to_string(s.finish.stamp_offset)},
         {"sensitivity", [&] { char t[16]; std::snprintf(t, sizeof(t), "%g", static_cast<double>(s.sensitivity)); return std::string(t); }()},
         {"invert", on_off(s.invert)},
-        {"light", on_off(s.light)},
         {"guide", s.guide_seen ? "seen" : "off"},
     };
 }
@@ -254,7 +252,7 @@ void save_preferences(const State &s) {
     if (!file) logging::write(logging::Level::warning, logging::Channel::ui, "Camcorder: could not save its settings.");
 }
 bool is_setting(std::string_view verb) {
-    for (const auto *name : {"light", "sensitivity", "invert", "guide", "camera", "lens", "warp", "grip", "lockon", "head", "aim", "frame", "clean", "quality", "sound", "look", "dv", "date"})
+    for (const auto *name : {"sensitivity", "invert", "guide", "camera", "lens", "grip", "head", "frame", "clean", "sound", "look", "dv", "date"})
         if (verb == name) return true;
     return false;
 }
@@ -313,7 +311,6 @@ void scan_profiles(State &s) {
             switch (kind->first) {
             case ProfileKind::camera: take(read_camera(text.str(), kind->second, beside)); break;
             case ProfileKind::lens: take(read_adapter(text.str(), kind->second)); break;
-            case ProfileKind::grip: take(read_grip(text.str(), kind->second)); break;
             case ProfileKind::handling: {
                 // Layered: this mod's numbers over the lower mods'.
                 auto reading = read_handling(text.str(), catalogue.handling);
@@ -338,8 +335,6 @@ void scan_profiles(State &s) {
         s.camcorder.set_camera(*camera);
     if (settings.adapter)
         if (const auto *lens = s.catalogue.adapter(settings.adapter->id)) s.camcorder.set_adapter(*lens);
-    if (const auto *grip = s.catalogue.grip(s.camcorder.handheld().settings().grip.id))
-        if (!(*grip == s.camcorder.handheld().settings().grip)) s.camcorder.set_grip(*grip);
     apply_handling(s);
     logging::printf(logging::Level::info, logging::Channel::ui, "Camcorder: %zu profiles from mods%s.",
                     found, s.mod_notes.empty() ? "" : " (camcorder mods lists what was wrong with some)");
@@ -372,8 +367,6 @@ std::string export_profiles(const State &s) {
     const auto &settings = s.camcorder.settings();
     write(settings.camera.id + ".camera.json", write_camera(settings.camera));
     if (settings.adapter) write(settings.adapter->id + ".lens.json", write_adapter(*settings.adapter));
-    const auto &grip = s.camcorder.handheld().settings().grip;
-    write(grip.id + ".grip.json", write_grip(grip));
     write("handling.json", write_handling(s.camcorder.handling()));
     return "In " + shown + ":" + written +
            " Change the id (the file name) and the numbers, then camcorder mods reload. docs/MODDING.md has every field.";
@@ -394,20 +387,16 @@ struct QuickItem {
 std::vector<QuickItem> quick_items(const State &s) {
     const auto status = s.camcorder.status();
     const auto on = [](bool b) { return std::string(b ? "on" : "off"); };
-    char height[32];
-    std::snprintf(height, sizeof(height), "%.1f m", static_cast<double>(status.handheld_height));
     std::vector<QuickItem> items{
         {"REC", status.transport == Transport::recording ? "recording" : "standby", "rec", {}, true},
         {"Take a still", "", "still", {}, true},
         {"Camera", status.camera_name, "camera", {"next"}, false},
         {"Lens", status.lens_name, "lens", {"next"}, false},
         {"Look", on(s.finish.dv.on), "look", {"toggle"}, false},
-        {"Camera light", on(s.light), "light", {"toggle"}, false},
-        {"Pointing", s.aiming ? "you aim it" : "automatic", "aim", {"toggle"}, false},
         {"Frame on", s.frame_on == 0 ? "board" : s.frame_on == 1 ? "whole skater" : "head", "frame", {"next"}, false},
     };
-    if (status.mode == Mode::handheld) items.push_back({"Height", height, "height", {"next"}, false});
-    if (s.catalogue.grips().size() > 1) items.push_back({"Rig", status.grip_name, "rig", {"next"}, false});
+    if (status.mode == Mode::handheld)
+        items.push_back({"Hold it", status.grip_id == board_cam().id ? "board cam" : "handheld", "rig", {"toggle"}, false});
     items.push_back(status.tripod_setup ? QuickItem{"Tripod: done", "", "tripod", {"done"}, true}
                                         : QuickItem{"Set up a tripod here", "", "tripod", {"place"}, true});
     if (status.tripods[0] || status.tripods[1] || status.tripods[2] || status.tripods[3])
@@ -454,8 +443,12 @@ void quick_controls(State &s, float dt) {
         s.quick_index = std::clamp(s.quick_index, 0, static_cast<int>(now.size()) - 1);
     }
 }
-// Aiming while skating: the camera takes only what a skater can spare.
-bool wants_aim(State &s) { return s.camcorder.powered() && s.owned && s.in_play && s.aiming && !wants_pad(s); }
+// Filming handheld (or from the board) while skating: the camera takes what a filmer doesn't skate
+// with (the right stick and the mouse to aim, the triggers, Q / E and the wheel to zoom, the bumpers
+// and R / F for height), the skater keeps the rest. Watching through a tripod, all of it is the skater's.
+bool wants_aim(State &s) {
+    return s.camcorder.powered() && s.owned && s.in_play && s.camcorder.status().mode == Mode::handheld && !wants_pad(s);
+}
 
 void set_capture(State &s, bool pad, bool aim) {
     if (pad || s.captured) DingoSDKOverlaySetFreecamInputCapture(pad); // every tick while held (client_tick.cpp too)
@@ -549,18 +542,15 @@ OperatorInput read_controls(State &s, float dt) {
     const float up = s.invert ? 1.0f : -1.0f;
     in.look_x = std::clamp(pad.look_x / 25.0f * s.sensitivity + mouse_x * mouse / turn, -1.0f, 1.0f);
     in.look_y = std::clamp(up * (pad.look_y / 25.0f * s.sensitivity + mouse_y * mouse / turn), -1.0f, 1.0f);
-    if (aim) {
-        in.zoom = std::clamp(pad.pad_up + wheel, -1.0f, 1.0f); // Q / E are the skater's here
-        in.raise = pad.pad_raise;                              // and R / F too: LB / RB only
-        return in;
-    }
-    in.move_x = pad.right;   // the pad's reading includes the keyboard's WASD, Q and E
-    in.move_y = pad.forward;
-    // Setting up a tripod: Q / E or the triggers zoom, R / F or LB / RB its height, Shift or L3 faster.
-    in.zoom = pad.up;
-    in.fast = pad.boost;
+    // The same everywhere: Q / E, the wheel or the triggers zoom; R / F or LB / RB the height (the
+    // camera's in the hand, a tripod's head). (Filming handheld those keys are kept from the game.)
+    in.zoom = std::clamp(pad.up + wheel, -1.0f, 1.0f);
     in.raise = std::clamp(pad.pad_raise + pad.key_raise, -1.0f, 1.0f);
-    if (wheel != 0) in.zoom = std::clamp(in.zoom + wheel, -1.0f, 1.0f);
+    if (aim) return in;
+    // Setting up a tripod also carries it: WASD or the left stick, Shift or L3 faster.
+    in.move_x = pad.right;
+    in.move_y = pad.forward;
+    in.fast = pad.boost;
     return in;
 }
 
@@ -576,9 +566,7 @@ void publish(State &s, const Frame &frame) {
     std::lock_guard lock(s.published_mutex);
     s.published.frame = frame;
     s.published.clean_feed = s.clean_feed;
-    s.published.aiming = s.aiming;
     s.published.frame_on = s.frame_on;
-    s.published.dv = s.dv;
     s.published.sound = s.sound;
     s.published.still = s.still;
     s.published.tape = s.tape;
@@ -590,21 +578,16 @@ void publish(State &s, const Frame &frame) {
         finish.motion = camera.motion;
         finish.look = camera.look;
         finish.stamp = camera.stamp;
-        finish.mic = camera.mic;
-        finish.light = camera.light;
         finish.ear = s.camcorder.handling().sound;
         s.published.finish = finish;
         s.published.effects = camera_effects(camera);
         s.published.viewfinder = camera.viewfinder;
         s.published.own_lines = camera.lines;
     }
-    s.published.warp = s.warp;
     s.published.cameras.clear();
     for (const auto &c : s.catalogue.cameras()) s.published.cameras.push_back({c.id, c.name, c.source});
     s.published.lenses.clear();
     for (const auto &a : s.catalogue.adapters()) s.published.lenses.push_back({a.id, a.name, a.source});
-    s.published.grips.clear();
-    for (const auto &g : s.catalogue.grips()) s.published.grips.push_back({g.id, g.name, g.source});
     s.published.mod_notes = s.mod_notes.size();
     s.published.blink += 1.0f / 60; // only blinks; exact time does not matter
     // What the viewfinder says to do with the controls the camera has right now.
@@ -613,8 +596,10 @@ void publish(State &s, const Frame &frame) {
         s.published.hint = "W/S or wheel choose   D do it   A or Esc close   (stick: up/down, right, left)";
     else if (status.tripod_setup)
         s.published.hint = "WASD / L-stick carry it   Mouse / R-stick aim   Q/E or LT/RT zoom   R/F or LB/RB height   Tripod key or Esc: done   REC: roll";
+    else if (wants_aim(s) && status.grip_id == board_cam().id)
+        s.published.hint = "Mouse / R-stick aim   Q/E or LT/RT zoom";
     else if (wants_aim(s))
-        s.published.hint = "Mouse / R-stick aim   wheel or LT/RT zoom   LB/RB height";
+        s.published.hint = "Mouse / R-stick aim   Q/E or LT/RT zoom   R/F or LB/RB height";
     else
         s.published.hint.clear();
     s.published.quick.clear();
@@ -632,7 +617,6 @@ void publish(State &s, const Frame &frame) {
     s.published.players.clear();
     s.published.subject.clear();
     s.published.closest = s.closest;
-    s.published.light = s.light;
     for (const auto &p : s.players) {
         s.published.players.push_back(p.name);
         if (p.id == (s.closest ? s.nearest : s.subject)) s.published.subject = p.name;
@@ -641,10 +625,46 @@ void publish(State &s, const Frame &frame) {
 }
 } // namespace
 
-void note_local_skater(const multiplayer::Transform &root) noexcept {
+namespace {
+// The feet's height from the board, when the board is under the skater: just below their root and
+// close beside it (off it, the board lies about or is carried, and says nothing of the feet).
+std::optional<float> feet_on_board(const multiplayer::Pose &pose) {
+    if (pose.board.empty()) return std::nullopt;
+    const auto &b = pose.board[0].position, &r = pose.root.position;
+    const float dx = b[0] - r[0], dz = b[2] - r[2], below = r[1] - b[1];
+    if (!std::isfinite(dx + dz + below) || dx * dx + dz * dz > 0.8f * 0.8f || below < 0.3f || below > 1.8f) return std::nullopt;
+    return b[1] + 0.05f; // the deck, a touch above the board's own point
+}
+} // namespace
+
+void note_local_skater(const multiplayer::Pose &pose) noexcept {
     auto &s = state();
-    s.local = root;
-    s.local_at = Clock::now();
+    const auto now = Clock::now();
+    s.local = pose.root;
+    // The board is in the pose a few times a second (wants_full_pose); in between, the feet are
+    // where they were under the root.
+    if (const auto feet = feet_on_board(pose)) {
+        s.local_lift = pose.root.position[1] - *feet;
+        s.local_lift_at = now;
+        s.local_feet = feet;
+    } else if (now - s.local_lift_at < std::chrono::seconds(1)) {
+        s.local_feet = pose.root.position[1] - s.local_lift;
+    } else {
+        s.local_feet.reset();
+    }
+    s.local_at = now;
+}
+
+bool wants_full_pose() noexcept {
+    auto &s = state();
+    const auto now = Clock::now();
+    if (!s.camcorder.powered() || now - s.full_pose_at < std::chrono::milliseconds(250)) return false;
+    s.full_pose_at = now;
+    return true;
+}
+
+Player filmable(std::uint64_t id, std::string name, const multiplayer::Pose &pose) {
+    return {id, std::move(name), pose.root, feet_on_board(pose)};
 }
 
 void note_players(std::vector<Player> players) noexcept { state().players = std::move(players); }
@@ -718,7 +738,7 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         }
         // The true fisheye, unless the overlay found it cannot draw it here.
         s.camcorder.settings().fisheye_render =
-            s.warp && !s.warp_failed.load(std::memory_order_relaxed) ? FisheyeRender::warp : FisheyeRender::approximate;
+            !s.warp_failed.load(std::memory_order_relaxed) ? FisheyeRender::warp : FisheyeRender::approximate;
         const auto now = Clock::now();
         const float dt = s.last_tick == Clock::time_point{} ? 0.0f
                          : std::clamp(std::chrono::duration<float>(now - s.last_tick).count(), 0.0f, 0.1f);
@@ -785,7 +805,8 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
             in.filmer.on_board = on_board(client);
             // The ground under the filmer, so the handheld camera's heights are from the feet.
             const auto &p = in.filmer.position;
-            in.filmer.ground = local_ground_height(p[0], p[2], p[1] + 0.5f, p[1] - 3.0f);
+            // The board under them says where the feet are; on foot (or without a board), the ground.
+            in.filmer.ground = in.filmer.on_board && s.local_feet ? s.local_feet : local_ground_height(p[0], p[2], p[1] + 0.5f, p[1] - 3.0f);
             in.filmer.root_height = s.local_root.update(in.filmer.ground ? std::optional<float>(p[1] - *in.filmer.ground) : std::nullopt, dt);
         }
         if (s.place_until > 0) {
@@ -802,6 +823,14 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, bool camera_ph
         in.ground_under_tripod = ground_under_tripod(s.camcorder);
         in.render_aspect = s.render_aspect.load(std::memory_order_relaxed);
         auto frame = s.camcorder.tick(in);
+        // Never under the ground: a handheld lens dipping below the surface under it (a landing, a
+        // slope, the board cam over a kerb) is held just above it. (Only the ground: walls and the
+        // skater's own body are the rig's to keep clear of.)
+        if (frame.shot.valid && s.camcorder.status().mode == Mode::handheld) {
+            auto &c = frame.shot.camera;
+            if (const auto ground = local_ground_height(c[12], c[14], c[13] + 0.3f, c[13] - 2.0f); ground && c[13] < *ground + 0.06f)
+                c[13] = *ground + 0.06f;
+        }
         std::string detail;
         if (frame.shot.valid) {
             if (update_party_camera(base, client, ready, camera_phase, &frame.shot.camera, detail,
@@ -883,40 +912,17 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         save();
         return pick == 0 ? "Framing their board and feet." : pick == 1 ? "Framing the whole skater." : "Framing their head and shoulders.";
     }
-    // Who points the camera: it does (keeping who you film in frame), or you do, as you skate.
-    // (Full control of a standing camera is setting up a tripod.)
-    if (verb == "aim") {
-        s.aiming = words.empty() || words[0] == "toggle" ? !s.aiming : words[0] == "on" || words[0] == "1" || words[0] == "you";
-        s.camcorder.set_lock_on(!s.aiming);
-        save();
-        return s.aiming ? "You aim it: the mouse or right stick aims, the wheel or triggers zoom, the bumpers raise and lower it. You keep skating (no flick-it tricks on the right stick)."
-                        : "It points itself: it keeps who you film in frame. You just skate.";
-    }
     const auto switched = [&](bool current) {
         return words.empty() || words[0] == "toggle" ? !current : words[0] == "on" || words[0] == "1";
     };
-    if (verb == "warp") {
-        s.warp = switched(s.warp);
-        save();
-        if (s.warp && s.warp_failed.load()) return "This display cannot show the true fisheye; it stays flat.";
-        return s.warp ? "True fisheye: straight lines bend as through the Century lens."
-                      : "Flat fisheye: the wide angle and round corners, without the bend.";
-    }
     if (verb == "look") {
         const auto word = words.empty() ? std::string("toggle") : words[0];
         if (word == "dv") s.finish.dv.on = true;
         else if (word == "clean" || word == "off") s.finish.dv.on = false;
         else if (word == "toggle") s.finish.dv.on = !s.finish.dv.on;
         else return "Usage: camcorder look dv|clean";
-        if (s.finish.dv.on && !s.loading && !s.dv) {
-            // The look belongs at the VX1000's own size, and 60 fields a second in HD is a lot of work.
-            s.dv = true;
-            save();
-            return s.camcorder.settings().camera.look.format + " look on clips and stills, recorded at the camera's own " +
-                   std::to_string(s.camcorder.settings().camera.lines) + " lines (camcorder quality hd for HD).";
-        }
         save();
-        return s.finish.dv.on ? "DV look on clips and stills." : "Clean picture on clips and stills.";
+        return s.finish.dv.on ? s.camcorder.settings().camera.look.format + " look on." : "Clean picture.";
     }
     if (verb == "dv") {
         auto &dv = s.finish.dv;
@@ -965,16 +971,6 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         save();
         return s.finish.date_stamp ? "Date stamp on clips and stills." : "No date stamp.";
     }
-    if (verb == "quality") {
-        if (!words.empty() && (words[0] == "dv" || words[0] == "hd")) s.dv = words[0] == "dv";
-        else if (!words.empty()) return "Usage: camcorder quality hd|dv";
-        save();
-        const auto &camera = s.camcorder.settings().camera;
-        const auto box = PixelBox{0, 0, static_cast<int>(std::lround(4320 * camera.lens.aspect())) & ~1, 4320};
-        const auto size = video_size(s.dv ? Quality::dv : Quality::hd, box, camera.lines);
-        const auto shown = std::to_string(size.width) + " x " + std::to_string(size.height);
-        return s.dv ? "Recording at " + shown + ", the camera's own size." : "Recording in HD (" + shown + ").";
-    }
     if (verb == "still" || verb == "photo") {
         if (!s.camcorder.powered()) return "Turn the camcorder on first.";
         ++s.still;
@@ -989,12 +985,10 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         const auto word = words.empty() ? std::string() : words[0];
         if (word == "off") s.sound = Sound::off;
         else if (word == "game" || word == "on") s.sound = Sound::game;
-        else if (word == "vx" || word == "mic" || word == "camera") s.sound = Sound::vx_mic;
-        else if (!word.empty()) return "Usage: camcorder sound off|game|vx";
+        else if (word == "vx" || word == "mic" || word == "camera") s.sound = Sound::game; // older settings: the mic is gone
+        else if (!word.empty()) return "Usage: camcorder sound off|game";
         save();
-        return s.sound == Sound::off    ? "Clips without sound."
-               : s.sound == Sound::game ? "Clips with the game's sound."
-                                        : "Clips with the game's sound through the camera's own mic.";
+        return s.sound == Sound::off ? "Clips without sound." : "Clips with the game's sound, heard from where the camera is.";
     }
     if (verb == "sensitivity") {
         const float value = words.empty() ? 1.0f : static_cast<float>(std::atof(words[0].c_str()));
@@ -1004,11 +998,6 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         char text[64];
         std::snprintf(text, sizeof(text), "Aim sensitivity %.2gx.", static_cast<double>(value));
         return text;
-    }
-    if (verb == "light") {
-        s.light = switched(s.light);
-        save();
-        return s.light ? "Camera light on: what the camera points at is lit (on screen and in clips)." : "Camera light off.";
     }
     if (verb == "invert") {
         s.invert = switched(s.invert);
@@ -1080,8 +1069,6 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         for (const auto &c : s.catalogue.cameras()) text += " " + c.id + (c.source.empty() ? "" : " (" + c.source + ")");
         text += ". Lenses: stock";
         for (const auto &a : s.catalogue.adapters()) text += ", " + a.id + (a.source.empty() ? "" : " (" + a.source + ")");
-        text += ". Rigs:";
-        for (const auto &g : s.catalogue.grips()) text += " " + g.id + (g.source.empty() ? "" : " (" + g.source + ")");
         text += ". Handling: ";
         if (s.catalogue.handling_sources.empty()) text += "as built";
         for (std::size_t i = 0; i < s.catalogue.handling_sources.size(); ++i)
@@ -1117,9 +1104,7 @@ std::string command(std::string_view verb, const std::vector<std::string> &words
         return "Setting up a tripod where you stand...";
     }
     auto answer = run_command(s.camcorder, verb, words, context);
-    if (verb == "camera" || verb == "lens" || verb == "grip" || verb == "rig" || verb == "lockon" || verb == "head") save();
-    if ((verb.empty() || verb == "status") && s.camcorder.powered() && s.aiming)
-        answer += " You aim it: the mouse and right stick aim as you skate.";
+    if (verb == "camera" || verb == "lens" || verb == "grip" || verb == "rig" || verb == "head") save();
     if ((verb.empty() || verb == "status") && s.camcorder.powered() && !s.owned) {
         if (!s.refused.empty()) answer += " The game kept its camera: " + s.refused;
         else if (!context.filmer.valid && s.camcorder.status().mode == Mode::handheld)

@@ -8,7 +8,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-This covers the camera behaviour: lens angles, zoom speeds, timecode, the rigs, the viewfinder
+This covers the camera behaviour: lens angles, zoom speeds, timecode, handheld and the board cam, the viewfinder
 layout and the console commands. CI runs it on every push.
 
 ## 2. Get a ReSkate build with the camcorder
@@ -59,48 +59,38 @@ camcorder to be filmed, but a different ReSkate build may not be allowed to join
 ### Controls
 
 Everything is on the **CAMCORDER** page of the ReSkate menu (Insert). The first card has what
-most visits are for: on / off, REC, still, open my clips, camera, lens, who to film, what to frame
-on them (board, whole skater, head), pointing (automatic or you aim it), the look and the camera
-light. TRIPODS is next. MORE SETTINGS opens the rest:
-handheld height and rigs, tape and sound, look details (the date stamp and its clock), and controls.
-CONTROLS has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC, quick menu, still,
-pointing, tripod) where they are free. Keys and buttons can be changed in
+most visits are for: on / off, REC, still, capture the tape, new tape, open my clips, camera,
+lens, hold it (handheld or board cam), who to film, what to frame on them (board, whole skater,
+head), the look, the date stamp and the sound. TRIPODS is next, open. LOOK DETAILS (the stamp's
+clock, the clean viewfinder, the look's parts) and CONTROLS are closed until clicked open; they
+stay as you leave them. CONTROLS has **SET UP KEYS**: one click binds F5 to F10 (on / off, REC,
+quick menu, still, next tripod, tripod) where they are free. Keys and buttons can be changed in
 SETTINGS > CONTROLS. While the camcorder is on, skate.'s own HUD is hidden. **Esc or Start** backs
 out of a tripod's setup and the quick menu; the next press opens the pause menu.
 
 The **quick menu** (F7 after SET UP KEYS, or `camcorder quick`) is a short list over the
-viewfinder: REC, still, camera, lens, look, light, pointing, frame on,
-height, tripod (and a mod's rigs). W / S or
-the wheel (stick up / down) choose, D (stick right) does it, A (stick left) closes. The skater
-waits while it is open; it closes itself after 8 seconds untouched.
+viewfinder: REC, still, camera, lens, look, frame on, hold it, tripod. W / S or the wheel (stick
+up / down) choose, D (stick right) does it, A (stick left) closes. The skater waits while it is
+open; it closes itself after 8 seconds untouched.
 
-**Setting up a tripod** gives the mouse, keys and pad to the camera; the skater stands still
-until it is done:
+**One set of camera controls, everywhere.** Filming handheld (or from the board) you keep skating
+with the keyboard, the left stick and the buttons; the camera has these:
 
 | | Mouse and keyboard | Pad |
 |---|---|---|
-| Aim | move the mouse (no button needed) | right stick |
-| Zoom (wide / tele) | Q / E | left / right trigger |
-| Higher / lower | R / F | RB / LB |
-| Tripod setup: carry it | W A S D (Shift: faster) | left stick (L3: faster) |
-| Tripod setup: done | the tripod key again, or REC (done and rolling), or Esc | Start |
+| Aim (filming someone: nudge the framing) | move the mouse | right stick |
+| Zoom (wide / tele) | Q / E, or the mouse wheel | left / right trigger |
+| Higher / lower (handheld) | R / F | RB / LB |
+
+While filming handheld, skate.'s mouse, right stick, triggers, bumpers and Q / E / R / F don't
+reach the game (no flip tricks or grabs while you film). Looking through a tripod, all of it is
+the game's again: you skate as normal.
+
+**Setting up a tripod** uses the same, and carries it: W A S D (Shift faster) or the left stick
+(L3 faster); the tripod key again, REC (done and rolling) or Esc (Start) when it's set. The
+skater stands still meanwhile.
 
 The viewfinder shows a line of these hints while they apply.
-
-**Pointing** is AUTOMATIC by default: the camera keeps who you film in frame by itself, and you
-just skate. **YOU AIM IT** (the menu, the quick menu, `camcorder aim you`, or F9) splits the
-controls, for following a friend's line your own way: you keep skating, the camera takes only the
-look and the zoom.
-
-| | Mouse and keyboard | Pad |
-|---|---|---|
-| Skate | the keyboard, as always | left stick and buttons |
-| Aim | move the mouse | right stick |
-| Zoom (wide / tele) | mouse wheel | left / right trigger |
-| Higher / lower | a bound key (Camcorder: hold it higher / lower) | RB / LB |
-
-While it is on, skate.'s own mouse and right-stick controls (and the triggers) don't reach the
-game; turn it off for those.
 
 ### Checklist
 
@@ -115,24 +105,26 @@ Solo:
 - [ ] Aim has weight: a quick flick of the mouse carries on a touch past and settles back; a
       locked-on friend stays framed but not perfectly (small corrections, a little behind when
       they change direction). Too much or too little: tell me which, or tune `handling.json`.
-- [ ] Pointing YOU AIM IT: the mouse (or right stick) aims, right turns right and up looks up; the
-      wheel (or the triggers) zooms, the W-T bar shows while zooming, and the round corners vanish
-      after a little zoom. AUTOMATIC again: it points itself, and you skate as normal.
+- [ ] Nobody to film: the mouse (or right stick) aims, right turns right and up looks up; Q / E,
+      the wheel or the triggers zoom, the W-T bar shows while zooming, and the round corners vanish
+      after a little zoom. While you do, Q / E / R / F, the mouse and the right stick do nothing in
+      the game (no grabs, no flip tricks); the keyboard's other keys and the left stick skate.
+- [ ] Turn the camera toward yourself: it swings round you on your arm, never into your body.
+- [ ] Ride down stairs, a slope or off a ledge: the lens never goes under the ground.
 - [ ] Film a friend (or CLOSEST with a tripod on you): FRAME ON WHOLE SKATER keeps their whole
       body in the frame, centred about the waist, not their face. BOARD centres their feet and
       board; HEAD their head and shoulders. Through an ollie it rides up with them.
-- [ ] True fisheye (on by default): straight lines bow outward toward the edges (rails, ledges,
-      building edges), the middle looks slightly magnified, and zooming in straightens them.
-      `camcorder warp off` goes back to the flat stand-in: wide, round corners, no bend. Say if the
-      picture looks too soft in the middle, or if anything at the edges is cut off.
+- [ ] The fisheye: straight lines bow outward toward the edges (rails, ledges, building edges),
+      the middle looks slightly magnified, and zooming in straightens them. Say if the picture
+      looks too soft in the middle, or if anything at the edges is cut off.
 - [ ] `camcorder lens stock`: much narrower (about 44 degrees), no round corners.
-- [ ] MORE SETTINGS > HANDHELD > LOW: the camera is low, about knee height (0.45 m), not at your
-      head; HIP at the waist; EYE LEVEL at eye level. Same on a board and on foot, and on a ledge.
-      The quick menu's Height steps through the three.
-- [ ] Hold RB / LB: the camera rises and drops smoothly, from
-      a skate's height off the ground to overhead. `camcorder height up` and `down` step it, for
-      binding to keys.
-- [ ] The shake: hold still at eye level and watch for 30 seconds. It wanders like hands, with no
+- [ ] HANDHELD: the camera starts low, about knee height (0.45 m, a little lower crouched on the
+      board), not at your waist. Hold R / F (or RB / LB) while you skate: it rises and drops
+      smoothly, from a skate's height off the ground to overhead. Same on a board, on foot, on a
+      ledge. `camcorder height reset` puts it back low.
+- [ ] BOARD CAM: the camera sits on the board's nose, a hand's height off the ground, looking
+      ahead and a touch up; R / F don't move it.
+- [ ] The shake: hold still with the camera raised to eye level and watch for 30 seconds. It wanders like hands, with no
       rhythm you can pick out or a wobble that comes round again.
 - [ ] `camcorder rec`: red dot and REC, counter running. `camcorder rec` again: STBY.
       `camcorder tape clips` lists the clip.
@@ -167,7 +159,7 @@ Solo:
 - [ ] CAMCORDER page > CONTROLS > SET UP KEYS: F5 to F10 show next to their jobs; F5 turns the
       camera on, F6 records. Keys you had bound already are left alone.
 - [ ] F7 (quick menu): the list shows over the picture, the skater stops. W / S and the wheel move
-      the amber line; D on Camera, Lens or Grip changes it and the value updates; D on REC records
+      the amber line; D on Camera, Lens or Hold it changes it and the value updates; D on REC records
       and closes the menu; A closes. Left alone it closes after about 8 seconds.
 - [ ] Record a clip, then `camcorder review` (console only now):
       the clip plays in the viewfinder at its own speed, PLAY and the time in the corners, a bar
@@ -177,16 +169,9 @@ Solo:
 - [ ] Aim speed (CONTROLS card, or `camcorder sensitivity 2`): the mouse and stick aim twice as
       fast. Invert up and down: pushing up looks down.
 - [ ] OPEN MY CLIPS: Explorer opens on Videos\ReSkate Camcorder (stills in its Stills folder).
-- [ ] Camera light (the CAMCORDER card, the quick menu, or `camcorder light on`), at night (`tod
-      next` until dark): what the camera points at comes up warm, dark ground and walls included,
-      falling off to the edges; the background goes a little darker as the camera exposes for the
-      light, and bright things roll off softly instead of burning out white. A black sky stays
-      black. It is in clips too. (A drawn light, not a real one: walls behind the skater brighten
-      as much as the skater.)
 - [ ] Bind buttons: Controls in the ReSkate menu lists "Camcorder on / off", "Camcorder REC / STBY",
-      "Camcorder: you aim it / it aims itself", "Camcorder: set up a tripod",
-      "Camcorder: next tripod", "Camcorder: take a still", "Camcorder: quick menu" and
-      "Camcorder: hold it higher / lower".
+      "Camcorder: set up a tripod", "Camcorder: next tripod", "Camcorder: take a still" and
+      "Camcorder: quick menu".
 
 With a friend:
 
@@ -208,31 +193,30 @@ With a friend:
 
 REC writes an MP4 of the picture (the camera's shape: 4:3 for the VX1000) to **Videos\ReSkate Camcorder** ("ReSkate 2026-10-12 14-03-22
 clip 01.mp4"); STBY closes it and a notice says where it went. 29.97 frames a second, H.264, the
-fisheye's round corners included, the readouts and hints not. HD (1440 x 1080) by default;
-`camcorder quality dv` (or the menu) records at the VX1000's own 640 x 480.
+fisheye's round corners included, the readouts and hints not. At the camera's own size: 640 x 480
+for the VX1000, 1280 x 720 for the HVX200.
 
 Sound: the game's own audio only (Windows' per-program capture, Windows 10 version 2004 or later),
-so Discord, music players and notifications stay out. `camcorder sound vx` (or the menu) puts it
-through the VX mic: thin low end, rolled-off top, the level control pumping, slams breaking up.
-`camcorder sound off` records picture only.
+so Discord, music players and notifications stay out, heard from where the camera is (a tripod
+across the spot hears you quieter and duller). Nothing else is done to it. `camcorder sound off`
+(or the menu) records picture only.
 
 - [ ] REC for ten seconds of skating, then STBY: a notice names the file; it plays in any video
       player, about ten seconds long, smooth, colours right, no REC or hint text in it.
 - [ ] With the fisheye at full wide the file has the round black corners; zoomed in it does not.
-- [ ] Two clips in a row: two files. A clip shot in DV quality is 640 x 480.
+- [ ] Two clips in a row: two files, 640 x 480 with the VX1000.
 - [ ] HDR display on (if you have one): colours in the file look normal, not washed out or dark.
 - [ ] Watch the frame rate while recording, and `logs\ReSkate.log` for "frames were dropped".
 - [ ] The clip has the game's sound, in sync with the picture (a board slam lands on the frame).
       Play music or a video on the PC while recording: it must not be in the clip.
 - [ ] Skate into a quiet moment and out again: the sound stays in sync after it.
-- [ ] VX mic: the same line sounds thinner and more compressed; a hard landing rounds off, not crunches.
-- [ ] With a friend doing tricks nearby (or several skaters at once): pops and slams are loud but
-      clean in the clip, no clicks or crackle, in both game sound and VX mic.
+- [ ] With a friend doing tricks nearby (or several skaters at once): pops and slams are loud and
+      clean in the clip, no clicks or crackle.
 - [ ] If the notice says "No sound: ...", send that text.
 - [ ] Three short clips, then `camcorder tape capture` (or CAPTURE THE TAPE): "Capturing the
       tape..." then, after a while, "Tape captured." and one file, "ReSkate ... tape 1 (3
-      clips).mp4", with the clips back to back, sound in step at every cut. Mix a DV clip and a
-      clip with sound off in: it is scaled to the first clip's size, with silence for that clip.
+      clips).mp4", with the clips back to back, sound in step at every cut. Mix in a clip with
+      sound off: silence for that clip.
 - [ ] CAPTURE THE TAPE straight after STBY: the clip just shot is in the tape.
 - [ ] Listen to a captured tape on headphones: no ticking or buzz under the sound (it was a
       sample filled or cut at every sound packet).
@@ -242,15 +226,15 @@ through the VX mic: thin low end, rolled-off top, the level control pumping, sla
       sound gets quieter and duller as you go off, and comes from your side of the picture.
       Handheld it is as before.
 - [ ] `camcorder tape new`, one more clip, capture again: only that clip, as tape 2.
-- [ ] With the true fisheye on, a clip and a still have the same bend as the screen.
+- [ ] A clip and a still have the same bend as the screen.
 
 ### Tape look
 
 The camera's look and the date stamp show on screen, and clips and stills record what the screen
 shows (the CAMCORDER card's look switch, or the console). The look is on unless you turn it off
 (an older settings file that had it off is ignored once, as it was off by default then); each
-camera has its own (switching cameras changes it straight away). Turning it on from the console
-also switches to the camera's own size (640 x 480 for the VX1000).
+camera has its own (switching cameras changes it straight away). Clips are always the camera's
+own size (640 x 480 for the VX1000).
 
 - [ ] Look on, looking through the camera (not only in clips), including with Windows display
       scaling above 100% or an upscaler on: obvious at a glance. The picture is 480 lines top to bottom
@@ -265,13 +249,13 @@ also switches to the camera's own size (640 x 480 for the VX1000).
       `sharpen`, `chroma`), and the frame rate goes back to 29.97 with fields off.
 - [ ] `camcorder date on`: "4:03:22 PM" over "OCT 12 2026" in the bottom right, the seconds
       ticking with the clip. `camcorder date year 1996`: the year says 1996.
-- [ ] MORE SETTINGS > LOOK DETAILS > Date and time: 1996-10-12 and 16:03, SET: the stamp says
+- [ ] LOOK DETAILS (open the folded card) > Date and time: 1996-10-12 and 16:03, SET: the stamp says
       4:03 PM, OCT 12 1996 and runs on; it's still running on after a restart. REAL TIME puts it
       back. (`camcorder date set 1996-10-12 16:03`, `camcorder date set now`.)
 - [ ] In a clip with the look's fields on (60i), the stamp sits still: no shimmer or up-and-down
       twitter on its edges.
 - [ ] A still has the look and the stamp too.
-- [ ] HD with the DV look and fields on: watch `ReSkate.log` for "frames were dropped".
+- [ ] The DV look with fields on, recording: watch `ReSkate.log` for "frames were dropped".
 
 ### Cameras and lenses from mods
 
@@ -282,8 +266,8 @@ folder, and make sure it is enabled in the mod list.
       "Nothing wrong". The CAMCORDER card shows them as buttons (hover: which mod).
 - [ ] VX2000: zooms further than the VX1000 (12x). Hi8: its look is softer, less saturated, a
       little grainy, with a yellow stamp bottom left. Super 8: its clips are 24 frames a second,
-      grainy, no sharpening, with an orange date-only stamp, and the cartridge runs out after
-      about 2 minutes 30.
+      fine-grained (not blocky), no sharpening, no date stamp (and no Date stamp switch on the
+      card), and the cartridge runs out after about 2 minutes 30.
 - [ ] Super 8 (its effects): the picture wanders a little in the gate and now and then jolts,
       the brightness flickers, dust specks and the odd scratch come and go, a warm light leak
       drifts in from an edge, the corners are rounded and dark, and lights glow orange. Cool
@@ -303,26 +287,21 @@ folder, and make sure it is enabled in the mod list.
 - [ ] HVX200: a 16:9 picture. On a 16:9 screen it fills it with no black bars; on a 4:3 or
       ultrawide screen, bars where the shapes differ. With the fisheye, the housing's shadow and the
       bend still sit centred, and nothing at the picture's edges is cut off or stretched. Its clips
-      are 1920 x 1080 (HD) or 1280 x 720 (OWN), 24 frames, and the menu's QUALITY row says so.
+      are 1280 x 720, 24 frames.
       CAPTURE THE TAPE with clips from it and from the VX1000 on one tape: the ones of the other
       shape are left out and named.
 - [ ] The 0.5x wide converter: about twice as wide, no bend, slightly dark corners at full wide.
-- [ ] Rigs: MORE SETTINGS > HANDHELD shows Rig: Handheld, Pole cam (high overhead, looking down,
-      wobblier) and Board cam (just off the ground, looking slightly up). Without the mod there
-      is no Rig choice at all.
 - [ ] Put a `handling.json` in the mod (`{"controls": {"mouse": 0.006}}`), `camcorder mods reload`:
       the mouse aims faster, and `camcorder mods` says the handling comes from that mod.
-- [ ] Sound CAMERA MIC on the Hi8 and on the VX1000: the same mic settings unless a camera's
-      profile gives its own.
 - [ ] Break a file on purpose (delete a comma, misspell a field), `camcorder mods reload`: the
       problem is named with its file and line, and the rest still load.
 - [ ] `camcorder export` (console only now): `Mods/My Camcorder`
-      appears with the camera, lens, rig and handling in use as files.
+      appears with the camera, lens and handling in use as files.
 
 ### Settings
 
-- [ ] Change the lens, rig, quality, sound, pointing, frame on, the tape look, the light, the
-      stamp, the aim speed and invert; quit
+- [ ] Change the camera, lens, handheld / board cam, sound, who to film, frame on, the tape look,
+      the stamp, the tripod head, the aim speed and invert; quit
       the game and start it again: they are as you left them. The file is
       `%LOCALAPPDATA%\ReSkate Camcorder\settings.txt` (one command a line; delete it to reset).
 
@@ -334,8 +313,8 @@ folder, and make sure it is enabled in the mod list.
 - The fields (60 a second) are in clips only; the screen moves at the game's frame rate.
 - Review plays the picture only, not the sound, and only the last clip recorded this game (older
   clips: OPEN CLIPS).
-- The camera light is drawn into the picture (the game has no light to put on the camera yet):
-  it brightens what's in the middle of the frame however far off it is.
+- The handheld camera is kept off the ground and swings round the filmer's body, but not off
+  walls: aimed into a wall up close, it can see through it.
 - The sound is the game's mix moved to the camera's position as well as it can be from outside
   (level, tone, side). Other players' sounds and the music move with it.
 - The recording is of what is on screen: it records the camcorder's picture only while you look

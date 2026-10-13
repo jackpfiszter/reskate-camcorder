@@ -1,5 +1,5 @@
 diff --git a/Engine/Game/Input/controller_bindings.h b/Engine/Game/Input/controller_bindings.h
-index 639ed1e..2938c5d 100644
+index 639ed1e..4bce218 100644
 --- a/Engine/Game/Input/controller_bindings.h
 +++ b/Engine/Game/Input/controller_bindings.h
 @@ -89,7 +89,7 @@ struct ControllerInput {
@@ -7,23 +7,20 @@ index 639ed1e..2938c5d 100644
      std::string_view key, name, label, command;
  };
 -inline constexpr std::array<ActionBind, 8> action_binds{{
-+inline constexpr std::array<ActionBind, 17> action_binds{{
++inline constexpr std::array<ActionBind, 14> action_binds{{
      {"first_person", "firstperson", "First person", "firstperson toggle"},
      {"hide_hud", "hidehud", "Hide HUD", "hideui toggle"},
      {"voice_chat", "voicechat", "Voice chat on / off", "mp voice-chat toggle"},
-@@ -98,6 +98,15 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
+@@ -98,6 +98,12 @@ inline constexpr std::array<ActionBind, 8> action_binds{{
      {"challenges", "challenges", "Show / hide challenges", "challenges toggle"},
      {"nametags", "nametags", "Player nametags", "mp nametags toggle"},
      {"nametag_dots", "nametagdots", "Player dots", "mp nametag-dots toggle"},
 +    {"camcorder_power", "camcorder", "Camcorder on / off", "camcorder power toggle"},
 +    {"camcorder_rec", "camrec", "Camcorder REC / STBY", "camcorder rec"},
-+    {"camcorder_aim", "camaim", "Camcorder: you aim it / it aims itself", "camcorder aim toggle"},
 +    {"camcorder_tripod", "camtripod", "Camcorder: set up a tripod", "camcorder tripod place"},
 +    {"camcorder_cut", "camcut", "Camcorder: next tripod", "camcorder tripod next"},
 +    {"camcorder_still", "camstill", "Camcorder: take a still", "camcorder still"},
 +    {"camcorder_quick", "camquick", "Camcorder: quick menu", "camcorder quick toggle"},
-+    {"camcorder_higher", "camhigher", "Camcorder: hold it higher", "camcorder height up"},
-+    {"camcorder_lower", "camlower", "Camcorder: hold it lower", "camcorder height down"},
  }};
  struct ControllerBindingsModel {
      bool available{};
@@ -104,7 +101,7 @@ index f74c419..cfbf26b 100644
      try {
          auto &s = state();
 diff --git a/Extension/Multiplayer/Session/session.cpp b/Extension/Multiplayer/Session/session.cpp
-index 14b4ab6..fb60cfb 100644
+index 14b4ab6..10475b6 100644
 --- a/Extension/Multiplayer/Session/session.cpp
 +++ b/Extension/Multiplayer/Session/session.cpp
 @@ -7,6 +7,7 @@
@@ -140,7 +137,7 @@ index 14b4ab6..fb60cfb 100644
 +    }
 +    // Everyone placed this frame, for the camcorder to film (where Spectate finds them too).
 +    std::vector<camcorder_runtime::Player> filmable;
-+    const auto film = [&](const Peer &p) { filmable.push_back({p.member.id, p.member.name, p.render_pose.root}); };
++    const auto film = [&](const Peer &p) { filmable.push_back(camcorder_runtime::filmable(p.member.id, p.member.name, p.render_pose)); };
      const auto view = latest_game_view();
      // ReSkate's nametags and chat bubbles: every shown player, placed above their head
      // each frame.
@@ -196,8 +193,8 @@ index 14b4ab6..fb60cfb 100644
 +            camcorder_runtime::note_players({});
 +            if (ready && !map_name.empty() && camcorder_runtime::powered()) {
 +                try {
-+                    const auto solo = capture_local(base, client, false);
-+                    if (solo.ready) camcorder_runtime::note_local_skater(solo.pose.root);
++                    const auto solo = capture_local(base, client, camcorder_runtime::wants_full_pose());
++                    if (solo.ready) camcorder_runtime::note_local_skater(solo.pose);
 +                } catch (...) {}
 +            }
              // Without a session the UI model follows at the same 10 Hz as in one;
@@ -210,7 +207,7 @@ index 14b4ab6..fb60cfb 100644
 -        if (local.ready) note_local_skater(local.pose.root);
 +        if (local.ready) {
 +            note_local_skater(local.pose.root);
-+            camcorder_runtime::note_local_skater(local.pose.root);
++            camcorder_runtime::note_local_skater(local.pose);
 +        }
          if (capture_pose && local.ready) {
              s.last_skater_bones = local.pose.skater.size();
@@ -229,14 +226,15 @@ index 0bd11ee..2f9b889 100644
              const bool wanted = can_transmit && (settings.open_mic || held) && settings.microphone > 0.f;
              const auto player_gain = [&](std::uint64_t id) {
 diff --git a/Extension/UI/Overlay/input_capture.cpp b/Extension/UI/Overlay/input_capture.cpp
-index 79c687a..372f9a5 100644
+index 79c687a..a31da84 100644
 --- a/Extension/UI/Overlay/input_capture.cpp
 +++ b/Extension/UI/Overlay/input_capture.cpp
-@@ -36,6 +36,17 @@ bool block_polled_input() {
+@@ -36,6 +36,18 @@ bool block_polled_input() {
      return capture;
  }
  
-+// The camcorder's aim (State::camera_aim_active), when nothing holds the whole input.
++// The camcorder's aim (State::camera_aim_active), when nothing holds the whole input: the right
++// stick, the triggers, the bumpers, the mouse and Q / E / R / F are the camera's.
 +bool block_camera_aim() {
 +    return !overlay_input_access && state().camera_aim_active.load(std::memory_order_relaxed) && !block_polled_input();
 +}
@@ -250,7 +248,7 @@ index 79c687a..372f9a5 100644
  void note_input_record(const RAWINPUT& record) noexcept;
  HeldInput& held_input() { static auto* value = new HeldInput; return *value; }
  
-@@ -78,7 +89,8 @@ BOOLEAN __stdcall captured_hid_attributes(HANDLE file, PHIDD_ATTRIBUTES attribut
+@@ -78,7 +90,8 @@ BOOLEAN __stdcall captured_hid_attributes(HANDLE file, PHIDD_ATTRIBUTES attribut
      return result;
  }
  void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
@@ -260,7 +258,7 @@ index 79c687a..372f9a5 100644
      auto* bytes = static_cast<std::uint8_t*>(read.buffer);
      // USB or Bluetooth decides where the buttons are in a report with id 1. It is the device's
      // report length that tells them apart, and Windows pads every read to that length, so it
-@@ -92,6 +104,18 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+@@ -92,6 +105,18 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
          (bytes[0] == 0x31 || (bytes[0] == 1 && !bluetooth));
      const unsigned offset = bytes[0] == 0x31 ? 2 : bytes[0] == 0x11 ? 3 : 1;
      auto* data = bytes + offset;
@@ -279,7 +277,7 @@ index 79c687a..372f9a5 100644
      std::fill_n(data, 4, std::uint8_t{128});
      if (sense_full) {
          data[4] = data[5] = 0; // triggers; retain report sequence at +6
-@@ -100,6 +124,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+@@ -100,6 +125,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
          data[4] = 8; data[5] = 0; data[6] &= 0xfc; // retain DS4 sequence bits
          data[7] = data[8] = 0;
      }
@@ -287,7 +285,7 @@ index 79c687a..372f9a5 100644
      // Full Bluetooth reports have a CRC over the 0xA1 input prefix and payload.
      // A stale checksum makes the native reader discard the neutral report.
      if (size == 78 && (bytes[0] == 0x31 || bytes[0] == 0x11)) {
-@@ -114,7 +139,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
+@@ -114,7 +140,7 @@ void neutral_hid(const InputCaptureHooks::HidRead& read, DWORD size) {
          std::memcpy(bytes + size - 4, &crc, sizeof(crc));
      }
      static std::atomic<bool> reported{};
@@ -296,7 +294,7 @@ index 79c687a..372f9a5 100644
          "Native PlayStation HID report neutralized; overlay retains its independent input stream. (%s over %s, report 0x%02x of %lu bytes, "
          "the game's buffer %lu.)", read.kind == PlayStationPad::dualsense ? "DualSense" : "DualShock 4",
          bluetooth ? "Bluetooth" : "USB", bytes[0], size, read.capacity);
-@@ -307,6 +332,7 @@ DWORD WINAPI captured_front(DWORD user, XINPUT_STATE* output) {
+@@ -307,6 +333,7 @@ DWORD WINAPI captured_front(DWORD user, XINPUT_STATE* output) {
          output->dwPacketNumber ^= 0x80000000u;
      } else if (result == ERROR_SUCCESS) {
          filter_pad(outer, user, output);
@@ -304,7 +302,7 @@ index 79c687a..372f9a5 100644
      }
      return result;
  }
-@@ -335,9 +361,10 @@ void keep_xinput_capture_first() {
+@@ -335,17 +362,20 @@ void keep_xinput_capture_first() {
      };
      for (std::size_t i = 0; i < h.xinput_state.size(); ++i) guard(h.xinput_state[i].target), guard(h.xinput_extended[i].target);
  }
@@ -312,11 +310,22 @@ index 79c687a..372f9a5 100644
  SHORT WINAPI captured_async_key(int key) {
      const auto value = original<SHORT(WINAPI*)(int)>(input_hooks().async_key)(key);
 -    return block_polled_input() ? 0 : value;
-+    return block_polled_input() || (mouse_key(key) && block_camera_aim()) ? 0 : value;
++    return block_polled_input() || ((mouse_key(key) || camera_aim_key(static_cast<unsigned>(key))) && block_camera_aim()) ? 0 : value;
  }
  SHORT WINAPI captured_key(int key) {
      const auto value = original<SHORT(WINAPI*)(int)>(input_hooks().key)(key);
-@@ -363,7 +390,10 @@ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT
+-    return block_polled_input() ? 0 : value;
++    return block_polled_input() || (camera_aim_key(static_cast<unsigned>(key)) && block_camera_aim()) ? 0 : value;
+ }
+ BOOL WINAPI captured_keyboard(PBYTE keys) {
+     const auto result = original<BOOL(WINAPI*)(PBYTE)>(input_hooks().keyboard)(keys);
+     if (result && keys && block_polled_input()) std::memset(keys, 0, 256);
++    else if (result && keys && block_camera_aim())
++        for (const unsigned key : {'Q', 'E', 'R', 'F'}) keys[key] = 0;
+     return result;
+ }
+ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT size, UINT header_size) {
+@@ -363,7 +393,18 @@ UINT WINAPI captured_raw_data(HRAWINPUT input, UINT command, LPVOID data, PUINT
          const bool mouse = raw->header.dwType == RIM_TYPEMOUSE && result >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
          const bool keyboard =
              raw->header.dwType == RIM_TYPEKEYBOARD && result >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
@@ -324,11 +333,19 @@ index 79c687a..372f9a5 100644
 +        if (!block_polled_input() && mouse && block_camera_aim()) {
 +            // The camcorder aims with the mouse: the game gets only the releases of buttons it holds.
 +            if (!held_input().release_only(*raw)) raw->data.mouse = {};
++        } else if (!block_polled_input() && keyboard && block_camera_aim() && camera_aim_key(raw->data.keyboard.VKey)) {
++            // And zooms and raises with Q / E and R / F: those presses are not the game's.
++            if (!held_input().release_only(*raw)) {
++                raw->data.keyboard = {};
++                raw->data.keyboard.VKey = 255; // documented discard packet
++                raw->data.keyboard.Flags = RI_KEY_BREAK;
++                raw->data.keyboard.Message = WM_KEYUP;
++            }
 +        } else if (!block_polled_input()) {
              if ((mouse || keyboard) && !overlay_input_access) held_input().seen(*raw);
          } else if ((mouse || keyboard) && held_input().release_only(*raw)) {
              // A key or button the game holds still comes up; presses stay blocked.
-@@ -452,6 +482,8 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+@@ -452,6 +493,8 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
      const auto result = original<UINT(WINAPI*)(PRAWINPUT, PUINT, UINT)>(
          input_hooks().raw_buffer)(data, size, header_size);
      const bool capture = result != UINT(-1) && data && block_polled_input();
@@ -337,7 +354,7 @@ index 79c687a..372f9a5 100644
      note_prompt_read(prompt_raw);
      if (result != UINT(-1) && data && header_size == sizeof(RAWINPUTHEADER)) {
          // Skate drains its mouse here; read the packets on the way past.
-@@ -468,18 +500,28 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
+@@ -468,18 +511,28 @@ UINT WINAPI captured_raw_buffer(PRAWINPUT data, PUINT size, UINT header_size) {
              const bool mouse = record->header.dwType == RIM_TYPEMOUSE && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWMOUSE);
              const bool keyboard =
                  record->header.dwType == RIM_TYPEKEYBOARD && bytes >= offsetof(RAWINPUT, data) + sizeof(RAWKEYBOARD);
@@ -352,7 +369,7 @@ index 79c687a..372f9a5 100644
                  ++kept;
 +            };
 +            if (aim) {
-+                if (!mouse) {
++                if (!mouse && !(keyboard && camera_aim_key(record->data.keyboard.VKey))) {
 +                    if (keyboard && !overlay_input_access) held_input().seen(*record);
 +                    keep();
 +                } else if (held_input().release_only(*record)) {
@@ -370,7 +387,7 @@ index 79c687a..372f9a5 100644
      }
      return capture ? 0 : result;
  }
-@@ -572,13 +614,15 @@ BOOL WINAPI captured_release_capture() {
+@@ -572,13 +625,15 @@ BOOL WINAPI captured_release_capture() {
      return original<BOOL(WINAPI*)()>(input_hooks().release_capture)();
  }
  HCURSOR WINAPI captured_cursor(HCURSOR cursor) {
@@ -388,7 +405,7 @@ index 79c687a..372f9a5 100644
      return original<int(WINAPI*)(BOOL)>(input_hooks().show_cursor)(show);
  }
  BOOL WINAPI captured_physical_cursor(int x, int y) {
-@@ -588,7 +632,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
+@@ -588,7 +643,7 @@ BOOL WINAPI captured_physical_cursor(int x, int y) {
  BOOL WINAPI captured_cursor_position(LPPOINT output) {
      thread_local POINT last{};
      thread_local bool sampled = false;
@@ -397,7 +414,7 @@ index 79c687a..372f9a5 100644
      const auto result = original<BOOL(WINAPI*)(LPPOINT)>(input_hooks().cursor_position)(output);
      if (result && output && !overlay_input_access) { last = *output; sampled = true; }
      return result;
-@@ -611,6 +655,7 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
+@@ -611,6 +666,7 @@ DWORD WINAPI captured_xinput(DWORD user, XINPUT_STATE* output) {
          output->dwPacketNumber ^= 0x80000000u;
      } else if (result == ERROR_SUCCESS) {
          filter_pad(outer, user, output);
@@ -405,7 +422,7 @@ index 79c687a..372f9a5 100644
      }
      return result;
  }
-@@ -785,6 +830,8 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -785,6 +841,8 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (relative) {
          s.raw_mouse_x.fetch_add(mouse.lLastX);
          s.raw_mouse_y.fetch_add(mouse.lLastY);
@@ -414,7 +431,7 @@ index 79c687a..372f9a5 100644
      }
      auto buttons = s.raw_mouse_buttons.load();
      const auto flags = mouse.usButtonFlags;
-@@ -795,6 +842,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
+@@ -795,6 +853,7 @@ template<class OwnsPointer> void note_packet(const RAWMOUSE& mouse, OwnsPointer&
      if (flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) buttons |= 4u;
      if (flags & RI_MOUSE_MIDDLE_BUTTON_UP) buttons &= ~4u;
      s.raw_mouse_buttons.store(buttons);
@@ -465,7 +482,7 @@ index 4cd0123..be9eef0 100644
              }
          }
 diff --git a/Extension/UI/Overlay/overlay.h b/Extension/UI/Overlay/overlay.h
-index a18e222..8dca805 100644
+index a18e222..ab1ec50 100644
 --- a/Extension/UI/Overlay/overlay.h
 +++ b/Extension/UI/Overlay/overlay.h
 @@ -91,6 +91,9 @@ struct FlightInput {
@@ -493,7 +510,7 @@ index a18e222..8dca805 100644
 +// The camcorder: mouse movement since the last call, no button needed (look units, as above).
 +extern "C" void DingoSDKOverlayReadMouseLook(float* x, float* y);
 +// The camcorder's aim while skating: the game keeps the pad's left stick and buttons and the
-+// keyboard; the right stick, the triggers and the mouse are the camera's.
++// keyboard; the right stick, the triggers, the bumpers, the mouse and Q / E / R / F are the camera's.
 +extern "C" void DingoSDKOverlaySetCameraAimCapture(bool active);
 +// Mouse wheel notches since the last call (up positive).
 +extern "C" void DingoSDKOverlayReadMouseWheel(float* notches);
@@ -512,20 +529,23 @@ index a18e222..8dca805 100644
  // gates still apply. Gameplay callers leave it false.
  extern "C" void DingoSDKOverlayReadControllerInput(dingosdk::ControllerInput* input, bool allow_menu = false);
 diff --git a/Extension/UI/Overlay/overlay_input.cpp b/Extension/UI/Overlay/overlay_input.cpp
-index ff84664..2222cbf 100644
+index ff84664..c056841 100644
 --- a/Extension/UI/Overlay/overlay_input.cpp
 +++ b/Extension/UI/Overlay/overlay_input.cpp
-@@ -289,6 +289,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
+@@ -289,6 +289,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM lp) {
              // Foreground raw-input packets still need DefWindowProc cleanup.
              return message == WM_INPUT ? DefWindowProcW(window, message, wp, lp) : 0;
          }
 +        // The camcorder aims with the mouse while the skater keeps the keyboard and the pad.
 +        if (s.camera_aim_active.load(std::memory_order_relaxed) && message >= WM_MOUSEFIRST && message <= WM_MOUSELAST)
 +            return 0;
++        if (s.camera_aim_active.load(std::memory_order_relaxed) && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
++            camera_aim_key(static_cast<unsigned>(wp)))
++            return 0;
          if (capture && message == WM_SETCURSOR && LOWORD(lp) == HTCLIENT) {
              OverlayInputAccess access;
              SetCursor(nullptr); // The software cursor is independent of the game's ShowCursor counter.
-@@ -437,6 +440,8 @@ dingosdk::overlay::FlightInput read_player_flight_controller() {
+@@ -437,6 +443,8 @@ dingosdk::overlay::FlightInput read_player_flight_controller() {
      const auto& pad = sample.pad;
      auto input = dingosdk::controller_flight_input(pad.sThumbLX, pad.sThumbLY, pad.bLeftTrigger, pad.bRightTrigger,
          (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
@@ -534,7 +554,7 @@ index ff84664..2222cbf 100644
      const float rx = static_cast<float>(pad.sThumbRX), ry = static_cast<float>(pad.sThumbRY);
      const float magnitude = std::sqrt(rx * rx + ry * ry);
      constexpr float deadzone = 8689.0f;
-@@ -456,6 +461,18 @@ extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active) {
+@@ -456,6 +464,18 @@ extern "C" void DingoSDKOverlaySetFreecamInputCapture(bool active) {
              "Freecam controller input capture %s.", active ? "enabled" : "disabled");
  }
  
@@ -553,7 +573,7 @@ index ff84664..2222cbf 100644
  extern "C" void DingoSDKOverlaySetPromptInputCapture(bool active) {
      const bool before = state().prompt_input_active.exchange(active, std::memory_order_relaxed);
      if (before == active) return;
-@@ -497,6 +514,16 @@ extern "C" unsigned DingoSDKOverlayReadPromptKeys() {
+@@ -497,6 +517,16 @@ extern "C" unsigned DingoSDKOverlayReadPromptKeys() {
      return keys;
  }
  
@@ -570,7 +590,7 @@ index ff84664..2222cbf 100644
  extern "C" void DingoSDKOverlayReadControllerInput(dingosdk::ControllerInput* output, bool allow_menu) {
      if (!output) return;
      struct PreserveError { DWORD value = GetLastError(); ~PreserveError() { SetLastError(value); } } preserve_error;
-@@ -560,11 +587,14 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+@@ -560,11 +590,14 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
      output->up = static_cast<float>(held('E')) - static_cast<float>(held('Q'));
      output->forward = static_cast<float>(held('W')) - static_cast<float>(held('S'));
      output->boost = held(VK_SHIFT);
@@ -585,7 +605,7 @@ index ff84664..2222cbf 100644
          output->boost = output->boost || controller.boost;
          output->look_x = controller.look_x;
          output->look_y = controller.look_y;
-@@ -589,3 +619,44 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
+@@ -589,3 +622,44 @@ extern "C" void DingoSDKOverlayReadFlightInput(dingosdk::overlay::FlightInput* o
          }
      } else looking = false;
  }
@@ -631,10 +651,20 @@ index ff84664..2222cbf 100644
 +    }
 +}
 diff --git a/Extension/UI/Overlay/overlay_internal.h b/Extension/UI/Overlay/overlay_internal.h
-index 097e60a..9260557 100644
+index 097e60a..77e645c 100644
 --- a/Extension/UI/Overlay/overlay_internal.h
 +++ b/Extension/UI/Overlay/overlay_internal.h
-@@ -113,6 +113,10 @@ struct State {
+@@ -95,6 +95,9 @@ struct ConsoleRow {
+ // Retained intentionally for process lifetime: hook trampolines and callbacks
+ // must never point at C++ objects destroyed by static teardown or DLL unload.
+ 
++// The keys the camcorder works while it aims (Q / E zoom, R / F height): kept from the game then.
++inline bool camera_aim_key(unsigned key) { return key == 'Q' || key == 'E' || key == 'R' || key == 'F'; }
++
+ struct State {
+     std::recursive_mutex render_mutex;
+     std::mutex hook_mutex;
+@@ -113,6 +116,10 @@ struct State {
      // buttons use it because Skate's controller mode stops the legacy cursor
      // and button state from updating until the game is paused.
      std::atomic<long> raw_mouse_x{0}, raw_mouse_y{0};
@@ -645,12 +675,13 @@ index 097e60a..9260557 100644
      std::atomic<unsigned> raw_mouse_buttons{0}; // physical: 1 left, 2 right, 4 middle
      std::atomic<ULONGLONG> raw_mouse_time{0};
      // The mouse registration in effect has RIDEV_NOLEGACY: Windows does not
-@@ -151,6 +155,9 @@ struct State {
+@@ -151,6 +158,10 @@ struct State {
      bool win32_ready = false;
      bool dx12_ready = false;
      std::atomic<bool> freecam_controller_active{false};
 +    // The camcorder's aim: the game keeps the controller's left stick and buttons and the keyboard,
-+    // the camera takes the right stick, the triggers and the mouse (input_capture.cpp).
++    // the camera takes the right stick, the triggers, the bumpers, the mouse and Q / E / R / F
++    // (input_capture.cpp).
 +    std::atomic<bool> camera_aim_active{false};
      std::atomic<bool> prompt_input_active{false}; // DingoSDKOverlaySetPromptInputCapture
      bool show_on_ready = false;
@@ -875,7 +906,7 @@ index eb23e16..b7329ef 100644
  set_target_properties(dingosdk_runtime PROPERTIES OUTPUT_NAME "ReSkate" PREFIX "")
  
 diff --git a/cmake/UI.cmake b/cmake/UI.cmake
-index 83ec6ba..f9008d6 100644
+index 83ec6ba..f3ac091 100644
 --- a/cmake/UI.cmake
 +++ b/cmake/UI.cmake
 @@ -2,6 +2,25 @@

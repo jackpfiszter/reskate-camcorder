@@ -1,14 +1,13 @@
 #pragma once
 // The clip's sound, the parts that need no Windows: keeping the game's audio on the clip's clock,
-// and the VX mic.
+// and hearing it from where the camera stands (CameraEar).
 //
 // The ReSkate side records the game's own audio (Windows' per-process loopback, so nothing else on
-// the PC ends up in the clip) as 48 kHz stereo, in floating point so loud moments (several skaters'
-// pops and slams at once) are not clipped, and hands each packet here with the time it was played.
-// A limiter brings those moments under full scale smoothly. Windows sends nothing while the game is
-// silent and packets come a little early or late, so the timeline fills gaps with silence and trims
-// overlaps: the sound never drifts off the picture. Each such jump is faded over two milliseconds
-// either side, or it would click (SoundTrack).
+// the PC ends up in the clip) as 48 kHz stereo, as the game plays it, and hands each packet here
+// with the time it was played. Windows sends nothing while the game is silent and packets come a
+// little early or late, so the timeline fills gaps with silence and trims overlaps: the sound never
+// drifts off the picture. Each such jump is faded over two milliseconds either side, or it would
+// click (SoundTrack).
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,9 +17,8 @@ namespace dingosdk::camcorder {
 inline constexpr int audio_rate = 48000, audio_channels = 2;
 
 enum class Sound : std::uint8_t {
-    off,    // picture only
-    game,   // the game's sound as it plays
-    vx_mic, // through the VX mic (below)
+    off,  // picture only
+    game, // the game's sound as it plays
 };
 
 class AudioTimeline {
@@ -63,59 +61,9 @@ private:
     bool sounding_{};
 };
 
-// A peak limiter: nothing above `ceiling` (of full scale) comes out, and nothing is clipped. It sees
-// `lookahead` frames ahead (1.5 ms; its output is that much late), so the gain comes down smoothly
-// before a hit arrives, and goes back up over about 80 ms.
-class Limiter {
-public:
-    static constexpr int lookahead = 72;
-    explicit Limiter(float ceiling = 0.89f) : ceiling_(ceiling) {}
-    // Interleaved stereo floats, in place.
-    void process(float *interleaved, std::size_t frames) noexcept;
-
-private:
-    float ceiling_;
-    float gain_{1};
-    std::array<float, static_cast<std::size_t>(lookahead) * 2> delay_{}; // interleaved, a ring
-    std::size_t at_{};
-};
 // Floats (full scale 1) to 16-bit samples, rounded and kept in range.
 void to_pcm16(const float *samples, std::size_t count, std::int16_t *out) noexcept;
 
-// A camera's own microphone (a camera profile's "mic": profiles.h). The defaults are the VX1000's:
-// the stereo mic on top of the camera, little below 120 Hz, rolled off above 9 kHz, its automatic
-// level control pumping up the room and squashing the board's slams.
-struct MicProfile {
-    float high_cut{120};    // Hz: little below this (a small capsule)
-    float low_cut{9000};    // Hz: rolled off above this
-    float target{0.25f};    // the level the level control aims for (of full scale)
-    float most_gain{3};     // the most it turns a quiet room up
-    float attack{0.01f};    // seconds to duck a slam
-    float release{0.4f};    // seconds to bring the room back up
-    float drive{1.2f};      // how hard it pushes into the converter (loud hits round off)
-    bool operator==(const MicProfile &) const = default;
-};
-
-// The camera's mic: its filters and level control. Filters and the level control keep their state
-// across packets.
-class VxMic {
-public:
-    explicit VxMic(MicProfile mic = {}) : mic_(mic) {}
-    // Interleaved stereo floats (full scale 1), in place.
-    void process(float *interleaved, std::size_t frames) noexcept;
-    void process(std::int16_t *interleaved, std::size_t frames) noexcept;
-
-private:
-    struct Channel {
-        float high_in{}, high_out{}; // high-pass
-        float low1{}, low2{};        // two-pole low-pass
-    };
-    MicProfile mic_;
-    Channel channels_[audio_channels];
-    float level_{};    // the level control's envelope (of a smoothed level, not each sample)
-    float detect_{};   // that smoothed level
-    float gain_{1};    // the gain it sets, itself smoothed: a gain that moves within a wave distorts it
-};
 // Where the skater is from the camera, for the sound: the game mixes its sound for its own
 // listener, near the skater, so a camera across the spot hears it as if it stood there.
 struct EarPlacement {
